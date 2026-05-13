@@ -1,7 +1,7 @@
 {
   "version": "1",
   "updated": "2026-05-13",
-  "shells": ["bash", "zsh"],
+  "shells": ["bash", "zsh", "pwsh"],
   "clis": {
     "node": "24.15.0",
     "npm": "11.12.1",
@@ -11,12 +11,13 @@
     "docker": "29.4.3",
     "colima": "0.10.1",
     "python3": "3.14.4",
-    "brew": "4.x"
+    "brew": "4.x",
+    "pwsh": "7.4.6"
   },
   "mcps": ["chatcode", "n8n", "discord", "context7", "puppeteer", "lightpanda", "github", "searxng", "resend"],
   "auth": {
     "github": true,
     "docker": true
   },
-  "notes": "Mac runner (Seb's MacBook). Colima provides Docker via macOS Virtualization.Framework. SearXNG at localhost:8080."
+  "notes": "Mac runner (Seb's MacBook). Colima provides Docker via macOS Virtualization.Framework. SearXNG at localhost:8080. pwsh installed as portable binary at ~/.local/share/powershell/pwsh (symlinked to ~/.local/bin/pwsh) — can edit/syntax-check .ps1 files, cannot execute against Windows state."
 }
