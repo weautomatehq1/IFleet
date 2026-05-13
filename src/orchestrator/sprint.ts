@@ -19,7 +19,6 @@ import {
 } from './types';
 
 export interface TaskBriefLoader {
-  // TODO: import from src/queue — placeholder until T3 lands
   loadBrief(taskId: TaskId): Promise<string>;
 }
 
