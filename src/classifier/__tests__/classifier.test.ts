@@ -13,14 +13,14 @@ describe('classifyTask — rule overrides', () => {
     assert.equal(result.architect.provider, 'claude');
   });
 
-  it('keyword hit: editor keyword routes editor slot to codex', () => {
+  it('keyword hit: editor keyword routes editor slot to sonnet (codex disabled until worker wired)', () => {
     const result = classifyTask({
       title: 'refactor the queue module',
       body: 'rename exports and clean up boilerplate',
       labels: ['auto:ship', 'verify:typecheck', 'verify:lint', 'verify:test'],
     });
-    assert.equal(result.editor.provider, 'codex');
-    assert.equal(result.editor.model, 'gpt-5.5-codex');
+    assert.equal(result.editor.provider, 'claude');
+    assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
   it('multi-rule priority: first matching rule wins', () => {
@@ -158,5 +158,20 @@ describe('classifyTask — labels & verify', () => {
       labels: ['auto:ship'],
     });
     assert.deepEqual(result.verify, ['typecheck', 'lint', 'test']);
+  });
+
+  it('rule-driven verify (.tsx/components) unions with label hints', () => {
+    // components/Foo.tsx matches the UI rule which specifies
+    // verify: ["typecheck","lint","test","playwright"]. The rule's verify must
+    // be unioned with the label-driven default, not discarded.
+    const result = classifyTask({
+      title: 'tweak components/Foo.tsx styling',
+      body: '',
+      labels: ['auto:ship'],
+    });
+    assert.ok(
+      result.verify.includes('playwright'),
+      `expected verify to include 'playwright', got ${JSON.stringify(result.verify)}`,
+    );
   });
 });

@@ -13,7 +13,7 @@
     },
     {
       "match": { "keywords": ["refactor", "rename", "boilerplate", "test gen", "stub", "format"] },
-      "route": { "provider": "codex", "model": "gpt-5.5-codex", "role": "editor" }
+      "route": { "provider": "claude", "model": "claude-sonnet-4-6", "role": "editor" }
     },
     {
       "match": { "fileGlobs": ["**/*.tsx", "**/*.css", "app/**", "components/**"] },
