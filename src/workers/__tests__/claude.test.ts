@@ -100,7 +100,7 @@ test('claude adapter: spawn args include flags and session-id for new run', asyn
   assert.ok(call.args.includes('stream-json'));
   assert.ok(call.args.includes('--verbose'));
   assert.ok(call.args.includes('--include-partial-messages'));
-  assert.ok(call.args.includes('--bare'));
+  assert.ok(!call.args.includes('--bare'));
   assert.ok(call.args.includes('--session-id'));
   assert.ok(call.args.includes('sprint-1-task-2'));
   assert.ok(!call.args.includes('--resume'));
