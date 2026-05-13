@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { parseLabels } from '../labels.js';
+import { parseLabels, parseRequiredCapabilities } from '../labels.js';
 
 describe('parseLabels', () => {
   it('defaults when no routing labels present', () => {
@@ -68,5 +68,32 @@ describe('parseLabels', () => {
         }
       }
     }
+  });
+});
+
+describe('parseRequiredCapabilities', () => {
+  it('returns empty array for labels with no requires: prefix', () => {
+    assert.deepEqual(parseRequiredCapabilities(['bug', 'auto:ship', 'priority:high']), []);
+  });
+
+  it('parses a single requires: label', () => {
+    assert.deepEqual(parseRequiredCapabilities(['requires:docker']), ['docker']);
+  });
+
+  it('parses multiple requires: labels and ignores non-requires labels', () => {
+    const result = parseRequiredCapabilities(['auto:ship', 'requires:docker', 'bug', 'requires:gh']);
+    assert.deepEqual(result, ['docker', 'gh']);
+  });
+
+  it('skips requires: with empty value', () => {
+    assert.deepEqual(parseRequiredCapabilities(['requires:']), []);
+  });
+
+  it('lowercases the capability name', () => {
+    assert.deepEqual(parseRequiredCapabilities(['Requires:Docker']), ['docker']);
+  });
+
+  it('returns empty array for empty input', () => {
+    assert.deepEqual(parseRequiredCapabilities([]), []);
   });
 });

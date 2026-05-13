@@ -32,6 +32,7 @@ interface TaskRow {
   attempts: number;
   created_at: number;
   updated_at: number;
+  required_capabilities_json: string | null;
 }
 
 interface RateLimitRow {
@@ -121,6 +122,13 @@ export class StateStore {
       }
     });
     tx(MIGRATIONS);
+    // Idempotent column additions: ALTER TABLE is not repeatable, so guard via pragma.
+    const taskCols = (this.db.pragma('table_info(tasks)') as Array<{ name: string }>).map(
+      (c) => c.name,
+    );
+    if (!taskCols.includes('required_capabilities_json')) {
+      this.db.exec('ALTER TABLE tasks ADD COLUMN required_capabilities_json TEXT');
+    }
   }
 
   close(): void {
@@ -177,13 +185,14 @@ export class StateStore {
 
   saveTask(record: TaskRecord): void {
     const stmt = this.db.prepare(
-      `INSERT INTO tasks (id, sprint_id, brief, state_json, attempts, created_at, updated_at)
-       VALUES (@id, @sprintId, @brief, @state, @attempts, @createdAt, @updatedAt)
+      `INSERT INTO tasks (id, sprint_id, brief, state_json, attempts, created_at, updated_at, required_capabilities_json)
+       VALUES (@id, @sprintId, @brief, @state, @attempts, @createdAt, @updatedAt, @requiredCapabilitiesJson)
        ON CONFLICT(id) DO UPDATE SET
          brief = excluded.brief,
          state_json = excluded.state_json,
          attempts = excluded.attempts,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         required_capabilities_json = excluded.required_capabilities_json`,
     );
     stmt.run({
       id: record.id,
@@ -193,6 +202,9 @@ export class StateStore {
       attempts: record.attempts,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      requiredCapabilitiesJson: record.requiredCapabilities
+        ? JSON.stringify(record.requiredCapabilities)
+        : null,
     });
   }
 
@@ -220,7 +232,7 @@ export class StateStore {
       | TaskRow
       | undefined;
     if (!row) return undefined;
-    return {
+    const base: TaskRecord = {
       id: row.id as TaskId,
       sprintId: row.sprint_id as SprintId,
       brief: row.brief,
@@ -229,6 +241,10 @@ export class StateStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+    if (row.required_capabilities_json) {
+      base.requiredCapabilities = JSON.parse(row.required_capabilities_json) as string[];
+    }
+    return base;
   }
 
   listSprintsByStateKind(kind: string): ReadonlyArray<SprintRecord> {

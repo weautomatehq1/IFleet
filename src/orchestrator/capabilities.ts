@@ -11,7 +11,7 @@ export interface Capabilities {
 export function isCapabilityAvailable(cap: string, capabilities: Capabilities): boolean {
   const normalized = cap.toLowerCase().trim();
   if (capabilities.shells.some((s) => s.toLowerCase() === normalized)) return true;
-  if (Object.prototype.hasOwnProperty.call(capabilities.clis, normalized)) return true;
+  if (Object.keys(capabilities.clis).some((k) => k.toLowerCase() === normalized)) return true;
   if (capabilities.mcps.some((m) => m.toLowerCase() === normalized)) return true;
   return false;
 }

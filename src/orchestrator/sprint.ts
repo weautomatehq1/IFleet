@@ -116,8 +116,7 @@ export class SprintManager {
     };
     this.store.saveSprint(record);
     if (opts.newTaskBriefs) {
-      for (let i = 0; i < opts.newTaskBriefs.length; i++) {
-        const brief = opts.newTaskBriefs[i] as string;
+      for (const [i, brief] of opts.newTaskBriefs.entries()) {
         const tid = newTaskId(`tk_${nanoid(10)}`);
         const requirements = opts.newTaskRequirements?.[i];
         const tRec: TaskRecord = {
@@ -181,8 +180,9 @@ export class SprintManager {
     for (const task of tasks) {
       if (task.state.kind !== 'pending') continue;
       if (this.capabilities) {
+        const caps = this.capabilities;
         const missing = (task.requiredCapabilities ?? []).filter(
-          (cap) => !isCapabilityAvailable(cap, this.capabilities!),
+          (cap) => !isCapabilityAvailable(cap, caps),
         );
         if (missing.length > 0) {
           const ts = this.now();
