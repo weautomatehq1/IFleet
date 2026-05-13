@@ -3,11 +3,21 @@ import assert from 'node:assert/strict';
 import { classifyTask } from '../index.ts';
 
 describe('classifyTask — rule overrides', () => {
-  it('keyword hit: architect keyword routes architect slot to opus rule', () => {
+  it('keyword hit without complexity:high stays on sonnet (architect opus cap)', () => {
     const result = classifyTask({
       title: 'security audit of auth middleware',
       body: 'check the auth flow',
       labels: ['auto:ship', 'verify:typecheck', 'verify:lint', 'verify:test'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.provider, 'claude');
+  });
+
+  it('keyword hit with complexity:high routes architect to opus', () => {
+    const result = classifyTask({
+      title: 'security audit of auth middleware',
+      body: 'check the auth flow',
+      labels: ['auto:ship', 'complexity:high'],
     });
     assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.equal(result.architect.provider, 'claude');
@@ -23,23 +33,33 @@ describe('classifyTask — rule overrides', () => {
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
-  it('multi-rule priority: first matching rule wins', () => {
+  it('multi-rule priority: first matching rule wins (capped to sonnet without complexity:high)', () => {
     // "migration" matches rule 1 (architect/opus), "refactor" matches rule 2 (editor/codex)
-    // first match should win → architect slot gets opus override
+    // first match still wins, but the architect opus cap forces sonnet.
     const result = classifyTask({
       title: 'migration and refactor',
       body: '',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
     assert.equal(result.architect.provider, 'claude');
   });
 
-  it('fileGlobs: .sql reference triggers SQL rule and overrides architect to opus', () => {
+  it('fileGlobs: .sql reference matches SQL rule but architect stays on sonnet (cap)', () => {
     const result = classifyTask({
       title: 'add seed file users.sql to the repo',
       body: 'seed data for local dev',
       labels: ['auto:ship'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.provider, 'claude');
+  });
+
+  it('fileGlobs: .sql with complexity:high promotes architect to opus', () => {
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship', 'complexity:high'],
     });
     assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.equal(result.architect.provider, 'claude');
@@ -77,24 +97,34 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.architect.model, 'claude-sonnet-4-6');
   });
 
-  it('high-weight keyword not in rules → opus tier on architect', () => {
-    // "stripe" + "payment" are high-weight scorer keywords but not in any rule's
-    // keyword list (and "oauth" would substring-match "auth" in rule 1), so the
-    // scorer (not a rule override) decides the model here.
+  it('high-weight keyword without complexity:high caps architect at sonnet', () => {
+    // "stripe" + "payment" are high-weight scorer keywords. Pre-Phase B this
+    // produced opus; the architect cap now keeps it at sonnet unless the
+    // operator explicitly labels the issue `complexity:high`.
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
       labels: ['auto:ship'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
   });
 
-  it('editor is one tier below architect', () => {
+  it('high-weight keyword + complexity:high promotes architect to opus', () => {
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
-      labels: ['auto:ship'],
+      labels: ['auto:ship', 'complexity:high'],
+    });
+    assert.equal(result.architect.provider, 'claude');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+  });
+
+  it('editor is one tier below architect (with complexity:high → opus/sonnet)', () => {
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship', 'complexity:high'],
     });
     assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
@@ -110,14 +140,32 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.editor.model, 'claude-haiku-4-5-20251001');
   });
 
-  it('priority:high bumps tier up one', () => {
+  it('priority:high bumps tier up one but is still capped at sonnet for architect', () => {
     const result = classifyTask({
       title: 'add a new feature toggle',
       body: '',
       labels: ['auto:ship', 'priority:high'],
     });
-    // sonnet bumped to opus
+    // pre-Phase B this bumped sonnet → opus; the architect cap holds it at sonnet
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+
+  it('priority:high + complexity:high promotes architect to opus', () => {
+    const result = classifyTask({
+      title: 'add a new feature toggle',
+      body: '',
+      labels: ['auto:ship', 'priority:high', 'complexity:high'],
+    });
     assert.equal(result.architect.model, 'claude-opus-4-7');
+  });
+
+  it('complexity:low forces sonnet even when scorer/rule wants opus', () => {
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship', 'complexity:low'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
   });
 
   it('chore label bumps tier down one', () => {
@@ -134,7 +182,7 @@ describe('classifyTask — dynamic scorer', () => {
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
-      labels: ['auto:ship'],
+      labels: ['auto:ship', 'complexity:high'],
     });
     assert.equal(result.reviewer.provider, 'claude');
     assert.equal(result.reviewer.model, 'claude-opus-4-7');

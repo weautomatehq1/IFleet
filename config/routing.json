@@ -25,9 +25,9 @@
     }
   ],
   "pipeline": {
-    "architect": { "provider": "claude", "model": "claude-opus-4-7" },
-    "editor": { "provider": "codex", "model": "gpt-5.5-codex", "fallback": { "provider": "claude", "model": "claude-sonnet-4-6" } },
-    "reviewer": { "rule": "opposite-provider-of-editor", "model": "claude-opus-4-7" }
+    "architect": { "provider": "claude", "model": "claude-sonnet-4-6" },
+    "editor": { "provider": "claude", "model": "claude-sonnet-4-6", "switchable": { "provider": "codex", "model": "gpt-5.5-codex" } },
+    "reviewer": { "rule": "opposite-provider-of-editor", "model": "claude-sonnet-4-6" }
   },
   "verify": {
     "default": ["typecheck", "lint", "test"],

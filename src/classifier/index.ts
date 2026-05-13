@@ -119,6 +119,17 @@ function applyLabelBumps(
   return next;
 }
 
+type ComplexityHint = 'high' | 'low' | undefined;
+
+function parseComplexity(labels: readonly string[]): ComplexityHint {
+  for (const raw of labels) {
+    const l = raw.toLowerCase().trim();
+    if (l === 'complexity:high') return 'high';
+    if (l === 'complexity:low') return 'low';
+  }
+  return undefined;
+}
+
 // Translate a glob pattern into substring needles we can probe the task text with.
 // We don't have a real file tree at classify time, so we look for filename
 // extensions (e.g. ".sql") and top-level directory prefixes (e.g. "migrations/").
@@ -143,10 +154,18 @@ function matchesGlobs(text: string, globs: string[]): boolean {
 export function classifyTask(task: ClassifyInput): RoutingDecision {
   const text = `${task.title} ${task.body}`.toLowerCase();
   const hints = parseLabels(task.labels);
+  const complexity = parseComplexity(task.labels);
 
   const rawScore = scoreKeywords(text);
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
-  const architectTier = baseTier;
+
+  // Architect escalation policy (Phase B): the scorer never auto-promotes the
+  // architect to opus — opus burns the 5-hour Claude Max rate limit and stalls
+  // the fleet silently. Only an explicit `complexity:high` label promotes to
+  // opus.
+  let architectTier: Tier = baseTier === 'opus' ? 'sonnet' : baseTier;
+  if (complexity === 'high') architectTier = 'opus';
+
   const editorTier = bumpTier(architectTier, -1);
   const reviewerTier = architectTier;
 
@@ -187,6 +206,13 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     for (const v of matchedRule.route.verify) {
       if (!verify.includes(v)) verify.push(v);
     }
+  }
+
+  // Architect opus cap (Phase B): no path other than `complexity:high` can
+  // promote the architect to opus — not scorer keywords, not routing.json
+  // rules. This keeps the fleet off the 5-hour rate limit by default.
+  if (complexity !== 'high' && architectModel === TIERS.opus) {
+    architectModel = TIERS.sonnet;
   }
 
   // Reviewer is a Claude second opinion at the same tier as the architect.
