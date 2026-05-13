@@ -155,11 +155,20 @@ export class SprintManager {
     const now = this.now();
     const updated: SprintRecord = { ...current, state: next, updatedAt: now };
     this.store.saveSprint(updated);
+    const basePayload = { from: current.state.kind, to: next.kind };
+    const payload =
+      next.kind === 'completed'
+        ? {
+            ...basePayload,
+            durationMs: current.state.kind === 'running' ? now - current.state.startedAt : 0,
+            prs: next.prs,
+          }
+        : basePayload;
     this.emit({
       ts: now,
       sprintId: id,
       kind: `sprint.${next.kind}`,
-      payload: { from: current.state.kind, to: next.kind },
+      payload,
     });
     return updated;
   }
