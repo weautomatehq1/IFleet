@@ -74,7 +74,7 @@ function buildWorkerPool(): WorkerPool {
       });
 
       // Count rate limit events in the background.
-      void (async () => {
+      const eventLoop = (async () => {
         for await (const event of workerHandle.events) {
           if (event.kind === 'rate_limit') rateLimitHits++;
           if (event.kind === 'progress') process.stdout.write('.');
@@ -85,6 +85,8 @@ function buildWorkerPool(): WorkerPool {
       return {
         result: async () => {
           const r = await workerHandle.result;
+          // Drain the event loop so late errors are not lost.
+          await eventLoop;
           return {
             ok: r.ok,
             output: r.text,
@@ -292,8 +294,20 @@ async function main(): Promise<void> {
   log('Marked issue as in_flight');
 
   // Derive a safe branch name.
-  const branchName = titleToBranchName(rawTask.issueNumber, rawTask.title);
-  const worktreePath = await setupWorktree(rawTask.issueNumber, branchName);
+  let branchName: string;
+  let worktreePath: string;
+  try {
+    branchName = titleToBranchName(rawTask.issueNumber, rawTask.title);
+    worktreePath = await setupWorktree(rawTask.issueNumber, branchName);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`Worktree setup failed: ${msg}`);
+    // Best-effort teardown in case the worktree was partially created.
+    await teardownWorktree(rawTask.issueNumber).catch(() => undefined);
+    await queue.markFailed(rawTask, `worktree-setup-failed: ${msg}`);
+    process.exitCode = 1;
+    return;
+  }
 
   // Build pipeline task from the queue task.
   const pipelineTask: PipelineTask = {

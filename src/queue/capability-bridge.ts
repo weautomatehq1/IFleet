@@ -11,7 +11,11 @@ export class CapabilityBridge {
 
   constructor(source: EventSource, queue: QueueAdapter) {
     this.queue = queue;
-    source.on('task.capability_blocked', (event) => void this.handleBlocked(event));
+    source.on('task.capability_blocked', (event) => {
+      this.handleBlocked(event).catch((err) => {
+        console.error('[capability-bridge] handleBlocked failed:', err);
+      });
+    });
     source.on('task.completed', (event) => { if (event.taskId) this.taskMap.delete(event.taskId); });
     source.on('task.failed', (event) => { if (event.taskId) this.taskMap.delete(event.taskId); });
   }
@@ -29,7 +33,11 @@ export class CapabilityBridge {
     const task = this.taskMap.get(event.taskId);
     if (!task) return;
     this.taskMap.delete(event.taskId);
-    const missing = event.payload.missing as string[];
+    const missing = event.payload.missing;
+    if (!Array.isArray(missing) || !missing.every((item) => typeof item === 'string')) {
+      console.warn('[capability-bridge] ignoring capability_blocked event with invalid missing payload');
+      return;
+    }
     await this.queue.markCapabilityBlocked(task, missing);
   }
 }

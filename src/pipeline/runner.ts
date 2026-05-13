@@ -235,6 +235,14 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
       role: attempt.role,
       model: spec.model,
       provider: spec.provider as 'claude' | 'codex',
+      // TODO(cost): worker CLIs surface usage info (Claude emits `total_cost_usd`
+      // in its `result` event; Codex does not surface USD cost reliably), but the
+      // pipeline's `SpawnResult` boundary (src/pipeline/types.ts) drops it before
+      // it reaches the AttemptRecord here. Wiring requires:
+      //   1. Adding `totalCostUsd?: number` to pipeline `SpawnResult`.
+      //   2. Propagating it from WorkerResult through WorkerPool implementations.
+      //   3. Adding `totalCostUsd?: number` to AttemptRecord and reading it below.
+      // Until then, durationMs is the only honest signal and this stays 0.
       totalCostUsd: 0,
       durationMs: attempt.endedAt - attempt.startedAt,
       startedAt: new Date(attempt.startedAt).toISOString(),

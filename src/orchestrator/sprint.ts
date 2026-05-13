@@ -250,7 +250,26 @@ export class SprintManager {
     const now = this.now();
     let brief = task.brief;
     if (!brief) {
-      brief = await this.briefLoader.loadBrief(task.id);
+      try {
+        brief = await this.briefLoader.loadBrief(task.id);
+      } catch (err) {
+        this.registry.release(workerId);
+        const message = err instanceof Error ? err.message : String(err);
+        this.store.saveTask({
+          ...task,
+          state: { kind: 'failed', at: this.now(), error: message },
+          updatedAt: this.now(),
+        });
+        this.emit({
+          ts: this.now(),
+          sprintId: task.sprintId,
+          taskId: task.id,
+          workerId,
+          kind: 'task.failed',
+          payload: { error: message },
+        });
+        return;
+      }
     }
     const nextTaskState: TaskState = {
       kind: 'assigned',

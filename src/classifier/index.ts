@@ -179,6 +179,16 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     }
   }
 
+  // Union rule-driven verify steps with label-driven hints so neither side is
+  // silently dropped. Label hints are preserved; rule verify (e.g. playwright
+  // for .tsx/components) is added on top. De-duplicate while keeping order.
+  const verify: VerifyKind[] = [...hints.verify];
+  if (matchedRule?.route.verify) {
+    for (const v of matchedRule.route.verify) {
+      if (!verify.includes(v)) verify.push(v);
+    }
+  }
+
   // Reviewer is a Claude second opinion at the same tier as the architect.
   // Provider stays claude so the model/provider pair is always consistent;
   // diversity comes from running a fresh reviewer session, not from swapping vendors.
@@ -189,6 +199,6 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     architect: makeSpec(architectProvider, architectModel, 'architect'),
     editor: makeSpec(editorProvider, editorModel, 'editor'),
     reviewer: makeSpec(reviewerProvider, reviewerModel, 'reviewer'),
-    verify: hints.verify,
+    verify,
   };
 }

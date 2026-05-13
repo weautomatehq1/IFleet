@@ -119,10 +119,12 @@ async function handleRequest(
     return;
   }
 
-  await dispatch(command, opts);
   res.statusCode = 202;
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify({ ok: true, type: command.type }));
+  void dispatch(command, opts).catch((err) => {
+    console.error('[control-plane] dispatch failed:', err);
+  });
 }
 
 async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Promise<void> {
