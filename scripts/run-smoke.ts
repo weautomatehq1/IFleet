@@ -101,14 +101,16 @@ function buildWorkerPool(): WorkerPool {
 }
 
 function mapModel(configModel: string): string {
-  // Phase A: cap at sonnet-4.6 — opus-4.7 hits the 5-hour rate limit on longer responses.
-  // Phase B can restore opus once rate limit headroom is understood.
-  const map: Record<string, string> = {
-    'opus-4.7': 'claude-sonnet-4-6',
+  // Phase B: classifier owns model selection. Architect opus is gated on the
+  // `complexity:high` issue label (see src/classifier/index.ts); without it
+  // the classifier returns sonnet, so this is a pass-through for full Claude
+  // model names. Legacy tier shorthand kept for back-compat.
+  const shorthand: Record<string, string> = {
+    'opus-4.7': 'claude-opus-4-7',
     'sonnet-4.6': 'claude-sonnet-4-6',
     'haiku-4.5': 'claude-haiku-4-5-20251001',
   };
-  return map[configModel] ?? 'claude-sonnet-4-6';
+  return shorthand[configModel] ?? configModel;
 }
 
 function buildGitOps(): GitOps {
