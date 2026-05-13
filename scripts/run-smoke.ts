@@ -368,16 +368,23 @@ async function main(): Promise<void> {
   } else {
     const reason = result.failureReason ?? result.status;
     log(`Pipeline did not open a PR: ${reason}`);
+    if (result.reviewSummary) {
+      log(`Review summary:\n${result.reviewSummary}`);
+    }
     if (result.attempts.length > 0) {
       for (const attempt of result.attempts) {
         log(
           `  [${attempt.role}] ok=${attempt.ok} rateLimitHits=${attempt.rateLimitHits} ` +
             `durationMs=${attempt.endedAt - attempt.startedAt}`,
         );
+        if (attempt.role === 'reviewer') {
+          log(`    output: ${attempt.output.slice(0, 500)}`);
+        }
       }
     }
     await queue.markFailed(rawTask, reason);
-    await teardownWorktree(rawTask.issueNumber, branchName);
+    // Keep worktree on failure so the diff can be inspected manually.
+    log(`Worktree preserved at ${worktreePath} for inspection`);
     log(`PHASE A RED — reason: ${reason}`);
     process.exitCode = 1;
   }
