@@ -28,6 +28,7 @@ import { createGitHubQueue } from '../src/queue/github.ts';
 import { createClaudeAdapter } from '../src/workers/claude.ts';
 import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
+import { titleToBranchName } from '../src/utils/branch-name.ts';
 import type {
   WorkerPool,
   WorkerSpec,
@@ -290,7 +291,7 @@ async function main(): Promise<void> {
   log('Marked issue as in_flight');
 
   // Derive a safe branch name.
-  const branchName = `chore/smoke-${rawTask.issueNumber}-remove-stale-todo`;
+  const branchName = titleToBranchName(rawTask.issueNumber, rawTask.title);
   const worktreePath = await setupWorktree(rawTask.issueNumber, branchName);
 
   // Build pipeline task from the queue task.
