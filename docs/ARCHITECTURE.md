@@ -44,7 +44,7 @@ Control plane (Discord / web / GitHub issue) →
 
 ## Routing rules
 
-See [`config/routing.json`](../config/routing.json) for the live config.
+See [`config/routing.json`](../config/routing.json) for the live config and [`docs/MODEL-ROUTING.md`](MODEL-ROUTING.md) for the full Phase B model routing policy with worked examples.
 
 | Task type | Architect | Editor | Reviewer |
 |---|---|---|---|
