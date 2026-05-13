@@ -42,7 +42,7 @@ export async function openPipelinePr(
     reviewers: input.codeowners,
   };
 
-  return input.pr.openDraft(openInput);
+  return input.pr.open(openInput);
 }
 
 interface FormatInput {
