@@ -6,19 +6,32 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "ifleet": "src/observability/tail-cli.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "test": "echo 'no tests yet' && exit 0",
+    "lint": "eslint .",
+    "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'src/workers/**/*.test.ts' && vitest run",
+    "test:watch": "vitest",
     "prepare": "husky"
   },
+  "dependencies": {
+    "@octokit/plugin-throttling": "^9.3.0",
+    "@octokit/rest": "^21.0.0",
+    "better-sqlite3": "^11.3.0",
+    "nanoid": "^5.0.7"
+  },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
     "husky": "^9.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^4.1.6"
   }
 }
