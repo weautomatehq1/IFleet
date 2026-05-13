@@ -25,6 +25,7 @@ import { symlinkSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createGitHubQueue } from '../src/queue/github.ts';
+import { classifyTask } from '../src/classifier/index.ts';
 import { createClaudeAdapter } from '../src/workers/claude.ts';
 import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
@@ -38,7 +39,6 @@ import type {
   PrOpener,
   GitOps,
   QueuedTask as PipelineTask,
-  RoutingDecision,
   PipelineInput,
   VerifyRunner as PipelineVerifyRunner,
 } from '../src/pipeline/types.ts';
@@ -304,22 +304,11 @@ async function main(): Promise<void> {
     labels: rawTask.labels,
   };
 
-  // Worker spec — all roles run on Claude (Phase A limitation: Codex not available).
-  const claudeSpec: WorkerSpec = {
-    provider: 'claude',
-    model: 'claude-sonnet-4-6',
-    workerId: 'claude-max-1',
-  };
-  // Spoof reviewer.provider to 'codex' to satisfy assertCrossProviderRule.
-  // Both editor and reviewer actually run on Claude until Codex is enabled.
-  const reviewerSpec: WorkerSpec = { ...claudeSpec, provider: 'codex' };
-
-  const routing: RoutingDecision = {
-    architect: claudeSpec,
-    editor: claudeSpec,
-    reviewer: reviewerSpec,
-    verify: rawTask.routingHints.verify,
-  };
+  const routing = classifyTask({
+    title: rawTask.title,
+    body: rawTask.body,
+    labels: rawTask.labels,
+  });
 
   const [owner, repoName] = rawTask.repo.split('/') as [string, string];
   // Resolve GitHub token: env var wins, then gh CLI keychain (same as GitHubQueue).
