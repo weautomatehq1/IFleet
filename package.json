@@ -9,10 +9,15 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "echo 'no tests yet' && exit 0",
+    "test": "node --import tsx --test src/orchestrator/__tests__/*.test.ts",
     "prepare": "husky"
   },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "nanoid": "^5.0.7"
+  },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
