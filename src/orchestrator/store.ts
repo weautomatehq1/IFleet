@@ -146,13 +146,14 @@ export class StateStore {
          updated_at = excluded.updated_at`,
     );
     const upsertTask = this.db.prepare(
-      `INSERT INTO tasks (id, sprint_id, brief, state_json, attempts, created_at, updated_at)
-       VALUES (@id, @sprintId, @brief, @state, @attempts, @createdAt, @updatedAt)
+      `INSERT INTO tasks (id, sprint_id, brief, state_json, attempts, created_at, updated_at, required_capabilities_json)
+       VALUES (@id, @sprintId, @brief, @state, @attempts, @createdAt, @updatedAt, @requiredCapabilitiesJson)
        ON CONFLICT(id) DO UPDATE SET
          brief = excluded.brief,
          state_json = excluded.state_json,
          attempts = excluded.attempts,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         required_capabilities_json = excluded.required_capabilities_json`,
     );
     const tx = this.db.transaction((rec: SprintRecord) => {
       insert.run({
@@ -176,6 +177,7 @@ export class StateStore {
             attempts: 0,
             createdAt: rec.createdAt,
             updatedAt: rec.updatedAt,
+            requiredCapabilitiesJson: null,
           });
         }
       }
@@ -213,6 +215,13 @@ export class StateStore {
       | SprintRow
       | undefined;
     if (!row) return undefined;
+    let state: SprintRecord['state'];
+    try {
+      state = JSON.parse(row.state_json) as SprintRecord['state'];
+    } catch (err) {
+      console.warn(`loadSprint: corrupt state_json for sprint ${row.id}: ${String(err)}`);
+      return undefined;
+    }
     const taskRows = this.db
       .prepare('SELECT id FROM tasks WHERE sprint_id = ? ORDER BY created_at ASC')
       .all(id) as ReadonlyArray<{ id: string }>;
@@ -221,7 +230,7 @@ export class StateStore {
       mode: row.mode as SprintRecord['mode'],
       goal: row.goal,
       tasks: taskRows.map((t) => t.id as TaskId),
-      state: JSON.parse(row.state_json) as SprintRecord['state'],
+      state,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -232,17 +241,30 @@ export class StateStore {
       | TaskRow
       | undefined;
     if (!row) return undefined;
+    let state: TaskRecord['state'];
+    try {
+      state = JSON.parse(row.state_json) as TaskRecord['state'];
+    } catch (err) {
+      console.warn(`loadTask: corrupt state_json for task ${row.id}: ${String(err)}`);
+      return undefined;
+    }
     const base: TaskRecord = {
       id: row.id as TaskId,
       sprintId: row.sprint_id as SprintId,
       brief: row.brief,
-      state: JSON.parse(row.state_json) as TaskRecord['state'],
+      state,
       attempts: row.attempts,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
     if (row.required_capabilities_json) {
-      base.requiredCapabilities = JSON.parse(row.required_capabilities_json) as string[];
+      try {
+        base.requiredCapabilities = JSON.parse(row.required_capabilities_json) as string[];
+      } catch (err) {
+        console.warn(
+          `loadTask: corrupt required_capabilities_json for task ${row.id}: ${String(err)}`,
+        );
+      }
     }
     return base;
   }
@@ -253,7 +275,15 @@ export class StateStore {
       .all() as ReadonlyArray<SprintRow>;
     const out: SprintRecord[] = [];
     for (const row of rows) {
-      const state = JSON.parse(row.state_json) as SprintRecord['state'];
+      let state: SprintRecord['state'];
+      try {
+        state = JSON.parse(row.state_json) as SprintRecord['state'];
+      } catch (err) {
+        console.warn(
+          `listSprintsByStateKind: corrupt state_json for sprint ${row.id}: ${String(err)}`,
+        );
+        continue;
+      }
       if (state.kind !== kind) continue;
       const taskRows = this.db
         .prepare('SELECT id FROM tasks WHERE sprint_id = ? ORDER BY created_at ASC')
