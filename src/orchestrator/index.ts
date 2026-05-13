@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { PressureTracker } from './pressure';
 import { SprintManager, type StartSprintOpts, type TaskBriefLoader } from './sprint';
 import { DEFAULT_DB_PATH, StateStore } from './store';

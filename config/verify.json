@@ -1,0 +1,13 @@
+{
+  "screenshot": {
+    "maxDiffPixels": 50,
+    "threshold": 0.2
+  },
+  "timeouts": {
+    "typecheck": 300000,
+    "lint": 300000,
+    "test": 600000,
+    "playwright": 600000,
+    "screenshot": 600000
+  }
+}
