@@ -33,6 +33,10 @@ export interface SprintManagerOptions {
   emit: (event: OrchestratorEvent) => void;
   capabilities?: Capabilities;
   now?: () => number;
+  /** USD spend cap per sprint. When exceeded the sprint transitions to `paused`. */
+  budgetUsd?: number;
+  /** Called when a sprint is paused due to budget exhaustion. */
+  onBudgetPaused?: (sprintId: SprintId, spentUsd: number, limitUsd: number) => void | Promise<void>;
 }
 
 export interface StartSprintOpts {
@@ -63,7 +67,8 @@ export const VALID_SPRINT_TRANSITIONS: Readonly<
 > = {
   queued: new Set(['planning', 'running', 'cancelled', 'failed']),
   planning: new Set(['running', 'cancelled', 'failed']),
-  running: new Set(['completed', 'cancelled', 'failed']),
+  running: new Set(['completed', 'cancelled', 'failed', 'paused']),
+  paused: new Set(['running', 'cancelled', 'failed']),
   cancelled: new Set(),
   completed: new Set(),
   failed: new Set(),
@@ -86,6 +91,9 @@ export class SprintManager {
   private readonly capabilities: Capabilities | undefined;
   private readonly now: () => number;
   private readonly running = new Map<TaskId, RunningTask>();
+  private readonly budgetUsd: number | undefined;
+  private readonly onBudgetPaused: SprintManagerOptions['onBudgetPaused'];
+  private readonly sprintSpend = new Map<SprintId, number>();
 
   constructor(opts: SprintManagerOptions) {
     this.store = opts.store;
@@ -96,6 +104,8 @@ export class SprintManager {
     this.emit = opts.emit;
     this.capabilities = opts.capabilities;
     this.now = opts.now ?? Date.now;
+    this.budgetUsd = opts.budgetUsd;
+    this.onBudgetPaused = opts.onBudgetPaused;
   }
 
   startSprint(opts: StartSprintOpts): SprintRecord {
@@ -177,6 +187,7 @@ export class SprintManager {
     const sprint = this.store.loadSprint(sprintId);
     if (!sprint) return;
     if (TERMINAL_STATES.has(sprint.state.kind)) return;
+    if (sprint.state.kind === 'paused') return;
 
     if (sprint.state.kind === 'queued') {
       this.transition(sprintId, { kind: 'running', startedAt: this.now() });
@@ -333,6 +344,34 @@ export class SprintManager {
     }
   }
 
+  private accumulateCost(sprintId: SprintId, costUsd: number | undefined): number {
+    if (!costUsd) return this.sprintSpend.get(sprintId) ?? 0;
+    const prev = this.sprintSpend.get(sprintId) ?? 0;
+    const next = prev + costUsd;
+    this.sprintSpend.set(sprintId, next);
+    return next;
+  }
+
+  private async checkBudget(sprintId: SprintId, spentUsd: number): Promise<boolean> {
+    const limit = this.budgetUsd;
+    if (limit === undefined || spentUsd < limit) return false;
+    const sprint = this.store.loadSprint(sprintId);
+    if (!sprint || sprint.state.kind !== 'running') return false;
+    this.transition(sprintId, {
+      kind: 'paused',
+      at: this.now(),
+      reason: `budget limit $${limit.toFixed(2)} reached (spent $${spentUsd.toFixed(2)})`,
+    });
+    this.emit({
+      ts: this.now(),
+      sprintId,
+      kind: 'sprint.budget_paused',
+      payload: { spentUsd, limitUsd: limit },
+    });
+    await this.onBudgetPaused?.(sprintId, spentUsd, limit);
+    return true;
+  }
+
   private async awaitHandle(taskId: TaskId): Promise<void> {
     const entry = this.running.get(taskId);
     if (!entry) return;
@@ -342,6 +381,7 @@ export class SprintManager {
       this.running.delete(taskId);
       const task = this.store.loadTask(taskId);
       if (!task) return;
+      const spentUsd = this.accumulateCost(task.sprintId, result.totalCostUsd);
       if (result.exitCode === 0) {
         this.store.saveTask({
           ...task,
@@ -354,7 +394,7 @@ export class SprintManager {
           taskId,
           workerId: entry.workerId,
           kind: 'task.completed',
-          payload: { pr: result.pr ?? null },
+          payload: { pr: result.pr ?? null, costUsd: result.totalCostUsd ?? 0 },
         });
       } else {
         this.store.saveTask({
@@ -372,9 +412,10 @@ export class SprintManager {
           taskId,
           workerId: entry.workerId,
           kind: 'task.failed',
-          payload: { exitCode: result.exitCode, error: result.error ?? null },
+          payload: { exitCode: result.exitCode, error: result.error ?? null, costUsd: result.totalCostUsd ?? 0 },
         });
       }
+      await this.checkBudget(task.sprintId, spentUsd);
     } catch (err) {
       this.registry.release(entry.workerId);
       this.running.delete(taskId);

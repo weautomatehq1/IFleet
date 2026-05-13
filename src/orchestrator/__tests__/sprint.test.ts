@@ -216,6 +216,78 @@ test('cancelSprint: is idempotent on terminal state', async () => {
   }
 });
 
+test('budget: sprint pauses when task cost exceeds limit', async () => {
+  const paused: Array<{ sprintId: string; spentUsd: number; limitUsd: number }> = [];
+  const adapter = new MockAdapter({ exitCode: 0, pr: 'PR-1', totalCostUsd: 3.00 });
+  const h = makeManager({
+    adapter,
+    budgetUsd: 2.00,
+    onBudgetPaused: (sprintId, spentUsd, limitUsd) => { paused.push({ sprintId, spentUsd, limitUsd }); },
+  });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    const finalRec = h.env.store.loadSprint(rec.id);
+    assert.equal(finalRec?.state.kind, 'paused');
+    if (finalRec?.state.kind === 'paused') {
+      assert.match(finalRec.state.reason, /budget/);
+    }
+    assert.equal(paused.length, 1);
+    assert.equal(paused[0]?.limitUsd, 2.00);
+    assert.equal(paused[0]?.spentUsd, 3.00);
+    const budgetEvt = h.events.find((e) => e.kind === 'sprint.budget_paused');
+    assert.ok(budgetEvt, 'expected sprint.budget_paused event');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('budget: no pause when cost is below limit', async () => {
+  const paused: string[] = [];
+  const adapter = new MockAdapter({ exitCode: 0, pr: 'PR-1', totalCostUsd: 1.00 });
+  const h = makeManager({
+    adapter,
+    budgetUsd: 5.00,
+    onBudgetPaused: (sprintId) => { paused.push(sprintId); },
+  });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    const finalRec = h.env.store.loadSprint(rec.id);
+    assert.equal(finalRec?.state.kind, 'completed');
+    assert.equal(paused.length, 0);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('budget: paused sprint does not tick further', async () => {
+  const adapter = new MockAdapter({ exitCode: 0, pr: 'PR-1', totalCostUsd: 3.00 });
+  const h = makeManager({ adapter, budgetUsd: 2.00 });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1', 't2'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    // After first task completes and budget is blown, second task should not be dispatched on next tick
+    await h.manager.tick(rec.id);
+    const spawnedCount = adapter.spawned.length;
+    await h.manager.tick(rec.id); // extra tick — must not dispatch more
+    assert.equal(adapter.spawned.length, spawnedCount);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('budget: paused → running transition is valid', () => {
+  assert.equal(canTransitionSprint('paused', 'running'), true);
+  assert.equal(canTransitionSprint('paused', 'cancelled'), true);
+  assert.equal(canTransitionSprint('running', 'paused'), true);
+});
+
 test('transition: sprint.completed payload includes durationMs', () => {
   let now = 1000;
   const clock = () => now;

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync } from 'node:fs';
+import { request } from 'node:https';
 import { join } from 'node:path';
 import { PressureTracker } from './pressure';
 import { SprintManager, type StartSprintOpts, type TaskBriefLoader } from './sprint';
@@ -31,6 +32,10 @@ export interface OrchestratorOptions {
   killPollIntervalMs?: number;
   now?: () => number;
   autoResume?: boolean;
+  /** USD spend cap per sprint. Defaults to BUDGET_USD env var. Omit to disable. */
+  budgetUsd?: number;
+  /** Discord webhook URL for budget alerts. Defaults to DISCORD_IFLEET_WEBHOOK env var. */
+  discordWebhookUrl?: string;
 }
 
 export class Orchestrator {
@@ -60,6 +65,8 @@ export class Orchestrator {
     this.killFlagDir = opts.killFlagDir ?? DEFAULT_KILL_FLAG_DIR;
     this.tickIntervalMs = opts.tickIntervalMs ?? DEFAULT_TICK_MS;
     this.killPollIntervalMs = opts.killPollIntervalMs ?? DEFAULT_KILL_POLL_MS;
+    const budgetUsd = opts.budgetUsd ?? parseBudgetEnv();
+    const discordWebhookUrl = opts.discordWebhookUrl ?? process.env['DISCORD_IFLEET_WEBHOOK'];
     this.sprints = new SprintManager({
       store: this.store,
       registry: this.registry,
@@ -68,6 +75,14 @@ export class Orchestrator {
       briefLoader: opts.briefLoader,
       emit: (event) => this.handleEvent(event),
       now: this.now,
+      budgetUsd,
+      onBudgetPaused: discordWebhookUrl
+        ? (sprintId, spentUsd, limitUsd) =>
+            postDiscordAlert(
+              discordWebhookUrl,
+              `⚠️ Sprint \`${sprintId}\` paused — budget $${limitUsd.toFixed(2)} reached (spent $${spentUsd.toFixed(2)}). Resume when ready.`,
+            )
+        : undefined,
     });
     if (opts.autoResume !== false) {
       const resumed = this.sprints.resumeAbandoned();
@@ -176,6 +191,28 @@ export class Orchestrator {
   activeSprintIdsSnapshot(): ReadonlyArray<SprintId> {
     return Array.from(this.activeSprintIds);
   }
+}
+
+function parseBudgetEnv(): number | undefined {
+  const raw = process.env['BUDGET_USD'];
+  if (!raw) return undefined;
+  const val = Number(raw);
+  return Number.isFinite(val) && val > 0 ? val : undefined;
+}
+
+function postDiscordAlert(webhookUrl: string, content: string): Promise<void> {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ content });
+    const url = new URL(webhookUrl);
+    const req = request(
+      { hostname: url.hostname, path: url.pathname + url.search, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      (res) => { res.resume(); res.on('end', resolve); },
+    );
+    req.on('error', () => resolve()); // never let Discord failures propagate
+    req.write(body);
+    req.end();
+  });
 }
 
 export { PressureTracker, computePressure } from './pressure';
