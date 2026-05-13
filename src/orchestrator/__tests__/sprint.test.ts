@@ -72,6 +72,11 @@ test('tick: dispatches pending tasks and completes sprint', async () => {
     if (finalRec?.state.kind === 'completed') {
       assert.deepEqual(finalRec.state.prs, ['PR-1']);
     }
+    const completedEvent = h.events.find((e) => e.kind === 'sprint.completed');
+    assert.ok(completedEvent, 'sprint.completed event emitted');
+    assert.equal(completedEvent?.payload['to'], 'completed');
+    assert.ok(typeof completedEvent?.payload['durationMs'] === 'number', 'durationMs is a number');
+    assert.deepEqual(completedEvent?.payload['prs'], ['PR-1']);
   } finally {
     h.env.cleanup();
   }
