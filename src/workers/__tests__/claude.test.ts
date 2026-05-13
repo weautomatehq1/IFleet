@@ -102,7 +102,9 @@ test('claude adapter: spawn args include flags and session-id for new run', asyn
   assert.ok(call.args.includes('--include-partial-messages'));
   assert.ok(!call.args.includes('--bare'));
   assert.ok(call.args.includes('--session-id'));
-  assert.ok(call.args.includes('sprint-1-task-2'));
+  // Session ID is now a generated UUID, not the taskId — just verify the flag is present.
+  const sidIdx = call.args.indexOf('--session-id');
+  assert.ok(sidIdx !== -1 && call.args[sidIdx + 1] !== 'sprint-1-task-2', 'session-id should be a UUID, not taskId');
   assert.ok(!call.args.includes('--resume'));
 });
 

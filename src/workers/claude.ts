@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { runStreaming, type SpawnLike } from './spawn-runner.ts';
 import {
   categorizeRateLimitError,
@@ -17,7 +18,8 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
   return {
     provider: 'claude',
     spawn(opts: SpawnOpts): SpawnHandle {
-      const sessionId = opts.sessionId ?? `${opts.taskId}`;
+      // --session-id requires a UUID; never fall back to taskId (which is not a UUID).
+      const sessionId = opts.sessionId ?? randomUUID();
       const args = buildClaudeArgs(opts, sessionId);
 
       let textBuffer = '';
