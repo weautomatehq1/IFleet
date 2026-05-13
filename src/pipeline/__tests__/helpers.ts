@@ -115,7 +115,7 @@ export function makeMockPrOpener(): MockPrOpener {
   const opened: OpenPrInput[] = [];
   return {
     opened,
-    async openDraft(input) {
+    async open(input) {
       opened.push(input);
       return { url: `https://github.com/${input.repo}/pull/123`, number: 123 };
     },

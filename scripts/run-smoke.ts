@@ -166,7 +166,7 @@ function buildIssueCommenter(octokit: Octokit, owner: string, repo: string): Iss
 
 function buildPrOpener(): PrOpener {
   return {
-    async openDraft(input) {
+    async open(input) {
       // Push the editor's commits to origin before creating the PR.
       const worktreePath = join(WORKTREES_DIR, `smoke-${input.issueNumber}`);
       await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], {
@@ -185,7 +185,6 @@ function buildPrOpener(): PrOpener {
         input.title,
         '--body',
         input.body,
-        '--draft',
       ]);
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
