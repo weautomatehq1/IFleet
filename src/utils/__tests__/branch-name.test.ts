@@ -27,17 +27,20 @@ describe('titleToBranchName', () => {
   });
 
   it('special chars are stripped', () => {
+    // "Add" is not a whitelisted type, so the colon-suffix ("new! feature???") is used
+    // as rest and the folder defaults to chore.
     expect(titleToBranchName(5, 'Add: new! feature???')).toBe(
-      'chore/smoke-5-add-new-feature',
+      'chore/smoke-5-new-feature',
     );
   });
 
   it('slug is truncated at 40 chars with no trailing hyphen', () => {
-    const longTitle = 'chore: ' + 'a'.repeat(50);
-    const result = titleToBranchName(1, longTitle);
+    // 'word '.repeat(9) produces a 44-char slug that, when sliced at 40,
+    // ends with a hyphen boundary — verifying the trailing-strip step fires.
+    // Without that step the slice would be "word-word-word-word-word-word-word-word-" (40 chars).
+    const result = titleToBranchName(1, 'chore: ' + 'word '.repeat(9));
     const slug = result.replace('chore/smoke-1-', '');
-    expect(slug.length).toBeLessThanOrEqual(40);
-    expect(slug.endsWith('-')).toBe(false);
+    expect(slug).toBe('word-word-word-word-word-word-word-word');
   });
 
   it('degenerate — falls back to task when slug is empty', () => {

@@ -11,8 +11,9 @@ interface PrefixResult {
 }
 
 function extractConventionalPrefix(title: string): PrefixResult {
-  // Matches "type(optional-scope): rest" or "type: rest"
-  const match = /^([a-z]+)(?:\([^)]*\))?:\s*(.*)$/i.exec(title);
+  // Matches "type(optional-scope): rest" or "type: rest".
+  // Use explicit [a-zA-Z]+ instead of /i so intent is clear; toLowerCase() normalises afterwards.
+  const match = /^([a-zA-Z]+)(?:\([^)]*\))?:\s*(.*)$/.exec(title);
   if (match !== null) {
     const rawType = match[1];
     const rawRest = match[2];
@@ -21,6 +22,9 @@ function extractConventionalPrefix(title: string): PrefixResult {
       if (CONVENTIONAL_TYPES.has(candidate)) {
         return { type: candidate, rest: rawRest };
       }
+      // Type has conventional syntax but is not whitelisted — still use the
+      // colon-suffix as rest (not the full title) and default folder to 'chore'.
+      return { type: 'chore', rest: rawRest };
     }
   }
   return { type: 'chore', rest: title };
