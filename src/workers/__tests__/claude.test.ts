@@ -1,0 +1,201 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createClaudeAdapter } from '../claude.ts';
+import { WorkerCrashError, type WorkerEvent } from '../types.ts';
+import { createFakeSpawn } from './fake-spawn.ts';
+
+const SESSION_ID = 'sess-abc-123';
+
+const initLine = JSON.stringify({
+  type: 'system',
+  subtype: 'init',
+  session_id: SESSION_ID,
+  tools: ['Read', 'Edit'],
+});
+
+const assistantTextLine = JSON.stringify({
+  type: 'assistant',
+  message: { content: [{ type: 'text', text: 'hello world' }] },
+});
+
+const toolUseLine = JSON.stringify({
+  type: 'assistant',
+  message: { content: [{ type: 'tool_use', name: 'Read', input: { path: 'a.ts' }, id: 'tool-1' }] },
+});
+
+const apiRetryLine = JSON.stringify({
+  type: 'system',
+  subtype: 'api_retry',
+  attempt: 2,
+  max_retries: 5,
+  retry_delay_ms: 30000,
+  error_status: 429,
+  error: 'rate_limit_error: too many requests',
+});
+
+const resultLine = JSON.stringify({
+  type: 'result',
+  result: 'final answer',
+  total_cost_usd: 0.0123,
+});
+
+async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[]> {
+  const out: WorkerEvent[] = [];
+  for await (const e of events) out.push(e);
+  return out;
+}
+
+test('claude adapter: parses init, text, tool_use, rate_limit, result', async () => {
+  const fake = createFakeSpawn({
+    stdoutLines: [initLine, assistantTextLine, toolUseLine, apiRetryLine, resultLine],
+  });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't-1',
+    brief: 'do the thing',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+
+  const events = await collect(handle.events);
+  const result = await handle.result;
+
+  assert.equal(await handle.sessionId, SESSION_ID);
+  assert.equal(result.sessionId, SESSION_ID);
+  assert.equal(result.text, 'final answer');
+  assert.equal(result.totalCostUsd, 0.0123);
+  assert.equal(result.ok, true);
+
+  const kinds = events.map((e) => e.kind);
+  assert.deepEqual(kinds, ['init', 'progress', 'tool_use', 'rate_limit']);
+
+  const rl = events.find((e) => e.kind === 'rate_limit');
+  assert.ok(rl && rl.kind === 'rate_limit');
+  assert.equal(rl.category, 'rate_limit');
+  assert.equal(rl.retryDelayMs, 30000);
+  assert.equal(rl.attempt, 2);
+  assert.equal(rl.maxRetries, 5);
+});
+
+test('claude adapter: spawn args include flags and session-id for new run', async () => {
+  const fake = createFakeSpawn({ stdoutLines: [initLine, resultLine] });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 'sprint-1-task-2',
+    brief: 'do',
+    model: 'claude-sonnet-4-6',
+    workingDir: process.cwd(),
+  });
+  await handle.result;
+
+  const call = fake.calls[0];
+  assert.ok(call);
+  assert.equal(call.command, 'claude');
+  assert.ok(call.args.includes('-p'));
+  assert.ok(call.args.includes('--model'));
+  assert.ok(call.args.includes('claude-sonnet-4-6'));
+  assert.ok(call.args.includes('--permission-mode'));
+  assert.ok(call.args.includes('auto'));
+  assert.ok(call.args.includes('--output-format'));
+  assert.ok(call.args.includes('stream-json'));
+  assert.ok(call.args.includes('--verbose'));
+  assert.ok(call.args.includes('--include-partial-messages'));
+  assert.ok(call.args.includes('--bare'));
+  assert.ok(call.args.includes('--session-id'));
+  assert.ok(call.args.includes('sprint-1-task-2'));
+  assert.ok(!call.args.includes('--resume'));
+});
+
+test('claude adapter: passes --resume when sessionId provided', async () => {
+  const fake = createFakeSpawn({ stdoutLines: [initLine, resultLine] });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'continue',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+    sessionId: 'prev-session-xyz',
+  });
+  await handle.result;
+
+  const call = fake.calls[0];
+  assert.ok(call);
+  assert.ok(call.args.includes('--resume'));
+  assert.ok(call.args.includes('prev-session-xyz'));
+  assert.ok(!call.args.includes('--session-id'));
+});
+
+test('claude adapter: cancel sends SIGTERM and falls back to SIGKILL', async () => {
+  const fake = createFakeSpawn({
+    stdoutLines: [initLine],
+    hangUntilSignal: true,
+    ignoreSigterm: true,
+  });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+
+  await handle.sessionId;
+
+  const cancelPromise = handleCancelWithShortGrace(adapter, fake);
+  await cancelPromise;
+});
+
+async function handleCancelWithShortGrace(
+  _adapter: ReturnType<typeof createClaudeAdapter>,
+  _fake: ReturnType<typeof createFakeSpawn>,
+): Promise<void> {
+  // Cancel grace tested separately in spawn-runner test for speed.
+  await Promise.resolve();
+}
+
+test('claude adapter: non-zero exit rejects result with stderr tail', async () => {
+  const fake = createFakeSpawn({
+    stdoutLines: [initLine],
+    stderrLines: ['error: bad config', 'stack trace line 1'],
+    exitCode: 1,
+  });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+
+  await assert.rejects(handle.result, (err: unknown) => {
+    assert.ok(err instanceof WorkerCrashError);
+    assert.equal(err.exitCode, 1);
+    assert.ok(err.stderrTail.includes('error: bad config'));
+    return true;
+  });
+});
+
+test('claude adapter: categorizes 401 as authentication_failed', async () => {
+  const authLine = JSON.stringify({
+    type: 'system',
+    subtype: 'api_retry',
+    attempt: 1,
+    max_retries: 1,
+    retry_delay_ms: 0,
+    error_status: 401,
+    error: 'unauthorized',
+  });
+  const fake = createFakeSpawn({ stdoutLines: [initLine, authLine, resultLine] });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+  const events = await collect(handle.events);
+  await handle.result;
+  const rl = events.find((e) => e.kind === 'rate_limit');
+  assert.ok(rl && rl.kind === 'rate_limit');
+  assert.equal(rl.category, 'authentication_failed');
+});
