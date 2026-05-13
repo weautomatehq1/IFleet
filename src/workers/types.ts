@@ -12,6 +12,8 @@ export interface SpawnOpts {
   workingDir: string;
   sessionId?: string;
   signal?: AbortSignal;
+  /** Passed as --system-prompt to override CLAUDE.md for autonomous worker roles. */
+  systemPrompt?: string;
 }
 
 export interface SpawnHandle {
