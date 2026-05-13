@@ -17,6 +17,6 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "config/**/*.json"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "config/**/*.json"],
   "exclude": ["node_modules", "dist"]
 }
