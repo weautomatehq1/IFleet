@@ -55,7 +55,7 @@ See [`config/routing.json`](../config/routing.json) for the live config.
 
 ## Pipeline per task (3 roles)
 
-1. **Architect** (always Claude Opus) — reads brief, writes plan, posts to issue, waits for ✅.
+1. **Architect** — Claude Opus (Phase A: capped to Sonnet via `mapModel` in `scripts/run-smoke.ts`; see Phase A Constraints). Reads brief, writes plan, posts to issue, waits for ✅.
 2. **Editor** (Codex or Sonnet) — writes code in an isolated worktree.
 3. **Reviewer** (the opposite provider) — reads diff in a fresh session, posts review.
 4. **CI gate** — typecheck + lint + test (+ Playwright for UI tasks).

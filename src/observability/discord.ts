@@ -277,6 +277,16 @@ export function createBufferedFormatter(
     return chunks;
   };
 
+  // Protect the buffering pipeline from emit() throwing (e.g. webhook network error).
+  const safeEmit = (chunks: string[]): void => {
+    try {
+      emit(chunks);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[discord-buffer] emit failed: ${msg}`);
+    }
+  };
+
   return {
     push(event: Event): void {
       if (closed) return;
@@ -284,13 +294,13 @@ export function createBufferedFormatter(
       if (timer === null) {
         timer = setTimeout(() => {
           const chunks = doFlush();
-          if (chunks.length > 0) emit(chunks);
+          if (chunks.length > 0) safeEmit(chunks);
         }, windowMs);
       }
     },
     flush(): string[] {
       const chunks = doFlush();
-      if (chunks.length > 0) emit(chunks);
+      if (chunks.length > 0) safeEmit(chunks);
       return chunks;
     },
     close(): void {
