@@ -19,7 +19,7 @@
  *     so the pipeline completes end-to-end unattended.
  */
 
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { symlinkSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -316,7 +316,14 @@ async function main(): Promise<void> {
   };
 
   const [owner, repoName] = rawTask.repo.split('/') as [string, string];
-  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+  // Resolve GitHub token: env var wins, then gh CLI keychain (same as GitHubQueue).
+  let ghToken = process.env.GITHUB_TOKEN;
+  if (!ghToken) {
+    const { stdout } = await execFileAsync('gh', ['auth', 'token']).catch(() => ({ stdout: '' }));
+    ghToken = stdout.trim() || undefined;
+  }
+  if (!ghToken) throw new Error('No GitHub token: set GITHUB_TOKEN or run `gh auth login`');
+  const octokit = new Octokit({ auth: ghToken });
 
   const input: PipelineInput = {
     task: pipelineTask,
