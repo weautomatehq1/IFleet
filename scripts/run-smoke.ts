@@ -57,7 +57,6 @@ function buildWorkerPool(): WorkerPool {
   return {
     spawn(spec: WorkerSpec, brief: string, opts: PipelineSpawnOpts): PipelineSpawnHandle {
       const workingDir = opts.worktreePath ?? REPO_ROOT;
-      const fullBrief = opts.systemPrompt ? `${opts.systemPrompt}\n\n---\n\n${brief}` : brief;
 
       // Map pipeline model names to claude CLI aliases.
       const model = mapModel(spec.model);
@@ -65,10 +64,12 @@ function buildWorkerPool(): WorkerPool {
       let rateLimitHits = 0;
       const workerHandle = claudeAdapter.spawn({
         taskId: `${opts.role}-${Date.now()}`,
-        brief: fullBrief,
+        brief,
         model,
         workingDir,
         signal: opts.abortSignal,
+        // Pass via --system-prompt so it overrides ~/.claude/CLAUDE.md for worker isolation.
+        systemPrompt: opts.systemPrompt,
       });
 
       // Count rate limit events in the background.

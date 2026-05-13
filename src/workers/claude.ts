@@ -78,6 +78,9 @@ function buildClaudeArgs(opts: SpawnOpts, sessionId: string): string[] {
     // --bare intentionally omitted: it disables keychain/OAuth auth, which breaks
     // Claude Max accounts. Phase B can revisit once ANTHROPIC_API_KEY support lands.
   ];
+  if (opts.systemPrompt) {
+    args.push('--system-prompt', opts.systemPrompt);
+  }
   if (opts.sessionId !== undefined && opts.sessionId !== '') {
     args.push('--resume', opts.sessionId);
   } else {
