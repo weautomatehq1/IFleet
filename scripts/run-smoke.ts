@@ -78,6 +78,7 @@ function buildWorkerPool(): WorkerPool {
         for await (const event of workerHandle.events) {
           if (event.kind === 'rate_limit') rateLimitHits++;
           if (event.kind === 'progress') process.stdout.write('.');
+          if (event.kind === 'error') log(`[worker-error] role=${opts.role} cat=${event.category} msg=${event.message}`);
         }
       })();
 
@@ -98,13 +99,14 @@ function buildWorkerPool(): WorkerPool {
 }
 
 function mapModel(configModel: string): string {
-  // workers config uses short names like "sonnet-4.6"; claude CLI wants full IDs or aliases.
+  // Phase A: cap at sonnet-4.6 — opus-4.7 hits the 5-hour rate limit on longer responses.
+  // Phase B can restore opus once rate limit headroom is understood.
   const map: Record<string, string> = {
-    'opus-4.7': 'claude-opus-4-7',
+    'opus-4.7': 'claude-sonnet-4-6',
     'sonnet-4.6': 'claude-sonnet-4-6',
     'haiku-4.5': 'claude-haiku-4-5-20251001',
   };
-  return map[configModel] ?? configModel;
+  return map[configModel] ?? 'claude-sonnet-4-6';
 }
 
 function buildGitOps(): GitOps {
@@ -345,6 +347,9 @@ async function main(): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`Pipeline threw: ${msg}`);
+    if (err instanceof Error && 'stderrTail' in err && (err as { stderrTail: string }).stderrTail) {
+      log(`Worker stderr:\n${(err as { stderrTail: string }).stderrTail}`);
+    }
     await queue.markFailed(rawTask, msg);
     await teardownWorktree(rawTask.issueNumber, branchName);
     process.exitCode = 1;
