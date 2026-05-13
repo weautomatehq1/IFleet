@@ -200,7 +200,13 @@ async function setupWorktree(issueNumber: number, branchName: string): Promise<s
     await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], {
       cwd: REPO_ROOT,
     }).catch(() => undefined);
+    await execFileAsync('git', ['worktree', 'prune'], { cwd: REPO_ROOT }).catch(() => undefined);
   }
+
+  // Delete stale branch if it exists from a previous failed run.
+  await execFileAsync('git', ['branch', '-D', branchName], { cwd: REPO_ROOT }).catch(
+    () => undefined,
+  );
 
   await execFileAsync(
     'git',
@@ -218,11 +224,18 @@ async function setupWorktree(issueNumber: number, branchName: string): Promise<s
   return worktreePath;
 }
 
-async function teardownWorktree(issueNumber: number): Promise<void> {
+async function teardownWorktree(issueNumber: number, branchName?: string): Promise<void> {
   const worktreePath = join(WORKTREES_DIR, `smoke-${issueNumber}`);
   await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], {
     cwd: REPO_ROOT,
   }).catch(() => undefined);
+  await execFileAsync('git', ['worktree', 'prune'], { cwd: REPO_ROOT }).catch(() => undefined);
+  if (branchName) {
+    // Only delete if it hasn't been pushed (local-only cleanup).
+    await execFileAsync('git', ['branch', '-D', branchName], { cwd: REPO_ROOT }).catch(
+      () => undefined,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +344,7 @@ async function main(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     log(`Pipeline threw: ${msg}`);
     await queue.markFailed(rawTask, msg);
-    await teardownWorktree(rawTask.issueNumber);
+    await teardownWorktree(rawTask.issueNumber, branchName);
     process.exitCode = 1;
     return;
   }
@@ -343,7 +356,7 @@ async function main(): Promise<void> {
     log(`PR opened: ${result.prUrl}`);
     await queue.markCompleted(rawTask, result.prUrl);
     log('Issue marked auto:shipped');
-    await teardownWorktree(rawTask.issueNumber);
+    await teardownWorktree(rawTask.issueNumber, branchName);
     log('PHASE A GREEN — smoke PR is open. Do not merge without Seb review.');
   } else {
     const reason = result.failureReason ?? result.status;
@@ -357,7 +370,7 @@ async function main(): Promise<void> {
       }
     }
     await queue.markFailed(rawTask, reason);
-    await teardownWorktree(rawTask.issueNumber);
+    await teardownWorktree(rawTask.issueNumber, branchName);
     log(`PHASE A RED — reason: ${reason}`);
     process.exitCode = 1;
   }
