@@ -215,3 +215,20 @@ test('cancelSprint: is idempotent on terminal state', async () => {
     h.env.cleanup();
   }
 });
+
+test('transition: sprint.completed payload includes durationMs', () => {
+  let now = 1000;
+  const clock = () => now;
+  const h = makeManager({ now: clock });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 't' });
+    h.manager.transition(rec.id, { kind: 'running', startedAt: now });
+    now = 3000;
+    h.manager.transition(rec.id, { kind: 'completed', at: now, prs: [] });
+    const completedEvt = h.events.find((e) => e.kind === 'sprint.completed');
+    assert.ok(completedEvt, 'expected sprint.completed event');
+    assert.equal(completedEvt?.payload.durationMs, 2000);
+  } finally {
+    h.env.cleanup();
+  }
+});
