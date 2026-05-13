@@ -54,6 +54,7 @@ export interface TaskRecord {
   attempts: number;
   createdAt: number;
   updatedAt: number;
+  requiredCapabilities?: string[];
 }
 
 export interface SpawnOpts {

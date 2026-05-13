@@ -149,6 +149,61 @@ test('cancelSprint: throws when sprint missing', async () => {
   }
 });
 
+test('tick: blocks task with missing capability, emits task.capability_blocked', async () => {
+  const caps = { version: '1', updated: '', shells: ['bash'], clis: { node: '24' }, mcps: [], auth: {} };
+  const h = makeManager({ adapter: new MockAdapter({ exitCode: 0 }), capabilities: caps });
+  try {
+    const rec = h.manager.startSprint({
+      mode: 'normal',
+      goal: 'g',
+      newTaskBriefs: ['t1'],
+      newTaskRequirements: [['docker']],
+    });
+    await h.manager.tick(rec.id);
+    assert.equal(h.adapter.spawned.length, 0);
+    const task = h.env.store.loadTask(rec.tasks[0]!);
+    assert.equal(task?.state.kind, 'failed');
+    if (task?.state.kind === 'failed') assert.match(task.state.error, /docker/);
+    const blocked = h.events.find((e) => e.kind === 'task.capability_blocked');
+    assert.ok(blocked, 'expected task.capability_blocked event');
+    assert.deepEqual(blocked?.payload.missing, ['docker']);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('tick: dispatches task when required capability is available', async () => {
+  const caps = { version: '1', updated: '', shells: ['bash'], clis: { node: '24' }, mcps: [], auth: {} };
+  const h = makeManager({ adapter: new MockAdapter({ exitCode: 0, pr: 'PR-1' }), capabilities: caps });
+  try {
+    const rec = h.manager.startSprint({
+      mode: 'normal',
+      goal: 'g',
+      newTaskBriefs: ['t1'],
+      newTaskRequirements: [['node']],
+    });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    assert.equal(h.adapter.spawned.length, 1);
+    assert.equal(h.env.store.loadSprint(rec.id)?.state.kind, 'completed');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('tick: dispatches task with no requirements regardless of capabilities', async () => {
+  const caps = { version: '1', updated: '', shells: [], clis: {}, mcps: [], auth: {} };
+  const h = makeManager({ adapter: new MockAdapter({ controllable: true }), capabilities: caps });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1'] });
+    await h.manager.tick(rec.id);
+    assert.equal(h.adapter.spawned.length, 1);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
 test('cancelSprint: is idempotent on terminal state', async () => {
   const h = makeManager();
   try {

@@ -188,4 +188,6 @@ export {
   TERMINAL_STATES,
 } from './sprint';
 export type { StartSprintOpts, TaskBriefLoader } from './sprint';
+export { isCapabilityAvailable } from './capabilities';
+export type { Capabilities } from './capabilities';
 export * from './types';

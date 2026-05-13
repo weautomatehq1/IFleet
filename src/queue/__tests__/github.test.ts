@@ -233,6 +233,27 @@ describe('GitHubQueue lifecycle', () => {
     assert.match(state.comments[0]?.body ?? '', /Failed: CI red/);
   });
 
+  it('markCapabilityBlocked removes in_flight, adds blocked label, posts comment', async () => {
+    const state = makeState([
+      {
+        number: 42,
+        title: 't',
+        labels: ['auto:ship', 'in_flight'],
+        created_at: '2026-05-01T00:00:00Z',
+        html_url: 'u',
+        node_id: 'nid',
+      },
+    ]);
+    const q = makeQueue(state);
+    await q.markCapabilityBlocked(makeTask(), ['docker', 'colima']);
+    assert.deepEqual(state.removedLabels[0], { issue: 42, name: 'in_flight' });
+    assert.deepEqual(state.addedLabels[0]?.labels, ['blocked:missing-capability']);
+    const body = state.comments[0]?.body ?? '';
+    assert.match(body, /Cannot run/);
+    assert.match(body, /`docker`/);
+    assert.match(body, /`colima`/);
+  });
+
   it('postStatus creates a comment then updates the same one on second call', async () => {
     const state = makeState([
       {

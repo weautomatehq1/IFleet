@@ -15,6 +15,7 @@ function noopQueue(): QueueAdapter {
     markPicked: async () => undefined,
     markCompleted: async () => undefined,
     markFailed: async () => undefined,
+    markCapabilityBlocked: async () => undefined,
     postStatus: async () => undefined,
     watchForNew: () => ({ stop: () => undefined }),
   };

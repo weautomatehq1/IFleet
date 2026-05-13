@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Capabilities } from '../capabilities';
 import { PressureTracker } from '../pressure';
 import { SprintManager, type TaskBriefLoader } from '../sprint';
 import { StateStore } from '../store';
@@ -134,6 +135,7 @@ export function makeManager(opts: {
   now?: () => number;
   adapter?: MockAdapter;
   briefLoader?: TaskBriefLoader;
+  capabilities?: Capabilities;
 } = {}): ManagerHarness {
   const env = makeTempEnv();
   const pressure = new PressureTracker({ now: opts.now });
@@ -146,6 +148,7 @@ export function makeManager(opts: {
     adapter,
     briefLoader: opts.briefLoader ?? noopBriefLoader,
     emit: (event) => events.push(event),
+    capabilities: opts.capabilities,
     now: opts.now,
   });
   return { env, manager, pressure, adapter, events };

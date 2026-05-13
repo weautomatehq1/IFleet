@@ -3,6 +3,7 @@ export interface QueueAdapter {
   markPicked(task: QueuedTask, workerId: string): Promise<void>;
   markCompleted(task: QueuedTask, prUrl: string): Promise<void>;
   markFailed(task: QueuedTask, reason: string): Promise<void>;
+  markCapabilityBlocked(task: QueuedTask, missing: string[]): Promise<void>;
   postStatus(task: QueuedTask, status: TaskStatus, message?: string): Promise<void>;
   watchForNew(callback: (task: QueuedTask) => void): { stop: () => void };
 }
@@ -57,3 +58,4 @@ export const LABEL_AUTO_SHIP = 'auto:ship';
 export const LABEL_IN_FLIGHT = 'in_flight';
 export const LABEL_SHIPPED = 'auto:shipped';
 export const LABEL_FAILED = 'auto:failed';
+export const LABEL_CAPABILITY_BLOCKED = 'blocked:missing-capability';

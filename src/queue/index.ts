@@ -1,5 +1,5 @@
 export * from './types.js';
-export { parseLabels } from './labels.js';
+export { parseLabels, parseRequiredCapabilities } from './labels.js';
 export { loadRepoConfig, validateConfig } from './config.js';
 export { createGitHubQueue, GitHubQueue, type GitHubQueueOptions } from './github.js';
 export {
@@ -11,3 +11,4 @@ export {
   type ControlPlane,
   type ControlPlaneOptions,
 } from './control-plane.js';
+export { CapabilityBridge, type EventSource } from './capability-bridge.js';
