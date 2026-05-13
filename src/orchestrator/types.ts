@@ -78,7 +78,6 @@ export interface SpawnResult {
   error?: string;
 }
 
-// TODO: import from src/workers — placeholder until T2 lands
 export interface WorkerAdapter {
   spawn(taskId: TaskId, brief: string, opts: SpawnOpts): Promise<SpawnHandle>;
 }
