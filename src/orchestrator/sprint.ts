@@ -1,4 +1,6 @@
 import { nanoid } from 'nanoid';
+import type { Capabilities } from './capabilities';
+import { isCapabilityAvailable } from './capabilities';
 import type { PressureTracker } from './pressure';
 import type { StateStore } from './store';
 import type { WorkerRegistry } from './workers';
@@ -29,6 +31,7 @@ export interface SprintManagerOptions {
   adapter: WorkerAdapter;
   briefLoader: TaskBriefLoader;
   emit: (event: OrchestratorEvent) => void;
+  capabilities?: Capabilities;
   now?: () => number;
 }
 
@@ -37,6 +40,8 @@ export interface StartSprintOpts {
   goal: string;
   taskIds?: ReadonlyArray<TaskId>;
   newTaskBriefs?: ReadonlyArray<string>;
+  /** Per-task capability requirements, mapped 1:1 to newTaskBriefs by index. */
+  newTaskRequirements?: ReadonlyArray<ReadonlyArray<string>>;
 }
 
 interface RunningTask {
@@ -78,6 +83,7 @@ export class SprintManager {
   private readonly adapter: WorkerAdapter;
   private readonly briefLoader: TaskBriefLoader;
   private readonly emit: (event: OrchestratorEvent) => void;
+  private readonly capabilities: Capabilities | undefined;
   private readonly now: () => number;
   private readonly running = new Map<TaskId, RunningTask>();
 
@@ -88,6 +94,7 @@ export class SprintManager {
     this.adapter = opts.adapter;
     this.briefLoader = opts.briefLoader;
     this.emit = opts.emit;
+    this.capabilities = opts.capabilities;
     this.now = opts.now ?? Date.now;
   }
 
@@ -109,8 +116,10 @@ export class SprintManager {
     };
     this.store.saveSprint(record);
     if (opts.newTaskBriefs) {
-      for (const brief of opts.newTaskBriefs) {
+      for (let i = 0; i < opts.newTaskBriefs.length; i++) {
+        const brief = opts.newTaskBriefs[i] as string;
         const tid = newTaskId(`tk_${nanoid(10)}`);
+        const requirements = opts.newTaskRequirements?.[i];
         const tRec: TaskRecord = {
           id: tid,
           sprintId: id,
@@ -119,6 +128,7 @@ export class SprintManager {
           attempts: 0,
           createdAt: now,
           updatedAt: now,
+          ...(requirements && requirements.length > 0 ? { requiredCapabilities: [...requirements] } : {}),
         };
         this.store.saveTask(tRec);
         taskIds.push(tid);
@@ -170,6 +180,27 @@ export class SprintManager {
 
     for (const task of tasks) {
       if (task.state.kind !== 'pending') continue;
+      if (this.capabilities) {
+        const missing = (task.requiredCapabilities ?? []).filter(
+          (cap) => !isCapabilityAvailable(cap, this.capabilities!),
+        );
+        if (missing.length > 0) {
+          const ts = this.now();
+          this.store.saveTask({
+            ...task,
+            state: { kind: 'failed', at: ts, error: `missing capabilities: ${missing.join(', ')}` },
+            updatedAt: ts,
+          });
+          this.emit({
+            ts,
+            sprintId: task.sprintId,
+            taskId: task.id,
+            kind: 'task.capability_blocked',
+            payload: { missing },
+          });
+          continue;
+        }
+      }
       const workerId = this.pickWorker();
       if (!workerId) break;
       await this.dispatch(task, workerId);

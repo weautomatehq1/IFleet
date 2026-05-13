@@ -72,6 +72,18 @@ function isVerifyKind(value: string): value is VerifyKind {
   return value === 'typecheck' || value === 'lint' || value === 'test' || value === 'playwright' || value === 'screenshot';
 }
 
+export function parseRequiredCapabilities(labels: readonly string[]): string[] {
+  const result: string[] = [];
+  for (const raw of labels) {
+    const label = raw.toLowerCase().trim();
+    if (label.startsWith('requires:')) {
+      const cap = label.slice('requires:'.length);
+      if (cap.length > 0) result.push(cap);
+    }
+  }
+  return result;
+}
+
 function mergeVerify(current: VerifyKind[] | undefined, additions: VerifyKind[]): VerifyKind[] {
   const next = current ? [...current] : [];
   for (const kind of additions) {

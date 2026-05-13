@@ -1,0 +1,22 @@
+{
+  "version": "1",
+  "updated": "2026-05-13",
+  "shells": ["bash", "zsh"],
+  "clis": {
+    "node": "24.15.0",
+    "npm": "11.12.1",
+    "npx": "24.15.0",
+    "git": "2.54.0",
+    "gh": "2.91.0",
+    "docker": "29.4.3",
+    "colima": "0.10.1",
+    "python3": "3.14.4",
+    "brew": "4.x"
+  },
+  "mcps": ["chatcode", "n8n", "discord", "context7", "puppeteer", "lightpanda", "github", "searxng"],
+  "auth": {
+    "github": true,
+    "docker": true
+  },
+  "notes": "Mac runner (Seb's MacBook). Colima provides Docker via macOS Virtualization.Framework. SearXNG at localhost:8080."
+}
