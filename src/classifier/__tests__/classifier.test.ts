@@ -223,3 +223,143 @@ describe('classifyTask — labels & verify', () => {
     );
   });
 });
+
+describe('classifyTask — architect cap with rule override (issue #43)', () => {
+  it('SQL rule (architect→opus) + complexity:low caps architect to sonnet', () => {
+    // The .sql fileGlob rule maps architect to claude-opus-4-7. The
+    // complexity:low label must keep the architect at sonnet, not opus.
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship', 'complexity:low'],
+    });
+    assert.equal(result.architect.provider, 'claude');
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+
+  it('SQL rule (architect→opus) with NO complexity label caps architect to sonnet', () => {
+    // Default cap: any opus that did not come from explicit complexity:high
+    // (whether from scorer or rule) must drop back to sonnet. Distinct from
+    // the complexity:low case above — here no complexity label is present.
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship'],
+    });
+    assert.equal(result.architect.provider, 'claude');
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+});
+
+describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
+  const TIER_RANK: Record<string, number> = {
+    'claude-haiku-4-5-20251001': 0,
+    'claude-sonnet-4-6': 1,
+    'claude-opus-4-7': 2,
+  };
+
+  function assertReviewerGteArchitect(
+    architectModel: string,
+    reviewerModel: string,
+    ctx: string,
+  ) {
+    const a = TIER_RANK[architectModel];
+    const r = TIER_RANK[reviewerModel];
+    assert.ok(
+      a !== undefined && r !== undefined,
+      `${ctx}: unknown model (architect=${architectModel}, reviewer=${reviewerModel})`,
+    );
+    assert.ok(
+      r >= a,
+      `${ctx}: reviewer (${reviewerModel}) must be >= architect (${architectModel})`,
+    );
+  }
+
+  it('scorer-only path (no rule match, no complexity label) keeps reviewer >= architect', () => {
+    // "fix typo" has no rule match and no complexity label → haiku/haiku.
+    const result = classifyTask({
+      title: 'fix typo in readme',
+      body: 'one character',
+      labels: ['auto:ship'],
+    });
+    assertReviewerGteArchitect(
+      result.architect.model,
+      result.reviewer.model,
+      'scorer-only',
+    );
+  });
+
+  it('rule-override (architect role, no complexity label) keeps reviewer >= architect', () => {
+    // .sql rule maps architect→opus; cap demotes to sonnet. Reviewer must
+    // match the final architect tier, not the pre-rule baseTier.
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship'],
+    });
+    assertReviewerGteArchitect(
+      result.architect.model,
+      result.reviewer.model,
+      'rule-override (no complexity)',
+    );
+    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+  });
+
+  it('rule-override (architect role) with complexity:low keeps reviewer >= architect', () => {
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship', 'complexity:low'],
+    });
+    assertReviewerGteArchitect(
+      result.architect.model,
+      result.reviewer.model,
+      'rule-override + complexity:low',
+    );
+    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+  });
+
+  it('rule-override (architect role) with complexity:high keeps reviewer >= architect', () => {
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship', 'complexity:high'],
+    });
+    assertReviewerGteArchitect(
+      result.architect.model,
+      result.reviewer.model,
+      'rule-override + complexity:high',
+    );
+    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+  });
+
+  it('explicit complexity:high (scorer path) keeps reviewer >= architect', () => {
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship', 'complexity:high'],
+    });
+    assertReviewerGteArchitect(
+      result.architect.model,
+      result.reviewer.model,
+      'complexity:high',
+    );
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+  });
+
+  it('explicit complexity:low keeps reviewer >= architect', () => {
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship', 'complexity:low'],
+    });
+    assertReviewerGteArchitect(
+      result.architect.model,
+      result.reviewer.model,
+      'complexity:low',
+    );
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+  });
+});

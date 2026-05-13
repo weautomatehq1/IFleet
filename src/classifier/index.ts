@@ -65,6 +65,16 @@ const MEDIUM_KEYWORDS = [
 
 const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus'];
 
+// Inverse lookup: given a model string, return the tier it represents.
+// Used to keep the reviewer at the same tier as the architect *after* the
+// rule override and opus cap have run — see classifyTask below.
+function modelToTier(model: string): Tier | undefined {
+  for (const tier of TIER_ORDER) {
+    if (TIERS[tier] === model) return tier;
+  }
+  return undefined;
+}
+
 export interface ClassifyInput {
   title: string;
   body: string;
@@ -167,7 +177,6 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   if (complexity === 'high') architectTier = 'opus';
 
   const editorTier = bumpTier(architectTier, -1);
-  const reviewerTier = architectTier;
 
   let architectProvider: string = 'claude';
   let architectModel: string = TIERS[architectTier];
@@ -216,9 +225,12 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   }
 
   // Reviewer is a Claude second opinion at the same tier as the architect.
-  // Provider stays claude so the model/provider pair is always consistent;
-  // diversity comes from running a fresh reviewer session, not from swapping vendors.
+  // Tier is derived from the *final* architectModel (post rule override + opus
+  // cap), not the pre-rule architectTier — otherwise a rule that promotes the
+  // architect from haiku→opus and is then capped to sonnet would leave the
+  // reviewer back at haiku, violating reviewer >= architect.
   const reviewerProvider: Provider = 'claude';
+  const reviewerTier: Tier = modelToTier(architectModel) ?? architectTier;
   const reviewerModel = TIERS[reviewerTier];
 
   return {
