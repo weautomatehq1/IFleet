@@ -10,6 +10,7 @@
     "ifleet": "src/observability/tail-cli.ts"
   },
   "scripts": {
+    "start": "node --import tsx scripts/run-smoke.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'src/workers/**/*.test.ts' && vitest run",
