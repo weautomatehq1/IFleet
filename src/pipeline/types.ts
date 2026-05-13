@@ -119,6 +119,8 @@ export interface PipelineInput {
   approver?: string;
   doctorMaxAttempts?: number;
   reviewerMaxRounds?: number;
+  repoRoot?: string;
+  sprintId?: string;
 }
 
 export interface AttemptRecord {

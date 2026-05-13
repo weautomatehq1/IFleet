@@ -21,14 +21,8 @@ interface RoutingRule {
   route: RouteSpec;
 }
 
-interface PipelineDefaults {
-  architect: { provider: string; model: string };
-  editor: { provider: string; model: string };
-}
-
 interface RoutingConfig {
   rules: RoutingRule[];
-  pipeline: PipelineDefaults;
   tiers?: Record<Tier, string>;
 }
 

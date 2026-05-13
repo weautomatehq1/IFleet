@@ -3,6 +3,7 @@ import { runEditor } from './editor.js';
 import { runReviewer, assertCrossProviderRule } from './reviewer.js';
 import { runDoctor, countDoctorAttempts, DOCTOR_MAX_ATTEMPTS } from './doctor.js';
 import { openPipelinePr } from './pr.js';
+import { appendCostRecord } from '../utils/costs.js';
 import type {
   AttemptRecord,
   PipelineInput,
@@ -204,13 +205,41 @@ export class DefaultPipelineRunner implements PipelineRunner {
       reviewerSpec: input.routing.reviewer,
     });
 
-    return {
+    const result: PipelineResult = {
       status: 'pr_opened',
       prUrl: opened.url,
       attempts,
       planSummary,
       reviewSummary,
     };
+    await logCosts(input, attempts);
+    return result;
+  }
+}
+
+async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
+  if (!input.repoRoot) return;
+  const sprintId = input.sprintId ?? input.task.id;
+  const roleSpec: Record<string, { model: string; provider: string }> = {
+    architect: input.routing.architect,
+    editor: input.routing.editor,
+    reviewer: input.routing.reviewer,
+    doctor: input.routing.architect,
+  };
+  for (const attempt of attempts) {
+    const spec = roleSpec[attempt.role];
+    if (!spec) continue;
+    await appendCostRecord(input.repoRoot, {
+      sprintId,
+      taskId: input.task.id,
+      role: attempt.role,
+      model: spec.model,
+      provider: spec.provider as 'claude' | 'codex',
+      totalCostUsd: 0,
+      durationMs: attempt.endedAt - attempt.startedAt,
+      startedAt: new Date(attempt.startedAt).toISOString(),
+      worktreePath: input.worktreePath,
+    }).catch(() => {}); // never let cost logging break the pipeline
   }
 }
 
