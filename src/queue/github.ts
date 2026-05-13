@@ -5,6 +5,7 @@ import { throttling } from '@octokit/plugin-throttling';
 import { parseLabels } from './labels.js';
 import {
   LABEL_AUTO_SHIP,
+  LABEL_CAPABILITY_BLOCKED,
   LABEL_FAILED,
   LABEL_IN_FLIGHT,
   LABEL_SHIPPED,
@@ -116,6 +117,16 @@ export class GitHubQueue implements QueueAdapter {
     await this.removeLabel(task, LABEL_IN_FLIGHT);
     await this.addLabels(task, [LABEL_FAILED]);
     await this.comment(task, `❌ Failed: ${reason}`);
+  }
+
+  async markCapabilityBlocked(task: QueuedTask, missing: string[]): Promise<void> {
+    await this.removeLabel(task, LABEL_IN_FLIGHT);
+    await this.addLabels(task, [LABEL_CAPABILITY_BLOCKED]);
+    const list = missing.map((m) => `\`${m}\``).join(', ');
+    await this.comment(
+      task,
+      `🚫 Cannot run: missing capabilities: ${list}. Not provisioned on this runner.`,
+    );
   }
 
   async postStatus(task: QueuedTask, status: TaskStatus, message?: string): Promise<void> {
