@@ -11,6 +11,7 @@ import type {
   SpawnHandle,
   SpawnOpts,
   SpawnResult,
+  SprintId,
   TaskId,
   WorkerAdapter,
 } from '../types';
@@ -63,6 +64,7 @@ export interface MockAdapterOptions {
   delayMs?: number;
   throwOnSpawn?: Error;
   controllable?: boolean;
+  totalCostUsd?: number;
 }
 
 export class MockAdapter implements WorkerAdapter {
@@ -91,6 +93,7 @@ export class MockAdapter implements WorkerAdapter {
           workerId: 'w1',
           exitCode: this.opts.exitCode ?? 0,
           pr: this.opts.pr,
+          totalCostUsd: this.opts.totalCostUsd,
         });
       }, this.opts.delayMs ?? 0);
     }
@@ -136,6 +139,8 @@ export function makeManager(opts: {
   adapter?: MockAdapter;
   briefLoader?: TaskBriefLoader;
   capabilities?: Capabilities;
+  budgetUsd?: number;
+  onBudgetPaused?: (sprintId: SprintId, spentUsd: number, limitUsd: number) => void | Promise<void>;
 } = {}): ManagerHarness {
   const env = makeTempEnv();
   const pressure = new PressureTracker({ now: opts.now });
@@ -150,6 +155,8 @@ export function makeManager(opts: {
     emit: (event) => events.push(event),
     capabilities: opts.capabilities,
     now: opts.now,
+    budgetUsd: opts.budgetUsd,
+    onBudgetPaused: opts.onBudgetPaused,
   });
   return { env, manager, pressure, adapter, events };
 }
