@@ -273,7 +273,7 @@ async function main(): Promise<void> {
   log('Picking next issue...');
   const rawTask = await queue.pickNext();
   if (!rawTask) {
-    log('ERROR: No issues ready to pick. Ensure issue #6 has label auto:ship and is open.');
+    log('ERROR: No issues ready to pick. Create a GitHub issue with the label auto:ship and rerun.');
     process.exitCode = 1;
     return;
   }
