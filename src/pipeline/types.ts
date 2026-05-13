@@ -86,7 +86,7 @@ export interface WaitForApprovalOpts {
 }
 
 export interface PrOpener {
-  openDraft(input: OpenPrInput): Promise<{ url: string; number: number }>;
+  open(input: OpenPrInput): Promise<{ url: string; number: number }>;
 }
 
 export interface OpenPrInput {
