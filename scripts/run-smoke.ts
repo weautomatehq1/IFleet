@@ -185,7 +185,6 @@ function buildPrOpener(): PrOpener {
         input.title,
         '--body',
         input.body,
-        '--draft',
       ]);
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
