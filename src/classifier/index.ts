@@ -4,6 +4,8 @@ import { fileURLToPath } from 'url';
 import type { RoutingDecision, WorkerSpec, Provider, VerifyKind } from '../pipeline/types.ts';
 import { parseLabels } from '../queue/labels.ts';
 
+type Tier = 'haiku' | 'sonnet' | 'opus';
+
 interface RouteSpec {
   provider: string;
   model: string;
@@ -19,20 +21,49 @@ interface RoutingRule {
   route: RouteSpec;
 }
 
-interface PipelineDefaults {
-  architect: { provider: string; model: string };
-  editor: { provider: string; model: string };
-}
-
 interface RoutingConfig {
   rules: RoutingRule[];
-  pipeline: PipelineDefaults;
+  tiers?: Record<Tier, string>;
 }
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const config: RoutingConfig = JSON.parse(
   readFileSync(resolve(REPO_ROOT, 'config', 'routing.json'), 'utf-8'),
 ) as RoutingConfig;
+
+const FALLBACK_TIERS: Record<Tier, string> = {
+  haiku: 'claude-haiku-4-5-20251001',
+  sonnet: 'claude-sonnet-4-6',
+  opus: 'claude-opus-4-7',
+};
+
+const TIERS: Record<Tier, string> = { ...FALLBACK_TIERS, ...(config.tiers ?? {}) };
+
+const HIGH_KEYWORDS = [
+  'auth',
+  'security',
+  'migration',
+  'rls',
+  'critical',
+  'oauth',
+  'encryption',
+  'payment',
+  'stripe',
+  'supabase',
+];
+
+const MEDIUM_KEYWORDS = [
+  'refactor',
+  'feature',
+  'component',
+  'api',
+  'route',
+  'integration',
+  'hook',
+  'service',
+];
+
+const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus'];
 
 export interface ClassifyInput {
   title: string;
@@ -48,27 +79,94 @@ function makeSpec(provider: string, model: string, role: string): WorkerSpec {
   };
 }
 
+function scoreKeywords(text: string): number {
+  let score = 0;
+  for (const kw of HIGH_KEYWORDS) {
+    if (text.includes(kw)) score += 3;
+  }
+  for (const kw of MEDIUM_KEYWORDS) {
+    if (text.includes(kw)) score += 1;
+  }
+  return score;
+}
+
+
+function scoreToTier(score: number): Tier {
+  if (score >= 3) return 'opus';
+  if (score >= 1) return 'sonnet';
+  return 'haiku';
+}
+
+function bumpTier(tier: Tier, delta: number): Tier {
+  const idx = TIER_ORDER.indexOf(tier);
+  const next = Math.max(0, Math.min(TIER_ORDER.length - 1, idx + delta));
+  return TIER_ORDER[next] as Tier;
+}
+
+function applyLabelBumps(
+  tier: Tier,
+  priority: 'low' | 'normal' | 'high',
+  labels: readonly string[],
+): Tier {
+  let next = tier;
+  if (priority === 'high') next = bumpTier(next, 1);
+  for (const raw of labels) {
+    const l = raw.toLowerCase().trim();
+    if (l === 'chore' || l === 'docs' || l.startsWith('chore:') || l.startsWith('docs:')) {
+      next = bumpTier(next, -1);
+    }
+  }
+  return next;
+}
+
+// Translate a glob pattern into substring needles we can probe the task text with.
+// We don't have a real file tree at classify time, so we look for filename
+// extensions (e.g. ".sql") and top-level directory prefixes (e.g. "migrations/").
+function globToSubstrings(glob: string): string[] {
+  const needles: string[] = [];
+  const extMatch = glob.match(/\*\.([A-Za-z0-9]+)$/);
+  if (extMatch && extMatch[1]) needles.push(`.${extMatch[1].toLowerCase()}`);
+  const dirMatch = glob.match(/^([A-Za-z0-9_.-]+)\/\*\*/);
+  if (dirMatch && dirMatch[1]) needles.push(`${dirMatch[1].toLowerCase()}/`);
+  return needles;
+}
+
+function matchesGlobs(text: string, globs: string[]): boolean {
+  for (const g of globs) {
+    for (const needle of globToSubstrings(g)) {
+      if (text.includes(needle)) return true;
+    }
+  }
+  return false;
+}
+
 export function classifyTask(task: ClassifyInput): RoutingDecision {
   const text = `${task.title} ${task.body}`.toLowerCase();
   const hints = parseLabels(task.labels);
 
+  const rawScore = scoreKeywords(text);
+  const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
+  const architectTier = baseTier;
+  const editorTier = bumpTier(architectTier, -1);
+  const reviewerTier = architectTier;
+
+  let architectProvider: string = 'claude';
+  let architectModel: string = TIERS[architectTier];
+  let editorProvider: string = 'claude';
+  let editorModel: string = TIERS[editorTier];
+
+  // Rules act as explicit overrides on top of the scorer. First match wins
+  // globally so rule order in routing.json still has meaning.
   let matchedRule: RoutingRule | undefined;
-  outer: for (const rule of config.rules) {
-    if (rule.match.keywords) {
-      for (const kw of rule.match.keywords) {
-        if (text.includes(kw.toLowerCase())) {
-          matchedRule = rule;
-          break outer;
-        }
-      }
+  for (const rule of config.rules) {
+    const keywordHit =
+      rule.match.keywords?.some((kw) => text.includes(kw.toLowerCase())) ?? false;
+    const globHit = rule.match.fileGlobs ? matchesGlobs(text, rule.match.fileGlobs) : false;
+    if (keywordHit || globHit) {
+      matchedRule = rule;
+      break;
     }
   }
-
-  const defaults = config.pipeline;
-  let architectProvider = defaults.architect.provider;
-  let architectModel = defaults.architect.model;
-  let editorProvider = defaults.editor.provider;
-  let editorModel = defaults.editor.model;
 
   if (matchedRule) {
     const { provider, model, role } = matchedRule.route;
@@ -81,12 +179,16 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     }
   }
 
-  const reviewerProvider: Provider = editorProvider === 'codex' ? 'claude' : 'codex';
+  // Reviewer is a Claude second opinion at the same tier as the architect.
+  // Provider stays claude so the model/provider pair is always consistent;
+  // diversity comes from running a fresh reviewer session, not from swapping vendors.
+  const reviewerProvider: Provider = 'claude';
+  const reviewerModel = TIERS[reviewerTier];
 
   return {
     architect: makeSpec(architectProvider, architectModel, 'architect'),
     editor: makeSpec(editorProvider, editorModel, 'editor'),
-    reviewer: makeSpec(reviewerProvider, architectModel, 'reviewer'),
+    reviewer: makeSpec(reviewerProvider, reviewerModel, 'reviewer'),
     verify: hints.verify,
   };
 }

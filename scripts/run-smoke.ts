@@ -335,6 +335,7 @@ async function main(): Promise<void> {
     codeowners: ['@monstersebas1'],
     baseBranch: 'main',
     approver: '@monstersebas1',
+    repoRoot: REPO_ROOT,
   };
 
   log('Running pipeline...');

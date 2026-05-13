@@ -1,10 +1,15 @@
 {
   "$schema": "./routing.schema.json",
   "defaultModel": "sonnet-4.6",
+  "tiers": {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-7"
+  },
   "rules": [
     {
       "match": { "keywords": ["architect", "design", "security", "auth", "migration", "rls", "critical"] },
-      "route": { "provider": "claude", "model": "opus-4.7", "role": "architect" }
+      "route": { "provider": "claude", "model": "claude-opus-4-7", "role": "architect" }
     },
     {
       "match": { "keywords": ["refactor", "rename", "boilerplate", "test gen", "stub", "format"] },
@@ -12,17 +17,17 @@
     },
     {
       "match": { "fileGlobs": ["**/*.tsx", "**/*.css", "app/**", "components/**"] },
-      "route": { "provider": "claude", "model": "sonnet-4.6", "role": "editor", "verify": ["typecheck", "lint", "test", "playwright"] }
+      "route": { "provider": "claude", "model": "claude-sonnet-4-6", "role": "editor", "verify": ["typecheck", "lint", "test", "playwright"] }
     },
     {
       "match": { "fileGlobs": ["**/*.sql", "migrations/**", "supabase/**"] },
-      "route": { "provider": "claude", "model": "opus-4.7", "role": "architect" }
+      "route": { "provider": "claude", "model": "claude-opus-4-7", "role": "architect" }
     }
   ],
   "pipeline": {
-    "architect": { "provider": "claude", "model": "opus-4.7" },
-    "editor": { "provider": "codex", "model": "gpt-5.5-codex", "fallback": { "provider": "claude", "model": "sonnet-4.6" } },
-    "reviewer": { "rule": "opposite-provider-of-editor", "model": "opus-4.7-or-equivalent" }
+    "architect": { "provider": "claude", "model": "claude-opus-4-7" },
+    "editor": { "provider": "codex", "model": "gpt-5.5-codex", "fallback": { "provider": "claude", "model": "claude-sonnet-4-6" } },
+    "reviewer": { "rule": "opposite-provider-of-editor", "model": "claude-opus-4-7" }
   },
   "verify": {
     "default": ["typecheck", "lint", "test"],
