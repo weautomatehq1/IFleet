@@ -13,7 +13,7 @@
     "python3": "3.14.4",
     "brew": "4.x"
   },
-  "mcps": ["chatcode", "n8n", "discord", "context7", "puppeteer", "lightpanda", "github", "searxng"],
+  "mcps": ["chatcode", "n8n", "discord", "context7", "puppeteer", "lightpanda", "github", "searxng", "resend"],
   "auth": {
     "github": true,
     "docker": true

@@ -14,13 +14,15 @@
     "lint": "eslint .",
     "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'src/workers/**/*.test.ts' && vitest run",
     "test:watch": "vitest",
+    "smoke:email": "node --import tsx scripts/smoke-email.ts",
     "prepare": "husky"
   },
   "dependencies": {
     "@octokit/plugin-throttling": "^9.3.0",
     "@octokit/rest": "^21.0.0",
     "better-sqlite3": "^11.3.0",
-    "nanoid": "^5.0.7"
+    "nanoid": "^5.0.7",
+    "resend": "^6.12.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
