@@ -14,6 +14,12 @@ export interface SpawnOpts {
   signal?: AbortSignal;
   /** Passed as --system-prompt to override CLAUDE.md for autonomous worker roles. */
   systemPrompt?: string;
+  /**
+   * Named Claude login profile (created via `claude auth login --profile <name>`).
+   * Passed to the CLI as `--profile <name>`. Omit or set to `"default"` to use the
+   * default profile (the `--profile` flag is suppressed in that case).
+   */
+  authProfile?: string;
 }
 
 export interface SpawnHandle {
