@@ -14,7 +14,7 @@ import { createIssueCommenter } from '../queue/issue-commenter.js';
 import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
 import { createAccountPool, type AccountPool } from '../workers/account-pool.js';
-import { createClaudeAdapter } from '../workers/claude.js';
+import { getActivePipelineAdapter } from '../workers/adapters/index.js';
 import { DefaultPipelineRunner } from './runner.js';
 import type {
   GitOps,
@@ -122,7 +122,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 // ---------------------------------------------------------------------------
 
 function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
-  const adapter = createClaudeAdapter();
+  const adapter = getActivePipelineAdapter();
 
   return {
     spawn(spec: WorkerSpec, brief: string, opts: PipelineSpawnOpts): PipelineSpawnHandle {

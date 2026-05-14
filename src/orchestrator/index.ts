@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
+import { DEFAULT_REPO_ID, loadReposConfig, type ReposMap } from '../config/repos';
 import type { PipelineRunnerFactory } from './pipeline-bridge';
 import { PressureTracker } from './pressure';
 import { SprintManager, type StartSprintOpts, type TaskBriefLoader } from './sprint';
@@ -40,6 +41,12 @@ export interface OrchestratorOptions {
   onWorkersReload?: (workers: ReadonlyArray<WorkerConfig>) => void;
   /** Repo identifier in "owner/name" form used by the production factory. */
   repoId?: string;
+  /**
+   * Parsed `config/repos.json` content. When provided, the first key is used
+   * as the default {@link repoId} unless `repoId` is set explicitly. Tests
+   * omit this and continue to rely on the {@link DEFAULT_REPO_ID} fallback.
+   */
+  reposConfig?: ReposMap;
   briefLoader: TaskBriefLoader;
   dbPath?: string;
   workersConfigPath?: string;
@@ -64,6 +71,7 @@ export class Orchestrator {
   private readonly tickIntervalMs: number;
   private readonly killPollIntervalMs: number;
   private readonly now: () => number;
+  private readonly repoId: string;
   private tickTimer?: NodeJS.Timeout;
   private killTimer?: NodeJS.Timeout;
   private started = false;
@@ -71,6 +79,7 @@ export class Orchestrator {
 
   constructor(opts: OrchestratorOptions) {
     this.now = opts.now ?? Date.now;
+    this.repoId = resolveRepoId(opts);
     this.store = opts.store ?? new StateStore(opts.dbPath ?? DEFAULT_DB_PATH);
     this.registry =
       opts.registry ??
@@ -218,6 +227,11 @@ export class Orchestrator {
     }
   }
 
+  /** Repo identifier in "owner/name" form derived from reposConfig or repoId. */
+  getRepoId(): string {
+    return this.repoId;
+  }
+
   // Test/diagnostic helpers
   getSprint(id: SprintId): SprintRecord | undefined {
     return this.store.loadSprint(id);
@@ -226,6 +240,32 @@ export class Orchestrator {
   activeSprintIdsSnapshot(): ReadonlyArray<SprintId> {
     return Array.from(this.activeSprintIds);
   }
+}
+
+function resolveRepoId(opts: OrchestratorOptions): string {
+  if (opts.repoId !== undefined && opts.repoId !== '') return opts.repoId;
+  if (opts.reposConfig) {
+    const firstKey = Object.keys(opts.reposConfig)[0];
+    if (firstKey !== undefined && firstKey !== '') return firstKey;
+  }
+  return DEFAULT_REPO_ID;
+}
+
+/**
+ * Production startup helper. Loads `config/repos.json` from `repoRoot` and
+ * constructs an {@link Orchestrator} wired with the resulting
+ * {@link ReposMap}. Use this from any production entry point so the
+ * hardcoded `DEFAULT_REPO_ID` fallback is bypassed by real config.
+ */
+export interface StartOrchestratorOpts extends Omit<OrchestratorOptions, 'reposConfig'> {
+  repoRoot: string;
+  reposConfigPath?: string;
+}
+
+export function startOrchestrator(opts: StartOrchestratorOpts): Orchestrator {
+  const configPath = opts.reposConfigPath ?? join(opts.repoRoot, 'config', 'repos.json');
+  const reposConfig = loadReposConfig(configPath);
+  return new Orchestrator({ ...opts, reposConfig });
 }
 
 function parseBudgetEnv(): number | undefined {
