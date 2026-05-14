@@ -309,3 +309,72 @@ test('transition: sprint.completed payload includes durationMs', () => {
     h.env.cleanup();
   }
 });
+
+// Item 10: rate-limit pause
+test('rate-limit: sprint pauses when all workers are rate-cap blocked', async () => {
+  const now = 1000;
+  const resetAt = 60_000;
+  const ratePausedCalls: Array<{ sprintId: string; resetAt: number }> = [];
+  const h = makeManager({
+    now: () => now,
+    onRatePaused: (sprintId, r) => { ratePausedCalls.push({ sprintId, resetAt: r }); },
+  });
+  try {
+    // Drive worker w1 to high pressure (tokensRemaining=0 → pressure=1.0 > 0.85)
+    h.pressure.recordHeaders('w1', {
+      tokensRemaining: 0,
+      tokensLimit: 1000,
+      resetAt,
+    });
+    const rec = h.manager.startSprint({
+      mode: 'normal',
+      goal: 'rl-test',
+      newTaskBriefs: ['brief-1'],
+    });
+    // First tick: sprint transitions queued→running but cannot dispatch (all blocked)
+    await h.manager.tick(rec.id);
+    const after = h.env.store.loadSprint(rec.id);
+    assert.equal(after?.state.kind, 'paused', 'sprint should be paused when rate-capped');
+    assert.equal(ratePausedCalls.length, 1, 'onRatePaused should be called once');
+    assert.equal(ratePausedCalls[0]?.resetAt, resetAt);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('rate-limit: sprint auto-resumes when resetAt has passed', async () => {
+  let now = 1000;
+  const resetAt = 60_000;
+  const h = makeManager({ now: () => now });
+  try {
+    h.pressure.recordHeaders('w1', {
+      tokensRemaining: 0,
+      tokensLimit: 1000,
+      resetAt,
+    });
+    const rec = h.manager.startSprint({
+      mode: 'normal',
+      goal: 'rl-resume-test',
+      newTaskBriefs: ['brief-1'],
+    });
+    // Tick at t=1000 → sprint should pause
+    await h.manager.tick(rec.id);
+    assert.equal(h.env.store.loadSprint(rec.id)?.state.kind, 'paused');
+
+    // Advance time past resetAt — pressure will clear (resetAt <= now)
+    now = resetAt + 1;
+
+    // Tick at t=resetAt+1 → sprint should auto-resume and dispatch
+    await h.manager.tick(rec.id);
+    const after = h.env.store.loadSprint(rec.id);
+    assert.equal(after?.state.kind, 'running', 'sprint should have resumed');
+    assert.equal(h.adapter.spawned.length, 1, 'task should be dispatched after resume');
+
+    // Drain the MockAdapter's setTimeout(0) resolver before closing the DB
+    h.adapter.finishAll();
+    await new Promise<void>((r) => setTimeout(r, 10));
+    await h.manager.tick(rec.id);
+  } finally {
+    h.env.cleanup();
+  }
+});

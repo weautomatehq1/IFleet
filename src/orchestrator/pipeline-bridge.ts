@@ -59,8 +59,9 @@ export function encodeBridgeBrief(task: QueuedTask): string {
 
 /**
  * Best-effort decode of a brief written by {@link encodeBridgeBrief}. Returns
- * `undefined` if the brief is not a structured bridge payload, letting the
- * caller fall back to treating the brief as a raw issue body.
+ * `undefined` if the brief is not a structured bridge payload or if the inner
+ * {@link QueuedTask} is missing required fields. Callers should fall back to
+ * treating the brief as a raw issue body when `undefined` is returned.
  */
 export function decodeBridgeBrief(brief: string): QueuedTask | undefined {
   const trimmed = brief.trim();
@@ -80,7 +81,20 @@ export function decodeBridgeBrief(brief: string): QueuedTask | undefined {
   }
   const task = (parsed as { task?: unknown }).task;
   if (!task || typeof task !== 'object') return undefined;
-  return task as QueuedTask;
+  return isValidQueuedTask(task) ? (task as QueuedTask) : undefined;
+}
+
+function isValidQueuedTask(t: object): boolean {
+  const q = t as Record<string, unknown>;
+  return (
+    typeof q['id'] === 'string' &&
+    typeof q['issueNumber'] === 'number' &&
+    typeof q['repo'] === 'string' &&
+    typeof q['title'] === 'string' &&
+    typeof q['body'] === 'string' &&
+    typeof q['autonomy'] === 'string' &&
+    Array.isArray(q['labels'])
+  );
 }
 
 /**
@@ -88,7 +102,7 @@ export function decodeBridgeBrief(brief: string): QueuedTask | undefined {
  * to the {@link WorkerAdapter} interface so {@link SprintManager} can drive a
  * full pipeline run instead of a raw worker spawn. Each `spawn()` call invokes
  * the factory, runs the pipeline, and maps {@link PipelineResult.status} →
- * {@link SpawnResult.exitCode} (`0` for `pr_opened`, `1` otherwise).
+ * {@link SpawnResult.exitCode}: `0`=pr_opened, `1`=failed, `2`=cancelled, `3`=blocked_by_reviewer.
  */
 export class PipelineBridge implements WorkerAdapter {
   constructor(private readonly factory: PipelineRunnerFactory) {}
@@ -97,6 +111,10 @@ export class PipelineBridge implements WorkerAdapter {
     const bootstrap = await this.factory(taskId, brief, opts);
     const workerId = bootstrap.workerId ?? 'pipeline';
     const abortController = bootstrap.abortController;
+
+    if (!abortController) {
+      console.warn(`[PipelineBridge] taskId=${taskId} — no abortController in bootstrap; cancellation will be a no-op`);
+    }
 
     const done = this.execute(taskId, workerId, bootstrap);
 
@@ -147,11 +165,20 @@ function mapPipelineResult(
   taskId: TaskId,
   workerId: WorkerId,
 ): SpawnResult {
-  const exitCode = result.status === 'pr_opened' ? 0 : 1;
+  const exitCode = statusToExitCode(result.status);
   const spawnResult: SpawnResult = { taskId, workerId, exitCode };
   if (result.prUrl) spawnResult.pr = result.prUrl;
   if (exitCode !== 0) {
     spawnResult.error = result.failureReason ?? result.status;
   }
   return spawnResult;
+}
+
+function statusToExitCode(status: PipelineResult['status']): number {
+  switch (status) {
+    case 'pr_opened': return 0;
+    case 'failed': return 1;
+    case 'cancelled': return 2;
+    case 'blocked_by_reviewer': return 3;
+  }
 }

@@ -1,0 +1,256 @@
+import { execFile } from 'node:child_process';
+import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import type { Octokit } from '@octokit/rest';
+import { classifyTask } from '../classifier/index.js';
+import {
+  decodeBridgeBrief,
+  type PipelineRunBootstrap,
+  type PipelineRunnerFactory,
+} from '../orchestrator/pipeline-bridge.js';
+import type { WorkerConfig } from '../orchestrator/types.js';
+import { createIssueCommenter } from '../queue/issue-commenter.js';
+import { titleToBranchName } from '../utils/branch-name.js';
+import { createVerifyRunner } from '../verify/runner.js';
+import { createAccountPool, type AccountPool } from '../workers/account-pool.js';
+import { createClaudeAdapter } from '../workers/claude.js';
+import { DefaultPipelineRunner } from './runner.js';
+import type {
+  GitOps,
+  IssueCommenter,
+  PipelineInput,
+  PipelineResult,
+  PrOpener,
+  SpawnHandle as PipelineSpawnHandle,
+  SpawnOpts as PipelineSpawnOpts,
+  VerifyRunner,
+  WorkerPool,
+  WorkerSpec,
+} from './types.js';
+
+
+const execFileAsync = promisify(execFile);
+
+export interface ProductionFactoryOpts {
+  repoRoot: string;
+  /** Defaults to 'weautomatehq1/IFleet' — legacy callers work without providing it. */
+  repoId?: string;
+  octokit: Octokit;
+  /** Pre-built VerifyRunner; defaults to createVerifyRunner() when omitted. */
+  verify?: VerifyRunner;
+  codeowners?: string[];
+  approver?: string;
+  initialWorkers: ReadonlyArray<WorkerConfig>;
+}
+
+export interface ProductionFactory {
+  factory: PipelineRunnerFactory;
+  /** Call when WorkerRegistry.onReload fires to refresh the account pool. */
+  rebuildPool: (workers: ReadonlyArray<WorkerConfig>) => void;
+}
+
+/**
+ * Builds a production {@link PipelineRunnerFactory} wired with real collaborators.
+ * Returns both the factory and a `rebuildPool` callback that should be called
+ * whenever `WorkerRegistry.onReload` fires (Item 4 integration point).
+ */
+export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFactory {
+  const repoId = opts.repoId ?? 'weautomatehq1/IFleet';
+  const parts = repoId.split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`repoId must be "owner/name", got: ${repoId}`);
+  }
+  const [repoOwner, repoName] = parts as [string, string];
+  const worktreesDir = join(opts.repoRoot, '.omc', 'worktrees');
+  const verify = opts.verify ?? buildVerifyAdapter();
+
+  let pool: AccountPool = createAccountPool(opts.initialWorkers);
+
+  function rebuildPool(workers: ReadonlyArray<WorkerConfig>): void {
+    pool = createAccountPool(workers);
+  }
+
+  const factory: PipelineRunnerFactory = async (taskId, brief, _spawnOpts): Promise<PipelineRunBootstrap> => {
+    const task = decodeBridgeBrief(brief);
+    if (!task) throw new Error('brief is not a structured QueuedTask payload');
+
+    const worker = pool.nextWorker();
+    const branchName = titleToBranchName(task.issueNumber, task.title);
+    const worktreePath = await setupWorktree(task.issueNumber, branchName, worktreesDir, opts.repoRoot);
+
+    const workerPool = buildWorkerPool(worker);
+    const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels });
+    const abortController = new AbortController();
+
+    const issues: IssueCommenter = createIssueCommenter(opts.octokit, repoOwner, repoName);
+    const pr: PrOpener = buildPrOpener(repoId, worktreePath, opts.repoRoot);
+    const git: GitOps = buildGitOps();
+
+    const input: PipelineInput = {
+      task,
+      workerPool,
+      worktreePath,
+      routing,
+      abortSignal: abortController.signal,
+      verify,
+      issues,
+      pr,
+      git,
+      codeowners: opts.codeowners ?? ['@monstersebas1'],
+      baseBranch: 'main',
+      approver: opts.approver ?? '@monstersebas1',
+      repoRoot: opts.repoRoot,
+    };
+
+    return {
+      runner: new DefaultPipelineRunner(),
+      input,
+      abortController,
+      workerId: worker.id,
+      teardown: async (_result: PipelineResult | Error) => {
+        await teardownWorktree(task.issueNumber, branchName, worktreesDir, opts.repoRoot);
+      },
+    };
+  };
+
+  return { factory, rebuildPool };
+}
+
+// ---------------------------------------------------------------------------
+// Internal collaborator builders
+// ---------------------------------------------------------------------------
+
+function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
+  const adapter = createClaudeAdapter();
+
+  return {
+    spawn(spec: WorkerSpec, brief: string, opts: PipelineSpawnOpts): PipelineSpawnHandle {
+      const workingDir = opts.worktreePath ?? resolve('.');
+      const model = mapModel(spec.model);
+      let rateLimitHits = 0;
+
+      const workerHandle = adapter.spawn({
+        taskId: `${opts.role}-${Date.now()}`,
+        brief,
+        model,
+        workingDir,
+        signal: opts.abortSignal,
+        systemPrompt: opts.systemPrompt,
+        authProfile: workerConfig.authProfile,
+      });
+
+      const eventLoop = (async () => {
+        for await (const event of workerHandle.events) {
+          if (event.kind === 'rate_limit') rateLimitHits++;
+        }
+      })();
+
+      return {
+        result: async () => {
+          const r = await workerHandle.result;
+          await eventLoop;
+          return { ok: r.ok, output: r.text, sessionId: r.sessionId, rateLimitHits };
+        },
+        cancel: workerHandle.cancel,
+      };
+    },
+  };
+}
+
+function mapModel(configModel: string): string {
+  const shorthand: Record<string, string> = {
+    'opus-4.7': 'claude-opus-4-7',
+    'sonnet-4.6': 'claude-sonnet-4-6',
+    'haiku-4.5': 'claude-haiku-4-5-20251001',
+  };
+  return shorthand[configModel] ?? configModel;
+}
+
+function buildVerifyAdapter(): VerifyRunner {
+  const runner = createVerifyRunner();
+  return {
+    async run(worktreePath, kinds) {
+      const result = await runner.run(worktreePath, kinds);
+      const failures = Object.entries(result.perKind)
+        .filter(([k, v]) => kinds.includes(k as typeof kinds[number]) && !v.ok)
+        .map(([k, v]) => ({ kind: k as typeof kinds[number], log: v.output }));
+      return { ok: result.ok, failures };
+    },
+  };
+}
+
+function buildGitOps(): GitOps {
+  return {
+    async diff(worktreePath: string, baseRef: string): Promise<string> {
+      const { stdout } = await execFileAsync('git', ['diff', baseRef], { cwd: worktreePath });
+      return stdout;
+    },
+    async currentBranch(worktreePath: string): Promise<string> {
+      const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: worktreePath });
+      return stdout.trim();
+    },
+  };
+}
+
+function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string): PrOpener {
+  return {
+    async open(input) {
+      await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath });
+      const reviewerArgs = input.reviewers.flatMap((r) => ['--reviewer', r]);
+      const { stdout } = await execFileAsync('gh', [
+        'pr', 'create',
+        '--repo', repoId,
+        '--head', input.headBranch,
+        '--base', input.baseBranch,
+        '--title', input.title,
+        '--body', input.body,
+        ...reviewerArgs,
+      ]);
+      const url = stdout.trim();
+      const match = url.match(/\/(\d+)$/);
+      return { url, number: match?.[1] ? parseInt(match[1], 10) : 0 };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Worktree lifecycle
+// ---------------------------------------------------------------------------
+
+async function setupWorktree(
+  issueNumber: number,
+  branchName: string,
+  worktreesDir: string,
+  repoRoot: string,
+): Promise<string> {
+  const worktreePath = join(worktreesDir, `task-${issueNumber}`);
+  mkdirSync(worktreesDir, { recursive: true });
+
+  if (existsSync(worktreePath)) {
+    await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot }).catch(() => undefined);
+    await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
+  }
+
+  await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
+  await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, 'main'], { cwd: repoRoot });
+
+  const nmTarget = join(worktreePath, 'node_modules');
+  if (!existsSync(nmTarget)) {
+    symlinkSync(join(repoRoot, 'node_modules'), nmTarget);
+  }
+
+  return worktreePath;
+}
+
+async function teardownWorktree(
+  issueNumber: number,
+  branchName: string,
+  worktreesDir: string,
+  repoRoot: string,
+): Promise<void> {
+  const worktreePath = join(worktreesDir, `task-${issueNumber}`);
+  await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot }).catch(() => undefined);
+  await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
+  await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
+}

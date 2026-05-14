@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
+import type { PipelineRunnerFactory } from './pipeline-bridge';
 import { PressureTracker } from './pressure';
 import { SprintManager, type StartSprintOpts, type TaskBriefLoader } from './sprint';
 import { DEFAULT_DB_PATH, StateStore } from './store';
@@ -12,6 +13,7 @@ import type {
   SprintId,
   SprintRecord,
   WorkerAdapter,
+  WorkerConfig,
   WorkerId,
 } from './types';
 
@@ -24,6 +26,20 @@ export interface OrchestratorOptions {
   registry?: WorkerRegistry;
   pressure?: PressureTracker;
   adapter: WorkerAdapter;
+  /**
+   * When provided, wraps the factory in a {@link PipelineBridge} and drives the
+   * full Architect → Editor → Reviewer pipeline. The {@link adapter} field
+   * remains required for backwards compatibility but is used as a fallback only.
+   */
+  pipelineFactory?: PipelineRunnerFactory;
+  /**
+   * Callback called when {@link WorkerRegistry} fires `onReload` so the
+   * factory's account pool can be refreshed. Pass the `rebuildPool` function
+   * returned by {@link makeProductionFactory} here.
+   */
+  onWorkersReload?: (workers: ReadonlyArray<WorkerConfig>) => void;
+  /** Repo identifier in "owner/name" form used by the production factory. */
+  repoId?: string;
   briefLoader: TaskBriefLoader;
   dbPath?: string;
   workersConfigPath?: string;
@@ -34,7 +50,7 @@ export interface OrchestratorOptions {
   autoResume?: boolean;
   /** USD spend cap per sprint. Defaults to BUDGET_USD env var. Omit to disable. */
   budgetUsd?: number;
-  /** Discord webhook URL for budget alerts. Defaults to DISCORD_IFLEET_WEBHOOK env var. */
+  /** Discord webhook URL for budget and rate-cap alerts. Defaults to DISCORD_IFLEET_WEBHOOK env var. */
   discordWebhookUrl?: string;
 }
 
@@ -60,6 +76,7 @@ export class Orchestrator {
       opts.registry ??
       new WorkerRegistry({
         configPath: opts.workersConfigPath ?? DEFAULT_WORKERS_CONFIG,
+        onReload: opts.onWorkersReload,
       });
     this.pressure = opts.pressure ?? new PressureTracker({ now: this.now });
     this.killFlagDir = opts.killFlagDir ?? DEFAULT_KILL_FLAG_DIR;
@@ -72,6 +89,7 @@ export class Orchestrator {
       registry: this.registry,
       pressure: this.pressure,
       adapter: opts.adapter,
+      pipelineFactory: opts.pipelineFactory,
       briefLoader: opts.briefLoader,
       emit: (event) => this.handleEvent(event),
       now: this.now,
@@ -81,6 +99,13 @@ export class Orchestrator {
             postDiscordAlert(
               discordWebhookUrl,
               `⚠️ Sprint \`${sprintId}\` paused — budget $${limitUsd.toFixed(2)} reached (spent $${spentUsd.toFixed(2)}). Resume when ready.`,
+            )
+        : undefined,
+      onRatePaused: discordWebhookUrl
+        ? (sprintId, resetAt) =>
+            postDiscordAlert(
+              discordWebhookUrl,
+              `⏸️ Sprint \`${sprintId}\` paused — rate cap reached, auto-resuming at ${new Date(resetAt).toISOString()}.`,
             )
         : undefined,
     });
