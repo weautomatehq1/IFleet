@@ -102,7 +102,7 @@ function isValidQueuedTask(t: object): boolean {
  * to the {@link WorkerAdapter} interface so {@link SprintManager} can drive a
  * full pipeline run instead of a raw worker spawn. Each `spawn()` call invokes
  * the factory, runs the pipeline, and maps {@link PipelineResult.status} →
- * {@link SpawnResult.exitCode} (`0` for `pr_opened`, `1` otherwise).
+ * {@link SpawnResult.exitCode}: `0`=pr_opened, `1`=failed, `2`=cancelled, `3`=blocked_by_reviewer.
  */
 export class PipelineBridge implements WorkerAdapter {
   constructor(private readonly factory: PipelineRunnerFactory) {}

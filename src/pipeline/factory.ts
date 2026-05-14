@@ -29,10 +29,6 @@ import type {
   WorkerSpec,
 } from './types.js';
 
-// TODO(T1-integrate): swap to T2's adapter registry resolution once it merges.
-// Currently falls back to the direct ClaudeAdapter regardless of IFLEET_ADAPTER.
-const _IFLEET_ADAPTER = process.env['IFLEET_ADAPTER'] ?? 'claude-cli';
-void _IFLEET_ADAPTER;
 
 const execFileAsync = promisify(execFile);
 
@@ -61,7 +57,11 @@ export interface ProductionFactory {
  */
 export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFactory {
   const repoId = opts.repoId ?? 'weautomatehq1/IFleet';
-  const [repoOwner, repoName] = repoId.split('/') as [string, string];
+  const parts = repoId.split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`repoId must be "owner/name", got: ${repoId}`);
+  }
+  const [repoOwner, repoName] = parts as [string, string];
   const worktreesDir = join(opts.repoRoot, '.omc', 'worktrees');
   const verify = opts.verify ?? buildVerifyAdapter();
 
@@ -197,6 +197,7 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
   return {
     async open(input) {
       await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath });
+      const reviewerArgs = input.reviewers.flatMap((r) => ['--reviewer', r]);
       const { stdout } = await execFileAsync('gh', [
         'pr', 'create',
         '--repo', repoId,
@@ -204,6 +205,7 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
         '--base', input.baseBranch,
         '--title', input.title,
         '--body', input.body,
+        ...reviewerArgs,
       ]);
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
