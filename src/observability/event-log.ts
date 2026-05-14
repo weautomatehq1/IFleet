@@ -1,8 +1,12 @@
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
+  statSync,
   watch,
   type FSWatcher,
 } from 'node:fs';
@@ -35,7 +39,12 @@ export class FileEventLog implements EventLog {
   append(event: Event): void {
     const file = this.sprintFile(event.sprintId);
     this.ensureDir(file);
-    appendFileSync(file, JSON.stringify(event) + '\n', 'utf8');
+    // Tear-safe append: if the previous write was killed mid-line (no trailing
+    // newline), prepend a `\n` so we don't merge the orphaned line with the
+    // new event and corrupt both. The empty line is silently skipped by
+    // parseEvents.
+    const leading = endsWithNewline(file) ? '' : '\n';
+    appendFileSync(file, leading + JSON.stringify(event) + '\n', 'utf8');
   }
 
   read(sprintId: string): Event[] {
@@ -49,6 +58,23 @@ export class FileEventLog implements EventLog {
     const file = this.sprintFile(sprintId);
     this.ensureDir(file);
     return tailFile(file, opts);
+  }
+}
+
+function endsWithNewline(file: string): boolean {
+  if (!existsSync(file)) return true; // a fresh file starts cleanly
+  let fd = -1;
+  try {
+    const stats = statSync(file);
+    if (stats.size === 0) return true;
+    fd = openSync(file, 'r');
+    const buf = Buffer.alloc(1);
+    readSync(fd, buf, 0, 1, stats.size - 1);
+    return buf[0] === 0x0a; // '\n'
+  } catch {
+    return true; // be permissive: don't block writes on a stat failure
+  } finally {
+    if (fd !== -1) closeSync(fd);
   }
 }
 

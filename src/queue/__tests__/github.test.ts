@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { GitHubQueue } from '../github.js';
+import { GitHubQueue, THROTTLE_MAX_RETRIES, shouldRetryRateLimit } from '../github.js';
 import type { QueuedTask } from '../types.js';
 
 interface FakeIssue {
@@ -271,5 +271,71 @@ describe('GitHubQueue lifecycle', () => {
     assert.equal(state.comments.length, 1);
     assert.match(state.comments[0]!.body, /Status:.*reviewing/);
     assert.match(state.comments[0]!.body, /looking good/);
+  });
+});
+
+describe('shouldRetryRateLimit (throttling wiring)', () => {
+  it('returns true for the first few retries (primary)', () => {
+    const logs: string[] = [];
+    const log = (m: string): void => {
+      logs.push(m);
+    };
+    for (let i = 0; i < THROTTLE_MAX_RETRIES; i++) {
+      const retry = shouldRetryRateLimit(
+        5,
+        { method: 'GET', url: '/x', request: { retryCount: i } },
+        'primary',
+        log,
+      );
+      assert.equal(retry, true, `attempt ${i + 1} should retry`);
+    }
+    assert.equal(logs.length, THROTTLE_MAX_RETRIES);
+    assert.match(logs[0]!, /rate limit hit/);
+  });
+
+  it('returns false once retry budget is exhausted', () => {
+    const log = (): void => {};
+    const retry = shouldRetryRateLimit(
+      5,
+      { method: 'GET', url: '/x', request: { retryCount: THROTTLE_MAX_RETRIES } },
+      'primary',
+      log,
+    );
+    assert.equal(retry, false);
+  });
+
+  it('handles secondary rate limit responses with the same budget', () => {
+    const log = (): void => {};
+    const ok = shouldRetryRateLimit(
+      10,
+      { method: 'POST', url: '/issues', request: { retryCount: 0 } },
+      'secondary',
+      log,
+    );
+    assert.equal(ok, true);
+
+    const exhausted = shouldRetryRateLimit(
+      10,
+      { method: 'POST', url: '/issues', request: { retryCount: THROTTLE_MAX_RETRIES + 5 } },
+      'secondary',
+      log,
+    );
+    assert.equal(exhausted, false);
+  });
+
+  it('logs which kind of rate limit was hit', () => {
+    const logs: string[] = [];
+    shouldRetryRateLimit(
+      2,
+      { method: 'GET', url: '/', request: { retryCount: 0 } },
+      'secondary',
+      (m) => logs.push(m),
+    );
+    assert.match(logs[0]!, /secondary rate limit/);
+  });
+
+  it('does not throw when method/url are missing', () => {
+    const ok = shouldRetryRateLimit(1, { request: { retryCount: 0 } }, 'primary', () => {});
+    assert.equal(ok, true);
   });
 });

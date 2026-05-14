@@ -1,6 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { parseLabels, parseRequiredCapabilities } from '../labels.js';
+import type { Octokit } from '@octokit/rest';
+import {
+  REQUIRED_LABELS,
+  ensureLabels,
+  parseLabels,
+  parseRequiredCapabilities,
+} from '../labels.js';
 
 describe('parseLabels', () => {
   it('defaults when no routing labels present', () => {
@@ -95,5 +101,109 @@ describe('parseRequiredCapabilities', () => {
 
   it('returns empty array for empty input', () => {
     assert.deepEqual(parseRequiredCapabilities([]), []);
+  });
+});
+
+interface FakeCreateLabelParams {
+  owner: string;
+  repo: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
+interface LabelFixture {
+  existing: Set<string>;
+  created: FakeCreateLabelParams[];
+}
+
+function makeFixture(existing: string[] = []): {
+  fixture: LabelFixture;
+  octokit: Octokit;
+} {
+  const fixture: LabelFixture = { existing: new Set(existing), created: [] };
+  const octokit = {
+    issues: {
+      createLabel: async (p: FakeCreateLabelParams) => {
+        if (fixture.existing.has(p.name)) {
+          const err = new Error('already_exists') as Error & {
+            status: number;
+            response: { data: { errors: Array<{ code: string }> } };
+          };
+          err.status = 422;
+          err.response = { data: { errors: [{ code: 'already_exists' }] } };
+          throw err;
+        }
+        fixture.existing.add(p.name);
+        fixture.created.push(p);
+      },
+    },
+  } as unknown as Octokit;
+  return { fixture, octokit };
+}
+
+describe('ensureLabels', () => {
+  const REPO = { owner: 'weautomatehq1', name: 'IFleet' } as const;
+
+  it('creates all required labels when none exist', async () => {
+    const { fixture, octokit } = makeFixture([]);
+    const result = await ensureLabels(octokit, REPO);
+    assert.equal(result.created.length, REQUIRED_LABELS.length);
+    assert.deepEqual(result.existed, []);
+    for (const spec of REQUIRED_LABELS) {
+      assert.ok(fixture.existing.has(spec.name), `expected ${spec.name} to be created`);
+    }
+  });
+
+  it('is idempotent when all labels already exist', async () => {
+    const allNames = REQUIRED_LABELS.map((l) => l.name);
+    const { fixture, octokit } = makeFixture(allNames);
+    const result = await ensureLabels(octokit, REPO);
+    assert.deepEqual(result.created, []);
+    assert.deepEqual(result.existed, allNames);
+    assert.equal(fixture.created.length, 0);
+  });
+
+  it('creates only missing labels and skips existing ones', async () => {
+    const present = [REQUIRED_LABELS[0]!.name, REQUIRED_LABELS[2]!.name];
+    const { fixture, octokit } = makeFixture(present);
+    const result = await ensureLabels(octokit, REPO);
+    assert.equal(result.existed.length, 2);
+    assert.equal(
+      result.created.length,
+      REQUIRED_LABELS.length - 2,
+      'should create only the missing ones',
+    );
+    for (const created of fixture.created) {
+      assert.ok(!present.includes(created.name), 'must not re-create existing labels');
+    }
+  });
+
+  it('propagates non-422 errors', async () => {
+    const octokit = {
+      issues: {
+        createLabel: async () => {
+          const err = new Error('boom') as Error & { status: number };
+          err.status = 500;
+          throw err;
+        },
+      },
+    } as unknown as Octokit;
+    await assert.rejects(() => ensureLabels(octokit, REPO), /boom/);
+  });
+
+  it('treats bare 422 (no response body) as already-exists', async () => {
+    const octokit = {
+      issues: {
+        createLabel: async () => {
+          const err = new Error('exists') as Error & { status: number };
+          err.status = 422;
+          throw err;
+        },
+      },
+    } as unknown as Octokit;
+    const result = await ensureLabels(octokit, REPO);
+    assert.equal(result.created.length, 0);
+    assert.equal(result.existed.length, REQUIRED_LABELS.length);
   });
 });
