@@ -177,6 +177,18 @@ test('account-pool: markRateLimited with 0ms clears pause; longer pause is not s
   assert.equal(pool.nextWorker().id, 'claude-max-1');
 });
 
+test('account-pool: markRateLimited(0) does not re-enable an auth-failed (permanent) worker', () => {
+  const pool = createAccountPool(
+    [makeWorker({ id: 'claude-max-1' })],
+    { now: () => 1_000 },
+  );
+  pool.markAuthFailed('claude-max-1');
+  assert.throws(() => pool.nextWorker(), AllAccountsPausedError);
+  // A 0ms rate-limit clear must NOT revive a permanently banned account.
+  pool.markRateLimited('claude-max-1', 0);
+  assert.throws(() => pool.nextWorker(), AllAccountsPausedError);
+});
+
 test('account-pool: rotation path — first worker rate-limited, pool returns next available', () => {
   const t = 1_000;
   const pool = createAccountPool(

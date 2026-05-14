@@ -125,6 +125,8 @@ export function createAccountPool(
     },
     markRateLimited(id: string, retryAfterMs: number): void {
       if (retryAfterMs <= 0) {
+        // Never clear a permanent auth-failed ban (Infinity).
+        if (pausedUntil.get(id) === Number.POSITIVE_INFINITY) return;
         pausedUntil.delete(id);
         return;
       }
