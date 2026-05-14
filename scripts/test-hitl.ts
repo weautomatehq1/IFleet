@@ -1,10 +1,27 @@
 #!/usr/bin/env node
 /**
- * Manual smoke trace for the HITL approval gate.
+ * Manual smoke trace for the reaction-based HITL approval gate (PR #54).
  *
- * Runs createIssueCommenter against a mock Octokit that simulates two empty
- * polls followed by a +1 reaction from `seb`. Logs each poll attempt and the
- * final approval. No real GitHub token needed.
+ * What it proves end-to-end:
+ *  1. `createIssueCommenter` posts the architect plan as an issue comment
+ *     and captures the returned comment id.
+ *  2. `waitForApproval` polls `reactions.listForIssueComment` until it sees
+ *     a `+1` reaction from the configured approver.
+ *  3. Polling honours `pollIntervalMs` and `timeoutMs` correctly.
+ *
+ * Reproduction steps:
+ *  - Run `node --import tsx scripts/test-hitl.ts`.
+ *  - Expect three log lines: `createComment`, then `poll #1`, `poll #2`
+ *    (both with `0 reactions`), then `poll #3` with `1 reactions`.
+ *  - Expect `waitForApproval returned true` in ≤ ~150 ms (poll interval
+ *    is 50 ms; the mock returns the +1 on the third poll).
+ *  - Expect final `PASS` line and exit code 0.
+ *
+ * Failure modes the test exercises:
+ *  - Empty reactions list (polls 1-2) — must not throw, must keep polling.
+ *  - Reaction from the right user with `+1` content — must approve.
+ *
+ * No real GitHub token is needed: the script injects a mock Octokit.
  *
  * Usage:  node --import tsx scripts/test-hitl.ts
  */

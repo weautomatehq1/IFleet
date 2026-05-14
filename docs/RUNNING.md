@@ -57,7 +57,15 @@ Target a specific issue number:
 node --import tsx scripts/run-smoke.ts --issue 42
 ```
 
-The script exits 0 on success (PR opened) and 1 on failure. Logs are written to stdout with ISO timestamps.
+**Dry-run** — pick the next issue and print the routing plan without
+spawning workers, creating a worktree, or labelling the issue. Safe to
+run on launch eve to verify queue + classifier wiring:
+
+```
+node --import tsx scripts/run-smoke.ts --dry-run
+```
+
+The script exits 0 on success (PR opened, or dry-run plan printed) and 1 on failure. Logs are written to stdout with ISO timestamps.
 
 ---
 

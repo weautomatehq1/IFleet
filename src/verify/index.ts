@@ -9,5 +9,10 @@ export { DEFAULT_VERIFY_CONFIG } from './types.js';
 export { createVerifyRunner } from './runner.js';
 export { loadVerifyConfig } from './config-loader.js';
 export { runCiKind } from './ci.js';
-export { runPlaywright, parsePlaywrightReport, hasPlaywrightConfig } from './playwright.js';
+export {
+  runPlaywright,
+  parsePlaywrightReport,
+  hasPlaywrightConfig,
+  ensureBrowsersInstalled,
+} from './playwright.js';
 export { runScreenshotDiff, screenshotPaths, ensureScreenshotDirs } from './screenshot.js';

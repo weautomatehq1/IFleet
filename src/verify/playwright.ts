@@ -1,8 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runProcess } from './spawn-util.js';
 import { loadVerifyConfig } from './config-loader.js';
 import type { VerifyConfig, VerifyKindResult } from './types.js';
+
+const BROWSER_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
+const BROWSER_INSTALL_SENTINEL = '.omc-playwright-installed';
 
 interface PlaywrightSpec {
   title: string;
@@ -39,6 +42,50 @@ interface RawSpec {
 export function hasPlaywrightConfig(worktreePath: string): boolean {
   const candidates = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
   return candidates.some((name) => existsSync(resolve(worktreePath, name)));
+}
+
+export interface BootstrapResult {
+  installed: boolean;
+  cached: boolean;
+  durationMs: number;
+  output: string;
+}
+
+/**
+ * Idempotently install Playwright browsers. Writes a sentinel under
+ * `.omc/` so subsequent runs in the same worktree skip the (~30s) install.
+ * The sentinel is intentionally per-worktree, not per-machine — a fresh
+ * worktree should always confirm browsers are present, since `~/.cache`
+ * can be cleared independently.
+ */
+export async function ensureBrowsersInstalled(
+  worktreePath: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<BootstrapResult> {
+  const omcDir = resolve(worktreePath, '.omc');
+  const sentinel = resolve(omcDir, BROWSER_INSTALL_SENTINEL);
+  if (existsSync(sentinel)) {
+    return { installed: false, cached: true, durationMs: 0, output: '[bootstrap] cached' };
+  }
+  const timeoutMs = opts.timeoutMs ?? BROWSER_INSTALL_TIMEOUT_MS;
+  const result = await runProcess('npx', ['playwright', 'install', '--with-deps=false'], {
+    cwd: worktreePath,
+    timeoutMs,
+  });
+  if (result.ok) {
+    try {
+      mkdirSync(omcDir, { recursive: true });
+      writeFileSync(sentinel, new Date().toISOString());
+    } catch {
+      /* sentinel is best-effort; next call will retry the install */
+    }
+  }
+  return {
+    installed: result.ok,
+    cached: false,
+    durationMs: result.durationMs,
+    output: result.output,
+  };
 }
 
 export function parsePlaywrightReport(json: string): PlaywrightSummary {
@@ -89,7 +136,7 @@ export function parsePlaywrightReport(json: string): PlaywrightSummary {
 export async function runPlaywright(
   worktreePath: string,
   config?: VerifyConfig,
-): Promise<VerifyKindResult & { summary?: PlaywrightSummary }> {
+): Promise<VerifyKindResult & { summary?: PlaywrightSummary; bootstrap?: BootstrapResult }> {
   if (!hasPlaywrightConfig(worktreePath)) {
     return {
       ok: false,
@@ -98,6 +145,19 @@ export async function runPlaywright(
     };
   }
   const cfg = config ?? loadVerifyConfig(worktreePath);
+
+  const bootstrap = await ensureBrowsersInstalled(worktreePath, {
+    timeoutMs: cfg.timeouts.playwright,
+  });
+  if (!bootstrap.cached && !bootstrap.installed) {
+    return {
+      ok: false,
+      durationMs: bootstrap.durationMs,
+      output: `[playwright] browser install failed:\n${bootstrap.output}`,
+      bootstrap,
+    };
+  }
+
   const reportPath = resolve(worktreePath, '.omc-playwright-report.json');
   const result = await runProcess(
     'npx',
@@ -123,5 +183,6 @@ export async function runPlaywright(
     durationMs: result.durationMs,
     output: result.output,
     summary,
+    bootstrap,
   };
 }

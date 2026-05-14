@@ -5,7 +5,7 @@ export default tseslint.config(
     ignores: ['node_modules/**', 'dist/**', '.omc/**', 'config/**'],
   },
   {
-    files: ['src/**/*.ts'],
+    files: ['src/**/*.ts', 'scripts/**/*.ts'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -29,6 +29,13 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.ts'],
+    rules: {
+      // CLI scripts legitimately print to stdout.
+      'no-console': 'off',
     },
   },
 );
