@@ -147,7 +147,7 @@ export async function runPlaywright(
   const cfg = config ?? loadVerifyConfig(worktreePath);
 
   const bootstrap = await ensureBrowsersInstalled(worktreePath, {
-    timeoutMs: cfg.timeouts.playwright,
+    timeoutMs: cfg.timeouts.playwrightBootstrap,
   });
   if (!bootstrap.cached && !bootstrap.installed) {
     return {
