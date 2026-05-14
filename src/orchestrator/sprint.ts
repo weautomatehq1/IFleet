@@ -449,6 +449,28 @@ export class SprintManager {
     }
   }
 
+  /**
+   * Resume a paused sprint. Idempotent on `running`; throws on terminal states
+   * or any other non-paused kind. Emits `sprint.resumed` with the supplied
+   * reason so observability can render an operator action.
+   */
+  resumeSprint(id: SprintId, reason: string = 'operator resume'): SprintRecord {
+    const sprint = this.store.loadSprint(id);
+    if (!sprint) throw new Error(`sprint not found: ${id}`);
+    if (sprint.state.kind === 'running') return sprint;
+    if (sprint.state.kind !== 'paused') {
+      throw new Error(`cannot resume sprint in state ${sprint.state.kind}`);
+    }
+    const updated = this.transition(id, { kind: 'running', startedAt: this.now() });
+    this.emit({
+      ts: this.now(),
+      sprintId: id,
+      kind: 'sprint.resumed',
+      payload: { reason },
+    });
+    return updated;
+  }
+
   async cancelSprint(id: SprintId, reason: string): Promise<SprintRecord> {
     const sprint = this.store.loadSprint(id);
     if (!sprint) throw new Error(`sprint not found: ${id}`);
