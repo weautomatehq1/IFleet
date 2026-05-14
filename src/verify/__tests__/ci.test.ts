@@ -75,7 +75,7 @@ describe('runCiKind', () => {
 
     const result = await runCiKind('/tmp/wt', 'test', {
       screenshot: { maxDiffPixels: 50, threshold: 0.2 },
-      timeouts: { typecheck: 1, lint: 1, test: 1, playwright: 1, screenshot: 1 },
+      timeouts: { typecheck: 1, lint: 1, test: 1, playwright: 1, playwrightBootstrap: 5000, screenshot: 1 },
     });
     expect(result.ok).toBe(false);
     expect(result.output).toMatch(/timeout/);
