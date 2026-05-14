@@ -176,7 +176,12 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   let architectTier: Tier = baseTier === 'opus' ? 'sonnet' : baseTier;
   if (complexity === 'high') architectTier = 'opus';
 
-  const editorTier = bumpTier(architectTier, -1);
+  const rawEditorTier = bumpTier(architectTier, -1);
+  // Editor must be at least sonnet — haiku in `claude -p` print mode reliably
+  // returns ok=true but produces zero file edits, which then burns reviewer
+  // tokens on an empty diff. Floor the editor tier at sonnet.
+  const editorTier: Tier =
+    TIER_ORDER.indexOf(rawEditorTier) >= TIER_ORDER.indexOf('sonnet') ? rawEditorTier : 'sonnet';
 
   let architectProvider: string = 'claude';
   let architectModel: string = TIERS[architectTier];

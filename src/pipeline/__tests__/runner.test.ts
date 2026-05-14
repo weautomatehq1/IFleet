@@ -179,6 +179,38 @@ describe('DefaultPipelineRunner', () => {
     expect(pr.opened).toHaveLength(0);
   });
 
+  it('empty diff guard: editor returns ok but no file changes → failed before reviewer spawns', async () => {
+    // Mirrors the silent-tool-use-failure mode we see when `claude -p` print
+    // mode runs on haiku: the worker exits with ok=true but the git worktree
+    // has no staged changes. Without the guard the reviewer is spawned with
+    // an empty diff and burns tokens returning "no diff provided".
+    const { input, workerPool, pr } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'wrote nothing' },
+        // Reviewer should NOT be reached — no scripted reviewer here.
+      ],
+    });
+    // Force git.diff to return empty whitespace.
+    input.git = {
+      async diff() {
+        return '   \n  \n';
+      },
+      async currentBranch() {
+        return 'feat/x';
+      },
+    };
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('failed');
+    expect(result.failureReason).toContain('editor produced no diff');
+    expect(pr.opened).toHaveLength(0);
+    // architect + editor spawned, reviewer did not
+    expect(workerPool.calls).toHaveLength(2);
+    expect(workerPool.calls.map((c) => c.opts.role)).toEqual(['architect', 'editor']);
+  });
+
   it('empty plan guard: architect returns whitespace → failed before editor spawns', async () => {
     const { input, workerPool, pr } = buildPipelineInput({
       scripted: [{ role: 'architect', output: '   \n  \n' }],
