@@ -81,6 +81,9 @@ function buildClaudeArgs(opts: SpawnOpts, sessionId: string): string[] {
   if (opts.systemPrompt) {
     args.push('--system-prompt', opts.systemPrompt);
   }
+  if (opts.authProfile !== undefined && opts.authProfile !== '' && opts.authProfile !== 'default') {
+    args.push('--profile', opts.authProfile);
+  }
   if (opts.sessionId !== undefined && opts.sessionId !== '') {
     args.push('--resume', opts.sessionId);
   } else {
