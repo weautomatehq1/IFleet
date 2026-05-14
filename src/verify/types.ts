@@ -26,6 +26,7 @@ export interface VerifyConfig {
     lint: number;
     test: number;
     playwright: number;
+    playwrightBootstrap: number;
     screenshot: number;
   };
 }
@@ -37,6 +38,7 @@ export const DEFAULT_VERIFY_CONFIG: VerifyConfig = {
     lint: 5 * 60 * 1000,
     test: 10 * 60 * 1000,
     playwright: 10 * 60 * 1000,
+    playwrightBootstrap: 2 * 60 * 1000,
     screenshot: 10 * 60 * 1000,
   },
 };

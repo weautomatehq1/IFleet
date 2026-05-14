@@ -5,7 +5,13 @@
  * Picks the next auto:ship issue from weautomatehq1/IFleet, runs the full
  * Architect → Editor → Verify → Reviewer pipeline, and opens a PR.
  *
- * Usage:  npx tsx scripts/run-smoke.ts [--issue <number>]
+ * Usage:
+ *   npx tsx scripts/run-smoke.ts [--issue <number>] [--dry-run]
+ *
+ * `--dry-run` picks the next issue (read-only — no labels added, no
+ * comments posted), prints the classification + worker plan, and exits 0
+ * without spawning a worker or creating a worktree. Use it on launch eve
+ * to verify queue + classifier wiring without burning a real run.
  *
  * Known Phase A limitations (surface them, don't hide them):
  *  1. The smoke driver now goes through `PipelineBridge` so it shares a
@@ -293,8 +299,9 @@ async function main(): Promise<void> {
   // Parse optional --issue flag to target a specific issue number.
   const issueFlag = process.argv.indexOf('--issue');
   const targetIssueNumber = issueFlag !== -1 ? parseInt(process.argv[issueFlag + 1] ?? '', 10) : undefined;
+  const dryRun = process.argv.includes('--dry-run');
 
-  log('Phase A smoke test starting');
+  log(`Phase A smoke test starting${dryRun ? ' (dry-run — no side effects)' : ''}`);
 
   const queue = await createGitHubQueue({
     repos: [{ owner: 'weautomatehq1', name: 'IFleet' }],
@@ -315,6 +322,21 @@ async function main(): Promise<void> {
   log(`Picked issue #${rawTask.issueNumber}: "${rawTask.title}"`);
   log(`Labels: ${rawTask.labels.join(', ')}`);
   log(`Autonomy: ${rawTask.routingHints.autonomy} | Priority: ${rawTask.routingHints.priority}`);
+
+  if (dryRun) {
+    const planRouting = classifyTask({
+      title: rawTask.title,
+      body: rawTask.body,
+      labels: rawTask.labels,
+    });
+    log(
+      `[dry-run] routing → architect=${planRouting.architect.model} ` +
+        `editor=${planRouting.editor.model} reviewer=${planRouting.reviewer.model}`,
+    );
+    log('[dry-run] queue.pickNext is read-only; no labels added, no comments posted');
+    log('[dry-run] exit 0 without spawning workers or creating a worktree');
+    return;
+  }
 
   // Mark as in-flight.
   await queue.markPicked(rawTask, 'claude-max-1');
