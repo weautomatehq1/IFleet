@@ -5,10 +5,17 @@ import type { SpawnLike } from '../spawn-runner.ts';
 export interface FakeChildOptions {
   stdoutLines?: string[];
   stderrLines?: string[];
+  /**
+   * Raw stdout chunks. Written verbatim (no implicit newline) so the test
+   * can split a single JSON line across multiple `data` events to verify
+   * incremental line reassembly.
+   */
+  stdoutChunks?: string[];
   exitCode?: number;
   exitSignal?: NodeJS.Signals | null;
   delayBeforeExitMs?: number;
   delayBetweenLinesMs?: number;
+  delayBetweenChunksMs?: number;
   hangUntilSignal?: boolean;
   ignoreSigterm?: boolean;
   killDelayMs?: number;
@@ -64,10 +71,16 @@ class FakeChild extends EventEmitter {
 
   private async run(): Promise<void> {
     const lineDelay = this.opts.delayBetweenLinesMs ?? 0;
+    const chunkDelay = this.opts.delayBetweenChunksMs ?? 0;
     for (const line of this.opts.stdoutLines ?? []) {
       if (this.killed) break;
       this.stdout.write(line + '\n');
       if (lineDelay > 0) await sleep(lineDelay);
+    }
+    for (const chunk of this.opts.stdoutChunks ?? []) {
+      if (this.killed) break;
+      this.stdout.write(chunk);
+      if (chunkDelay > 0) await sleep(chunkDelay);
     }
     for (const line of this.opts.stderrLines ?? []) {
       if (this.killed) break;

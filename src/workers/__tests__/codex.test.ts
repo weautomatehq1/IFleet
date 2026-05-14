@@ -124,6 +124,50 @@ test('codex adapter: resume uses exec resume <id>', async () => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
+test('codex adapter: 401 surfaces as error (auth), not rate_limit', async () => {
+  // Auth failures must NOT be retried by the orchestrator — they need a hard
+  // `error` event so the operator gets paged. A 401 dressed as a `rate_limit`
+  // event would loop the worker pool forever on the same dead credential.
+  const authError = JSON.stringify({
+    type: 'error',
+    error: { message: 'unauthorized', status: 401 },
+  });
+  const fake = createFakeSpawn({ stdoutLines: [threadStarted, authError] });
+  const tmpRoot = mkdtempSync(join(tmpdir(), 'ifleet-codex-test-'));
+  const adapter = createCodexAdapter({ spawnImpl: fake.spawn, tmpRoot });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'codex',
+    workingDir: process.cwd(),
+  });
+  const events = await collect(handle.events);
+  await handle.result;
+  const rl = events.find((e) => e.kind === 'rate_limit');
+  assert.equal(rl, undefined, '401 must not produce a rate_limit event');
+  const err = events.find((e) => e.kind === 'error');
+  assert.ok(err && err.kind === 'error');
+  assert.equal(err.category, 'authentication_failed');
+  rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+test('codex adapter: reassembles JSON line split across stdout chunks', async () => {
+  const line = JSON.stringify({ type: 'thread.started', thread_id: 'codex-chunked-thread' });
+  const chunks = [line.slice(0, 7), line.slice(7, 25), line.slice(25), '\n'];
+  const fake = createFakeSpawn({ stdoutChunks: chunks });
+  const tmpRoot = mkdtempSync(join(tmpdir(), 'ifleet-codex-test-'));
+  const adapter = createCodexAdapter({ spawnImpl: fake.spawn, tmpRoot });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'codex',
+    workingDir: process.cwd(),
+  });
+  assert.equal(await handle.sessionId, 'codex-chunked-thread');
+  await handle.result;
+  rmSync(tmpRoot, { recursive: true, force: true });
+});
+
 test('codex adapter: non-zero exit rejects result with stderr tail', async () => {
   const fake = createFakeSpawn({
     stdoutLines: [threadStarted],
