@@ -20,6 +20,35 @@ const execFileAsync = promisify(execFile);
 
 const ThrottledOctokit = Octokit.plugin(throttling);
 
+/** Maximum number of times Octokit will retry a request that hit a rate limit. */
+export const THROTTLE_MAX_RETRIES = 2;
+
+interface ThrottleRequestOptions {
+  method?: string;
+  url?: string;
+  request?: { retryCount?: number };
+}
+
+/**
+ * Decide whether Octokit should retry a (primary or secondary) rate-limited
+ * request. Pure function exported so the wiring can be unit-tested.
+ *
+ * Returns `true` to retry, `false` to abort. Logs to the provided `logger`
+ * (defaults to `console.warn`) so tests can capture without polluting stdout.
+ */
+export function shouldRetryRateLimit(
+  retryAfter: number,
+  options: ThrottleRequestOptions,
+  kind: 'primary' | 'secondary',
+  logger: (msg: string) => void = console.warn,
+): boolean {
+  const retryCount = options.request?.retryCount ?? 0;
+  const where = `${options.method ?? '?'} ${options.url ?? '?'}`;
+  const tag = kind === 'secondary' ? 'secondary rate limit' : 'rate limit hit';
+  logger(`[queue] ${tag} on ${where}; retry in ${retryAfter}s (attempt ${retryCount + 1})`);
+  return retryCount < THROTTLE_MAX_RETRIES;
+}
+
 export interface GitHubQueueOptions {
   repos: RepoRef[];
   token?: string;
@@ -39,16 +68,10 @@ export async function createGitHubQueue(opts: GitHubQueueOptions): Promise<GitHu
     new ThrottledOctokit({
       auth: token,
       throttle: {
-        onRateLimit: (retryAfter, options) => {
-          const o = options as { method?: string; url?: string; request?: { retryCount?: number } };
-          console.warn(`[queue] rate limit hit on ${o.method} ${o.url}; retry in ${retryAfter}s`);
-          return (o.request?.retryCount ?? 0) < 2;
-        },
-        onSecondaryRateLimit: (retryAfter, options) => {
-          const o = options as { method?: string; url?: string; request?: { retryCount?: number } };
-          console.warn(`[queue] secondary rate limit on ${o.method} ${o.url}; retry in ${retryAfter}s`);
-          return (o.request?.retryCount ?? 0) < 2;
-        },
+        onRateLimit: (retryAfter, options) =>
+          shouldRetryRateLimit(retryAfter, options as ThrottleRequestOptions, 'primary'),
+        onSecondaryRateLimit: (retryAfter, options) =>
+          shouldRetryRateLimit(retryAfter, options as ThrottleRequestOptions, 'secondary'),
       },
     });
   return new GitHubQueue(octokit, opts);

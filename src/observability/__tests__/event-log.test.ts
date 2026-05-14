@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { FileEventLog } from '../event-log.js';
+import { dirname, join } from 'node:path';
+import { FileEventLog, parseEvents } from '../event-log.js';
 import type { Event } from '../types.js';
 
 function tmpRoot(): string {
@@ -68,5 +68,46 @@ describe('FileEventLog', () => {
 
     expect(events.map((e) => e.kind)).toEqual(['new1', 'new2']);
     await iter.return?.();
+  });
+
+  // Durability: the JSONL store is line-oriented, so a partial write (e.g.
+  // process killed mid-append) must leave previously-written lines parseable
+  // and must not poison subsequent reads.
+  it('recovers cleanly when the last line is truncated (crash mid-write)', () => {
+    const root = tmpRoot();
+    const log = new FileEventLog({ rootDir: root });
+    const good: Event = { ts: 1, sprintId: 'crash', kind: 'task.start', payload: { ok: 1 } };
+    log.append(good);
+
+    // Simulate a torn write: open the underlying file directly and append a
+    // half-line (no trailing newline). This is what `kill -9` mid-write
+    // produces on the filesystem.
+    const file = log.sprintFile('crash');
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, '{"ts":2,"sprintId":"crash","kind":"task.do', 'utf8');
+
+    const recovered = log.read('crash');
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toEqual(good);
+
+    // And a subsequent successful append still reads back correctly. The
+    // half-line stays orphaned but is silently skipped; the new event lands
+    // on its own line.
+    const after: Event = { ts: 3, sprintId: 'crash', kind: 'task.done', payload: {} };
+    log.append(after);
+    const final = log.read('crash');
+    expect(final.map((e) => e.ts)).toEqual([1, 3]);
+  });
+
+  it('parseEvents skips malformed lines without throwing', () => {
+    const raw = [
+      JSON.stringify({ ts: 1, sprintId: 's', kind: 'a', payload: {} }),
+      'not-json',
+      '',
+      '{"ts":2,"partial":',
+      JSON.stringify({ ts: 3, sprintId: 's', kind: 'b', payload: {} }),
+    ].join('\n');
+    const events = parseEvents(raw);
+    expect(events.map((e) => e.ts)).toEqual([1, 3]);
   });
 });

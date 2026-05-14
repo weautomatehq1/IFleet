@@ -1,14 +1,35 @@
 import type { Octokit } from '@octokit/rest';
 import type { IssueCommenter, WaitForApprovalOpts } from '../pipeline/types.js';
 
-const APPROVAL_REACTIONS = new Set(['+1', 'eyes']);
+// GitHub reaction `content` values that count as an approval to advance HITL.
+// `+1` is the closest equivalent to the spec's "✅" thumbs-up gesture; `rocket`
+// and `hooray` are commonly used by reviewers to signal "ship it"; `eyes`
+// remains for back-compat with earlier polling behavior.
+const APPROVAL_REACTIONS = new Set(['+1', 'rocket', 'hooray', 'eyes']);
+
+export interface IssueCommenterOptions {
+  /**
+   * Additional approver logins that may advance HITL via a reaction. Combined
+   * with the per-call `WaitForApprovalOpts.approver` value at poll time.
+   * Typically populated from CODEOWNERS.
+   */
+  approvers?: string[];
+}
+
+function normalizeLogin(login: string): string {
+  return login.replace(/^@/, '').toLowerCase();
+}
 
 export function createIssueCommenter(
   octokit: Octokit,
   owner: string,
   repo: string,
+  options: IssueCommenterOptions = {},
 ): IssueCommenter {
   let lastCommentId: number | null = null;
+  const factoryApprovers = (options.approvers ?? [])
+    .map(normalizeLogin)
+    .filter((s) => s.length > 0);
 
   return {
     async comment(issueNumber: number, body: string): Promise<void> {
@@ -31,7 +52,13 @@ export function createIssueCommenter(
         );
       }
       const commentId = lastCommentId;
-      const approverLogin = opts.approver.replace(/^@/, '');
+      const approverSet = new Set<string>(factoryApprovers);
+      if (opts.approver) approverSet.add(normalizeLogin(opts.approver));
+      if (approverSet.size === 0) {
+        throw new Error(
+          'waitForApproval: no approvers configured (pass approver via opts or approvers via factory)',
+        );
+      }
       const deadline = Date.now() + opts.timeoutMs;
 
       while (Date.now() < deadline) {
@@ -43,10 +70,12 @@ export function createIssueCommenter(
           comment_id: commentId,
         });
 
-        const approved = reactions.data.some(
-          (r) =>
-            APPROVAL_REACTIONS.has(r.content) && r.user?.login === approverLogin,
-        );
+        const approved = reactions.data.some((r) => {
+          if (!APPROVAL_REACTIONS.has(r.content)) return false;
+          const login = r.user?.login;
+          if (!login) return false;
+          return approverSet.has(login.toLowerCase());
+        });
         if (approved) return true;
 
         const remaining = deadline - Date.now();

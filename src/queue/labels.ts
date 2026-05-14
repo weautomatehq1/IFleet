@@ -1,4 +1,14 @@
-import type { RoutingHints, VerifyKind } from './types.js';
+import type { Octokit } from '@octokit/rest';
+import {
+  LABEL_AUTO_SHIP,
+  LABEL_CAPABILITY_BLOCKED,
+  LABEL_FAILED,
+  LABEL_IN_FLIGHT,
+  LABEL_SHIPPED,
+  type RepoRef,
+  type RoutingHints,
+  type VerifyKind,
+} from './types.js';
 
 const MODELS = new Set(['opus', 'sonnet', 'haiku', 'codex'] as const);
 const PRIORITIES = new Set(['low', 'normal', 'high'] as const);
@@ -90,4 +100,67 @@ function mergeVerify(current: VerifyKind[] | undefined, additions: VerifyKind[])
     if (!next.includes(kind)) next.push(kind);
   }
   return next;
+}
+
+export interface LabelSpec {
+  name: string;
+  color: string;
+  description?: string;
+}
+
+export const REQUIRED_LABELS: readonly LabelSpec[] = [
+  { name: LABEL_AUTO_SHIP, color: '0e8a16', description: 'Pick up via IFleet autonomous queue' },
+  { name: LABEL_IN_FLIGHT, color: 'fbca04', description: 'Currently being worked by an IFleet worker' },
+  { name: LABEL_SHIPPED, color: '6f42c1', description: 'IFleet shipped a PR for this issue' },
+  { name: LABEL_FAILED, color: 'd73a4a', description: 'IFleet attempted but failed' },
+  { name: LABEL_CAPABILITY_BLOCKED, color: 'b60205', description: 'Missing runner capability; not pickable' },
+];
+
+export interface EnsureLabelsResult {
+  /** Labels newly created on the repo during this call. */
+  created: string[];
+  /** Labels that already existed and were left untouched. */
+  existed: string[];
+}
+
+/**
+ * Idempotently ensure the given labels exist on a repository. Safe to call on
+ * every startup — labels that already exist short-circuit without error.
+ */
+export async function ensureLabels(
+  octokit: Octokit,
+  repo: RepoRef,
+  labels: readonly LabelSpec[] = REQUIRED_LABELS,
+): Promise<EnsureLabelsResult> {
+  const result: EnsureLabelsResult = { created: [], existed: [] };
+  for (const spec of labels) {
+    try {
+      await octokit.issues.createLabel({
+        owner: repo.owner,
+        repo: repo.name,
+        name: spec.name,
+        color: spec.color,
+        ...(spec.description ? { description: spec.description } : {}),
+      });
+      result.created.push(spec.name);
+    } catch (err: unknown) {
+      if (isAlreadyExists(err)) {
+        result.existed.push(spec.name);
+        continue;
+      }
+      throw err;
+    }
+  }
+  return result;
+}
+
+function isAlreadyExists(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const status = (err as { status?: number }).status;
+  if (status !== 422) return false;
+  // GitHub returns 422 with errors[].code === 'already_exists' when label exists.
+  const errors = (err as { response?: { data?: { errors?: Array<{ code?: string }> } } })
+    .response?.data?.errors;
+  if (!errors || errors.length === 0) return true;
+  return errors.some((e) => e.code === 'already_exists');
 }

@@ -149,6 +149,88 @@ describe('createIssueCommenter', () => {
     );
   });
 
+  it('waitForApproval accepts a rocket reaction as approval', async () => {
+    const { octokit } = makeMockOctokit({
+      reactionsConstant: [{ content: 'rocket', user: { login: 'seb' } }],
+    });
+    const commenter = createIssueCommenter(octokit, 'o', 'r');
+    await commenter.comment(1, 'plan');
+    const approved = await commenter.waitForApproval(1, {
+      approver: 'seb',
+      pollIntervalMs: 5,
+      timeoutMs: 1_000,
+      abortSignal: new AbortController().signal,
+    });
+    assert.equal(approved, true);
+  });
+
+  it('factory approvers list lets any CODEOWNER advance with +1', async () => {
+    const { octokit } = makeMockOctokit({
+      reactionsConstant: [{ content: '+1', user: { login: 'alice' } }],
+    });
+    const commenter = createIssueCommenter(octokit, 'o', 'r', {
+      approvers: ['monstersebas1', 'alice', 'bob'],
+    });
+    await commenter.comment(1, 'plan');
+    const approved = await commenter.waitForApproval(1, {
+      approver: 'monstersebas1',
+      pollIntervalMs: 5,
+      timeoutMs: 1_000,
+      abortSignal: new AbortController().signal,
+    });
+    assert.equal(approved, true);
+  });
+
+  it('a reaction from a non-CODEOWNER does NOT advance even with factory approvers', async () => {
+    const { octokit } = makeMockOctokit({
+      reactionsConstant: [{ content: '+1', user: { login: 'random-drive-by' } }],
+    });
+    const commenter = createIssueCommenter(octokit, 'o', 'r', {
+      approvers: ['monstersebas1', 'alice'],
+    });
+    await commenter.comment(1, 'plan');
+    const approved = await commenter.waitForApproval(1, {
+      approver: 'monstersebas1',
+      pollIntervalMs: 5,
+      timeoutMs: 40,
+      abortSignal: new AbortController().signal,
+    });
+    assert.equal(approved, false);
+  });
+
+  it('approver matching is case-insensitive and strips leading @', async () => {
+    const { octokit } = makeMockOctokit({
+      reactionsConstant: [{ content: '+1', user: { login: 'MonsterSebas1' } }],
+    });
+    const commenter = createIssueCommenter(octokit, 'o', 'r', {
+      approvers: ['@monstersebas1'],
+    });
+    await commenter.comment(1, 'plan');
+    const approved = await commenter.waitForApproval(1, {
+      approver: '@somebody-else',
+      pollIntervalMs: 5,
+      timeoutMs: 1_000,
+      abortSignal: new AbortController().signal,
+    });
+    assert.equal(approved, true);
+  });
+
+  it('throws when no approvers are configured anywhere', async () => {
+    const { octokit } = makeMockOctokit({ reactionsConstant: [] });
+    const commenter = createIssueCommenter(octokit, 'o', 'r');
+    await commenter.comment(1, 'plan');
+    await assert.rejects(
+      () =>
+        commenter.waitForApproval(1, {
+          approver: '',
+          pollIntervalMs: 5,
+          timeoutMs: 50,
+          abortSignal: new AbortController().signal,
+        }),
+      /no approvers configured/,
+    );
+  });
+
   it('waitForApproval polls the most recently posted comment', async () => {
     const { octokit, state } = makeMockOctokit({
       reactionsConstant: [{ content: '+1', user: { login: 'seb' } }],
