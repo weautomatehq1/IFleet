@@ -177,6 +177,43 @@ test('claude adapter: non-zero exit rejects result with stderr tail', async () =
   });
 });
 
+test('claude adapter: reassembles stream-json across stdout chunks (incremental parse)', async () => {
+  // Realistic streamed session split mid-line so the line reader has to
+  // reassemble. If incremental parsing regressed (e.g. someone replaced the
+  // line reader with a JSON.parse on a chunk), this test would fail because
+  // the partial chunks would not parse on their own.
+  const longText = 'lorem ipsum '.repeat(50);
+  const lines = [
+    JSON.stringify({ type: 'system', subtype: 'init', session_id: SESSION_ID }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: longText }] },
+    }),
+    JSON.stringify({ type: 'result', result: 'ok', total_cost_usd: 0.01 }),
+  ];
+  const chunks: string[] = [];
+  for (const line of lines) {
+    const a = Math.floor(line.length / 3);
+    const b = Math.floor((line.length * 2) / 3);
+    chunks.push(line.slice(0, a), line.slice(a, b), line.slice(b), '\n');
+  }
+  const fake = createFakeSpawn({ stdoutChunks: chunks });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+  const events = await collect(handle.events);
+  const result = await handle.result;
+  assert.equal(result.sessionId, SESSION_ID);
+  assert.equal(result.text, 'ok');
+  const progress = events.find((e) => e.kind === 'progress');
+  assert.ok(progress && progress.kind === 'progress');
+  assert.ok(progress.text.includes('lorem ipsum'));
+});
+
 test('claude adapter: categorizes 401 as authentication_failed', async () => {
   const authLine = JSON.stringify({
     type: 'system',
