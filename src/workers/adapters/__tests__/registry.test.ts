@@ -99,7 +99,7 @@ test('getActiveAdapter: defaults to claude-cli when env var unset', () => {
   }
 });
 
-test('getActiveAdapter: honors IFLEET_ADAPTER env var', () => {
+test('getActiveAdapter: honors IFLEET_ADAPTER env var', async () => {
   __resetAdapterRegistry();
   const previous = process.env[ADAPTER_ENV_VAR];
   process.env[ADAPTER_ENV_VAR] = 'vllm-local';
@@ -107,25 +107,22 @@ test('getActiveAdapter: honors IFLEET_ADAPTER env var', () => {
     registerAdapter('vllm-local', () => stubAdapter('vllm-local'));
     registerAdapter(DEFAULT_ADAPTER_NAME, () => stubAdapter(DEFAULT_ADAPTER_NAME));
     const adapter = getActiveAdapter();
-    // Resolve a spawn to inspect which factory ran.
-    return adapter
-      .spawn('t' as TaskId, '', {})
-      .then((h) => assert.equal(h.workerId, 'vllm-local'));
+    const h = await adapter.spawn('t' as TaskId, '', {});
+    assert.equal(h.workerId, 'vllm-local');
   } finally {
     if (previous === undefined) delete process.env[ADAPTER_ENV_VAR];
     else process.env[ADAPTER_ENV_VAR] = previous;
   }
 });
 
-test('getActiveAdapter: empty IFLEET_ADAPTER falls back to default', () => {
+test('getActiveAdapter: empty IFLEET_ADAPTER falls back to default', async () => {
   __resetAdapterRegistry();
   const previous = process.env[ADAPTER_ENV_VAR];
   process.env[ADAPTER_ENV_VAR] = '';
   try {
     registerAdapter(DEFAULT_ADAPTER_NAME, () => stubAdapter(DEFAULT_ADAPTER_NAME));
-    return getActiveAdapter()
-      .spawn('t' as TaskId, '', {})
-      .then((h) => assert.equal(h.workerId, DEFAULT_ADAPTER_NAME));
+    const h = await getActiveAdapter().spawn('t' as TaskId, '', {});
+    assert.equal(h.workerId, DEFAULT_ADAPTER_NAME);
   } finally {
     if (previous === undefined) delete process.env[ADAPTER_ENV_VAR];
     else process.env[ADAPTER_ENV_VAR] = previous;

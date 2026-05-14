@@ -38,7 +38,7 @@ export const DEFAULT_ADAPTER_NAME = 'claude-cli';
 export const ADAPTER_ENV_VAR = 'IFLEET_ADAPTER';
 
 export function registerAdapter(name: string, factory: AdapterFactory): void {
-  if (name === '') throw new Error('adapter name must not be empty');
+  if (name.trim() === '') throw new Error('adapter name must not be empty');
   REGISTRY.set(name, factory);
 }
 

@@ -215,7 +215,7 @@ test('claude-cli adapter: cancel() terminates the inner child', async () => {
 
 test('claude-cli adapter: self-registers on import under the canonical name', () => {
   __resetAdapterRegistry();
-  // Force re-execution of the module-scope side effect.
+  // Verify self-registration uses the canonical adapter name by resetting and re-registering.
   registerAdapter(CLAUDE_CLI_ADAPTER_NAME, () => createClaudeCliAdapter());
   assert.ok(hasAdapter(CLAUDE_CLI_ADAPTER_NAME));
   const adapter = resolveAdapter(CLAUDE_CLI_ADAPTER_NAME);
