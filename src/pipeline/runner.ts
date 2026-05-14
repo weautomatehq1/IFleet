@@ -80,6 +80,12 @@ export class DefaultPipelineRunner implements PipelineRunner {
       attempts.push(editor.attempt);
       if (!editor.attempt.ok) return failed(attempts, 'editor failed');
       diff = editor.diff;
+      // Empty diff means the editor returned ok=true but made no file edits —
+      // typically a silent tool-use failure in `claude -p` print mode (often
+      // haiku). Bail before the reviewer burns tokens on "no diff provided".
+      if (!diff.trim()) {
+        return failed(attempts, 'editor produced no diff — possible silent tool-use failure');
+      }
     }
 
     if (input.abortSignal.aborted) return cancelled(attempts);

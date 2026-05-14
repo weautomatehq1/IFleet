@@ -130,14 +130,28 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
-  it('editor never goes below haiku', () => {
+  it('editor is floored at sonnet even when architect is haiku', () => {
+    // Pre-fix this returned haiku/haiku, but haiku in `claude -p` print mode
+    // reliably returns ok=true while making zero file edits, which then burns
+    // reviewer tokens on an empty diff. The editor tier is now floored at
+    // sonnet regardless of how low the architect tier goes.
     const result = classifyTask({
       title: 'fix typo',
       body: '',
       labels: ['auto:ship'],
     });
     assert.equal(result.architect.model, 'claude-haiku-4-5-20251001');
-    assert.equal(result.editor.model, 'claude-haiku-4-5-20251001');
+    assert.equal(result.editor.model, 'claude-sonnet-4-6');
+  });
+
+  it('editor is sonnet when architect is sonnet (one tier below would be haiku, floor applies)', () => {
+    const result = classifyTask({
+      title: 'add a new feature toggle',
+      body: '',
+      labels: ['auto:ship'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
   it('priority:high bumps tier up one but is still capped at sonnet for architect', () => {
