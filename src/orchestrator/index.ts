@@ -123,6 +123,16 @@ export class Orchestrator {
     return rec;
   }
 
+  /**
+   * Resume a paused sprint (e.g. after a budget pause). Re-adds the sprint to
+   * the active set so the tick loop will continue dispatching its tasks.
+   */
+  resumeSprint(id: SprintId, reason: string = 'operator resume'): SprintRecord {
+    const rec = this.sprints.resumeSprint(id, reason);
+    this.activeSprintIds.add(id);
+    return rec;
+  }
+
   recordRateLimitHeaders(workerId: WorkerId, headers: RateLimitHeaders): void {
     const snap = this.pressure.recordHeaders(workerId, headers);
     this.store.saveRateLimit({ ...snap, tokensLimit: headers.tokensLimit });
