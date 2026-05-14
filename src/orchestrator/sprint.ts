@@ -45,6 +45,8 @@ export interface SprintManagerOptions {
   budgetUsd?: number;
   /** Called when a sprint is paused due to budget exhaustion. */
   onBudgetPaused?: (sprintId: SprintId, spentUsd: number, limitUsd: number) => void | Promise<void>;
+  /** Called when a sprint is paused because all workers are rate-cap blocked. */
+  onRatePaused?: (sprintId: SprintId, resetAt: number) => void | Promise<void>;
 }
 
 export interface StartSprintOpts {
@@ -101,7 +103,10 @@ export class SprintManager {
   private readonly running = new Map<TaskId, RunningTask>();
   private readonly budgetUsd: number | undefined;
   private readonly onBudgetPaused: SprintManagerOptions['onBudgetPaused'];
+  private readonly onRatePaused: SprintManagerOptions['onRatePaused'];
   private readonly sprintSpend = new Map<SprintId, number>();
+  /** resetAt timestamps for sprints paused due to rate-cap. Used for auto-resume. */
+  private readonly rateLimitResetAt = new Map<SprintId, number>();
 
   constructor(opts: SprintManagerOptions) {
     this.store = opts.store;
@@ -116,6 +121,7 @@ export class SprintManager {
     this.now = opts.now ?? Date.now;
     this.budgetUsd = opts.budgetUsd;
     this.onBudgetPaused = opts.onBudgetPaused;
+    this.onRatePaused = opts.onRatePaused;
   }
 
   startSprint(opts: StartSprintOpts): SprintRecord {
@@ -194,10 +200,21 @@ export class SprintManager {
   }
 
   async tick(sprintId: SprintId): Promise<void> {
-    const sprint = this.store.loadSprint(sprintId);
+    let sprint = this.store.loadSprint(sprintId);
     if (!sprint) return;
     if (TERMINAL_STATES.has(sprint.state.kind)) return;
-    if (sprint.state.kind === 'paused') return;
+
+    if (sprint.state.kind === 'paused') {
+      const resetAt = this.rateLimitResetAt.get(sprintId);
+      if (resetAt !== undefined && this.now() >= resetAt) {
+        this.rateLimitResetAt.delete(sprintId);
+        this.resumeSprint(sprintId, 'rate window opened');
+        sprint = this.store.loadSprint(sprintId);
+        if (!sprint) return;
+      } else {
+        return;
+      }
+    }
 
     if (sprint.state.kind === 'queued') {
       this.transition(sprintId, { kind: 'running', startedAt: this.now() });
@@ -254,6 +271,14 @@ export class SprintManager {
           .filter((p): p is string => Boolean(p));
         this.transition(sprintId, { kind: 'completed', at: this.now(), prs });
       }
+      return;
+    }
+
+    // Pause if pending tasks exist but all workers are rate-cap blocked.
+    const pendingCount = tasks.filter((t) => t.state.kind === 'pending').length;
+    const sprintHasRunning = Array.from(this.running.values()).some((r) => r.sprintId === sprintId);
+    if (pendingCount > 0 && !sprintHasRunning && !this.pickWorker()) {
+      await this.checkRateLimit(sprintId);
     }
   }
 
@@ -380,6 +405,38 @@ export class SprintManager {
     });
     await this.onBudgetPaused?.(sprintId, spentUsd, limit);
     return true;
+  }
+
+  private async checkRateLimit(sprintId: SprintId): Promise<void> {
+    const sprint = this.store.loadSprint(sprintId);
+    if (!sprint || sprint.state.kind !== 'running') return;
+
+    const workers = this.registry.all();
+    if (workers.length === 0) return;
+
+    const allBlocked = workers.every((w) => !this.pressure.shouldDispatch(w.id));
+    if (!allBlocked) return;
+
+    const now = this.now();
+    const futureSlots = workers
+      .map((w) => this.pressure.nextAvailableSlot(w.id))
+      .filter((r) => r > now);
+    if (futureSlots.length === 0) return;
+
+    const resetAt = Math.min(...futureSlots);
+    this.rateLimitResetAt.set(sprintId, resetAt);
+    this.transition(sprintId, {
+      kind: 'paused',
+      at: now,
+      reason: `rate cap reached, waiting until ${new Date(resetAt).toISOString()}`,
+    });
+    this.emit({
+      ts: now,
+      sprintId,
+      kind: 'sprint.rate_paused',
+      payload: { resetAt },
+    });
+    await this.onRatePaused?.(sprintId, resetAt);
   }
 
   private async awaitHandle(taskId: TaskId): Promise<void> {

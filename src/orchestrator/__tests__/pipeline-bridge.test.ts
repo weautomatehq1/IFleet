@@ -80,13 +80,13 @@ test('PipelineBridge maps non-pr_opened → exitCode 1 with failureReason', asyn
   assert.equal(result.pr, undefined);
 });
 
-test('PipelineBridge maps blocked_by_reviewer to exitCode 1 with status as error', async () => {
+test('PipelineBridge maps blocked_by_reviewer to exitCode 3 with status as error', async () => {
   const factory: PipelineRunnerFactory = async () =>
     makeBootstrap({ status: 'blocked_by_reviewer', attempts: [] });
   const bridge = new PipelineBridge(factory);
   const handle = await bridge.spawn(newTaskId('t3'), 'brief', {});
   const result = await handle.done;
-  assert.equal(result.exitCode, 1);
+  assert.equal(result.exitCode, 3);
   assert.equal(result.error, 'blocked_by_reviewer');
 });
 
@@ -122,7 +122,7 @@ test('PipelineBridge.cancel aborts the controller and resolves done', async () =
   const handle = await bridge.spawn(newTaskId('t5'), 'brief', {});
   await handle.cancel();
   const result = await handle.done;
-  assert.equal(result.exitCode, 1);
+  assert.equal(result.exitCode, 2);
   assert.equal(observedSignal?.aborted, true);
 });
 
@@ -137,4 +137,52 @@ test('PipelineBridge runs teardown after successful run', async () => {
   const handle = await bridge.spawn(newTaskId('t6'), 'brief', {});
   await handle.done;
   assert.equal(tornDown, true);
+});
+
+// Item 7: distinct exit codes for all four pipeline statuses
+test('PipelineBridge exit codes: pr_opened=0, failed=1, cancelled=2, blocked_by_reviewer=3', async () => {
+  async function exitCodeFor(status: PipelineResult['status']): Promise<number> {
+    const factory: PipelineRunnerFactory = async () =>
+      makeBootstrap({ status, attempts: [] });
+    const bridge = new PipelineBridge(factory);
+    const handle = await bridge.spawn(newTaskId('ec-' + status), 'brief', {});
+    return (await handle.done).exitCode;
+  }
+  assert.equal(await exitCodeFor('pr_opened'), 0);
+  assert.equal(await exitCodeFor('failed'), 1);
+  assert.equal(await exitCodeFor('cancelled'), 2);
+  assert.equal(await exitCodeFor('blocked_by_reviewer'), 3);
+});
+
+// Item 5: decodeBridgeBrief rejects malformed QueuedTask payloads
+test('decodeBridgeBrief returns undefined when task is missing required fields', () => {
+  const bad = (task: unknown): string =>
+    JSON.stringify({ kind: 'ifleet.pipeline.v1', task });
+  assert.equal(decodeBridgeBrief(bad({})), undefined, 'empty task object');
+  assert.equal(decodeBridgeBrief(bad({ id: 't', issueNumber: 1 })), undefined, 'partial task');
+  assert.equal(
+    decodeBridgeBrief(bad({ id: 't', issueNumber: 'not-a-number', repo: 'x/y', title: 't', body: 'b', autonomy: 'auto', labels: [] })),
+    undefined,
+    'issueNumber is string',
+  );
+  // valid task should decode successfully
+  const valid = makeTask();
+  assert.deepEqual(decodeBridgeBrief(JSON.stringify({ kind: 'ifleet.pipeline.v1', task: valid })), valid);
+});
+
+// Item 8: warn when abortController is absent from bootstrap
+test('PipelineBridge warns when bootstrap has no abortController', async () => {
+  const warnings: string[] = [];
+  const orig = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(String(args[0])); };
+  try {
+    const factory: PipelineRunnerFactory = async () =>
+      makeBootstrap({ status: 'pr_opened', prUrl: 'https://x/2', attempts: [] });
+    const bridge = new PipelineBridge(factory);
+    const handle = await bridge.spawn(newTaskId('t7'), 'brief', {});
+    await handle.done;
+  } finally {
+    console.warn = orig;
+  }
+  assert.ok(warnings.some((w) => w.includes('no abortController')), `expected abort warning, got: ${JSON.stringify(warnings)}`);
 });

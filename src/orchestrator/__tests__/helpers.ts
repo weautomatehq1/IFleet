@@ -141,6 +141,7 @@ export function makeManager(opts: {
   capabilities?: Capabilities;
   budgetUsd?: number;
   onBudgetPaused?: (sprintId: SprintId, spentUsd: number, limitUsd: number) => void | Promise<void>;
+  onRatePaused?: (sprintId: SprintId, resetAt: number) => void | Promise<void>;
 } = {}): ManagerHarness {
   const env = makeTempEnv();
   const pressure = new PressureTracker({ now: opts.now });
@@ -157,6 +158,7 @@ export function makeManager(opts: {
     now: opts.now,
     budgetUsd: opts.budgetUsd,
     onBudgetPaused: opts.onBudgetPaused,
+    onRatePaused: opts.onRatePaused,
   });
   return { env, manager, pressure, adapter, events };
 }

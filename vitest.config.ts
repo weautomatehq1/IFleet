@@ -7,6 +7,7 @@ export default defineConfig({
       'src/verify/**/*.test.ts',
       'src/observability/**/*.test.ts',
       'src/pipeline/**/*.test.ts',
+      'src/config/**/*.test.ts',
       'scripts/__tests__/**/*.test.ts',
     ],
     environment: 'node',
