@@ -35,6 +35,10 @@ export interface RoutingDecision {
   architect: WorkerSpec;
   editor: WorkerSpec;
   reviewer: WorkerSpec;
+  // Optional cheap first-pass reviewer. When present, the pipeline runs this
+  // worker before the full reviewer; a CLEAN verdict short-circuits the round
+  // and the full reviewer is never spawned. Absent → gate disabled.
+  haikuGate?: WorkerSpec;
   verify: VerifyKind[];
 }
 
@@ -131,6 +135,10 @@ export interface AttemptRecord {
   ok: boolean;
   output: string;
   rateLimitHits: number;
+  // Only set on reviewer attempts when the haiku cost-split gate is active.
+  // 'haiku' = approved by gate, full reviewer skipped. 'full' = gate said
+  // REVIEW_NEEDED or errored, and the full reviewer ran.
+  gate?: 'haiku' | 'full';
 }
 
 export type PipelineStatus =

@@ -2,9 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   assertCrossProviderRule,
   CrossProviderRuleViolation,
+  parseGateOutput,
   parseVerdict,
+  runReviewer,
 } from '../reviewer.js';
 import type { WorkerSpec } from '../types.js';
+import { makeMockWorkerPool } from './helpers.js';
 
 const claude: WorkerSpec = { provider: 'claude', model: 'opus', workerId: 'c1' };
 const codex: WorkerSpec = { provider: 'codex', model: 'gpt-5.5', workerId: 'x1' };
@@ -68,5 +71,120 @@ describe('parseVerdict', () => {
   it('rejects an invalid verdict value', () => {
     const v = parseVerdict('{"verdict":"maybe","concerns":[]}');
     expect(v.verdict).toBe('request_changes');
+  });
+});
+
+describe('parseGateOutput', () => {
+  it('treats bare CLEAN as clean', () => {
+    expect(parseGateOutput('CLEAN').kind).toBe('clean');
+  });
+  it('tolerates whitespace and quotes around CLEAN', () => {
+    expect(parseGateOutput('  "CLEAN"  \n').kind).toBe('clean');
+  });
+  it('escalates on REVIEW_NEEDED with reason', () => {
+    const r = parseGateOutput('REVIEW_NEEDED: missing null check in handler');
+    expect(r.kind).toBe('escalate');
+    if (r.kind === 'escalate') expect(r.reason).toContain('null check');
+  });
+  it('escalates on unrecognized output rather than approving', () => {
+    const r = parseGateOutput('I think this looks fine to me');
+    expect(r.kind).toBe('escalate');
+  });
+  it('errors on empty output', () => {
+    expect(parseGateOutput('   ').kind).toBe('error');
+  });
+});
+
+describe('runReviewer haiku gate', () => {
+  const editor: WorkerSpec = { provider: 'codex', model: 'gpt-5.5', workerId: 'codex-1' };
+  const reviewer: WorkerSpec = { provider: 'claude', model: 'opus', workerId: 'claude-reviewer-1' };
+  const gate: WorkerSpec = { provider: 'claude', model: 'haiku', workerId: 'claude-gate-1' };
+  const controller = new AbortController();
+
+  it('CLEAN gate short-circuits: full reviewer is NOT spawned', async () => {
+    const pool = makeMockWorkerPool([{ role: 'reviewer', output: 'CLEAN' }]);
+    const out = await runReviewer({
+      editorSpec: editor,
+      reviewerSpec: reviewer,
+      haikuGateSpec: gate,
+      workerPool: pool,
+      brief: 'b',
+      plan: 'p',
+      diff: 'd',
+      abortSignal: controller.signal,
+    });
+    expect(out.gate).toBe('haiku');
+    expect(out.verdict.verdict).toBe('approve');
+    expect(out.attempt.workerId).toBe('claude-gate-1');
+    expect(out.attempt.gate).toBe('haiku');
+    expect(pool.calls).toHaveLength(1);
+    expect(pool.calls[0]?.spec.workerId).toBe('claude-gate-1');
+  });
+
+  it('REVIEW_NEEDED gate → full reviewer runs and its verdict wins', async () => {
+    const pool = makeMockWorkerPool([
+      { role: 'reviewer', output: 'REVIEW_NEEDED: changes auth flow' },
+      { role: 'reviewer', output: '{"verdict":"request_changes","concerns":["x.ts:1 bad"]}' },
+    ]);
+    const out = await runReviewer({
+      editorSpec: editor,
+      reviewerSpec: reviewer,
+      haikuGateSpec: gate,
+      workerPool: pool,
+      brief: 'b',
+      plan: 'p',
+      diff: 'd',
+      abortSignal: controller.signal,
+    });
+    expect(out.gate).toBe('full');
+    expect(out.verdict.verdict).toBe('request_changes');
+    expect(out.verdict.concerns).toContain('x.ts:1 bad');
+    expect(out.attempt.workerId).toBe('claude-reviewer-1');
+    expect(out.attempt.gate).toBe('full');
+    expect(pool.calls).toHaveLength(2);
+    expect(pool.calls[0]?.spec.workerId).toBe('claude-gate-1');
+    expect(pool.calls[1]?.spec.workerId).toBe('claude-reviewer-1');
+  });
+
+  it('gate worker error → full reviewer runs (safe fallback)', async () => {
+    // Script the gate spawn to return ok=false; the full reviewer must still
+    // execute and approve. Without the fallback, an unreliable haiku could
+    // silently block every review.
+    const pool = makeMockWorkerPool([
+      { role: 'reviewer', output: '', ok: false },
+      { role: 'reviewer', output: '{"verdict":"approve","concerns":[]}' },
+    ]);
+    const out = await runReviewer({
+      editorSpec: editor,
+      reviewerSpec: reviewer,
+      haikuGateSpec: gate,
+      workerPool: pool,
+      brief: 'b',
+      plan: 'p',
+      diff: 'd',
+      abortSignal: controller.signal,
+    });
+    expect(out.gate).toBe('full');
+    expect(out.verdict.verdict).toBe('approve');
+    expect(pool.calls).toHaveLength(2);
+  });
+
+  it('no gate spec → full reviewer runs immediately (backwards compat)', async () => {
+    const pool = makeMockWorkerPool([
+      { role: 'reviewer', output: '{"verdict":"approve","concerns":[]}' },
+    ]);
+    const out = await runReviewer({
+      editorSpec: editor,
+      reviewerSpec: reviewer,
+      workerPool: pool,
+      brief: 'b',
+      plan: 'p',
+      diff: 'd',
+      abortSignal: controller.signal,
+    });
+    expect(out.gate).toBe('full');
+    expect(out.verdict.verdict).toBe('approve');
+    expect(pool.calls).toHaveLength(1);
+    expect(pool.calls[0]?.spec.workerId).toBe('claude-reviewer-1');
   });
 });
