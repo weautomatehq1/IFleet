@@ -21,8 +21,13 @@ export class DefaultPipelineRunner implements PipelineRunner {
     const reviewerMaxRounds = input.reviewerMaxRounds ?? DEFAULT_REVIEWER_MAX_ROUNDS;
     const approver = input.approver ?? '@monstersebas1';
 
+    const poolProviders = new Set([
+      input.routing.architect.provider,
+      input.routing.editor.provider,
+      input.routing.reviewer.provider,
+    ]);
     try {
-      assertCrossProviderRule(input.routing.editor, input.routing.reviewer);
+      assertCrossProviderRule(input.routing.editor, input.routing.reviewer, poolProviders);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return failed(attempts, message);
@@ -137,6 +142,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       const reviewer = await runReviewer({
         editorSpec: input.routing.editor,
         reviewerSpec: input.routing.reviewer,
+        availableProviders: poolProviders,
         workerPool: input.workerPool,
         brief: input.task.body,
         plan,
