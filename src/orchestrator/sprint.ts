@@ -258,6 +258,7 @@ export class SprintManager {
         t.state.kind === 'completed' || t.state.kind === 'failed' || t.state.kind === 'cancelled',
     );
     if (tasks.length > 0 && allTerminal && this.running.size === 0) {
+      // A worker self-cancel (exit 2) is treated as sprint failure: a sprint where any task did not complete is a failed sprint.
       const anyFailed = tasks.some((t) => t.state.kind === 'failed' || t.state.kind === 'cancelled');
       if (anyFailed) {
         this.transition(sprintId, {
