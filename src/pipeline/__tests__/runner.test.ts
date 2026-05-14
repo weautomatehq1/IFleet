@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DefaultPipelineRunner } from '../runner.js';
 import {
   approveJson,
@@ -116,10 +116,12 @@ describe('DefaultPipelineRunner', () => {
     expect(workerPool.calls).toHaveLength(0);
   });
 
-  it('cross-provider rule: claude editor + claude reviewer → failed before any spawn', async () => {
+  it('cross-provider rule: claude editor + claude reviewer in multi-provider pool → failed before any spawn', async () => {
+    // architect=codex makes the pool multi-provider → strict rule applies
     const { input, workerPool } = buildPipelineInput({
       scripted: [],
       routing: {
+        architect: { provider: 'codex', model: 'gpt-5.5', workerId: 'codex-0' },
         editor: { provider: 'claude', model: 'opus-4.7', workerId: 'claude-1' },
         reviewer: { provider: 'claude', model: 'opus-4.7', workerId: 'claude-2' },
       },
@@ -130,6 +132,29 @@ describe('DefaultPipelineRunner', () => {
     expect(result.status).toBe('failed');
     expect(result.failureReason).toMatch(/opposite/);
     expect(workerPool.calls).toHaveLength(0);
+  });
+
+  it('cross-provider rule: single-provider pool warns but does not block pipeline', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // all roles claude → pool size 1 → permissive mode
+    const { input } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'done' },
+        { role: 'reviewer', output: approveJson() },
+      ],
+      routing: {
+        architect: { provider: 'claude', model: 'haiku-4.5', workerId: 'claude-0' },
+        editor: { provider: 'claude', model: 'haiku-4.5', workerId: 'claude-1' },
+        reviewer: { provider: 'claude', model: 'haiku-4.5', workerId: 'claude-2' },
+      },
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('cross-provider rule skipped'));
+    expect(result.failureReason ?? '').not.toMatch(/opposite/);
+    warn.mockRestore();
   });
 
   it('PR gating: verify fails after reviewer fix-pass → failed, no PR opened', async () => {

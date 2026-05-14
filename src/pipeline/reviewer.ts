@@ -9,6 +9,7 @@ import { REVIEWER_SYSTEM_PROMPT } from './prompts.js';
 export interface RunReviewerInput {
   editorSpec: WorkerSpec;
   reviewerSpec: WorkerSpec;
+  availableProviders?: ReadonlySet<string>;
   workerPool: WorkerPool;
   brief: string;
   plan: string;
@@ -31,14 +32,25 @@ export class CrossProviderRuleViolation extends Error {
   }
 }
 
-export function assertCrossProviderRule(editor: WorkerSpec, reviewer: WorkerSpec): void {
-  if (editor.provider === reviewer.provider) {
-    throw new CrossProviderRuleViolation(editor, reviewer);
+export function assertCrossProviderRule(
+  editor: WorkerSpec,
+  reviewer: WorkerSpec,
+  availableProviders?: ReadonlySet<string>,
+): void {
+  if (editor.provider !== reviewer.provider) return;
+  // Single-provider pool: cross-provider review is impossible. Warn and continue.
+  if (availableProviders !== undefined && availableProviders.size <= 1) {
+    console.warn(
+      `[reviewer] cross-provider rule skipped: only provider "${editor.provider}" is registered. ` +
+        `Enable a second worker provider for independent review.`,
+    );
+    return;
   }
+  throw new CrossProviderRuleViolation(editor, reviewer);
 }
 
 export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutput> {
-  assertCrossProviderRule(input.editorSpec, input.reviewerSpec);
+  assertCrossProviderRule(input.editorSpec, input.reviewerSpec, input.availableProviders);
 
   const brief = [
     '## Original brief',
