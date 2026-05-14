@@ -255,10 +255,10 @@ export class SprintManager {
 
     const allTerminal = tasks.every(
       (t) =>
-        t.state.kind === 'completed' || t.state.kind === 'failed',
+        t.state.kind === 'completed' || t.state.kind === 'failed' || t.state.kind === 'cancelled',
     );
     if (tasks.length > 0 && allTerminal && this.running.size === 0) {
-      const anyFailed = tasks.some((t) => t.state.kind === 'failed');
+      const anyFailed = tasks.some((t) => t.state.kind === 'failed' || t.state.kind === 'cancelled');
       if (anyFailed) {
         this.transition(sprintId, {
           kind: 'failed',
@@ -449,38 +449,71 @@ export class SprintManager {
       const task = this.store.loadTask(taskId);
       if (!task) return;
       const spentUsd = this.accumulateCost(task.sprintId, result.totalCostUsd);
-      if (result.exitCode === 0) {
-        this.store.saveTask({
-          ...task,
-          state: { kind: 'completed', at: this.now(), pr: result.pr },
-          updatedAt: this.now(),
-        });
-        this.emit({
-          ts: this.now(),
-          sprintId: task.sprintId,
-          taskId,
-          workerId: entry.workerId,
-          kind: 'task.completed',
-          payload: { pr: result.pr ?? null, costUsd: result.totalCostUsd ?? 0 },
-        });
-      } else {
-        this.store.saveTask({
-          ...task,
-          state: {
-            kind: 'failed',
-            at: this.now(),
-            error: result.error ?? `exit ${result.exitCode}`,
-          },
-          updatedAt: this.now(),
-        });
-        this.emit({
-          ts: this.now(),
-          sprintId: task.sprintId,
-          taskId,
-          workerId: entry.workerId,
-          kind: 'task.failed',
-          payload: { exitCode: result.exitCode, error: result.error ?? null, costUsd: result.totalCostUsd ?? 0 },
-        });
+      switch (result.exitCode) {
+        case 0:
+          this.store.saveTask({
+            ...task,
+            state: { kind: 'completed', at: this.now(), pr: result.pr },
+            updatedAt: this.now(),
+          });
+          this.emit({
+            ts: this.now(),
+            sprintId: task.sprintId,
+            taskId,
+            workerId: entry.workerId,
+            kind: 'task.completed',
+            payload: { pr: result.pr ?? null, costUsd: result.totalCostUsd ?? 0 },
+          });
+          break;
+        case 2:
+          this.store.saveTask({
+            ...task,
+            state: { kind: 'cancelled', at: this.now(), reason: result.error ?? 'cancelled by worker' },
+            updatedAt: this.now(),
+          });
+          this.emit({
+            ts: this.now(),
+            sprintId: task.sprintId,
+            taskId,
+            workerId: entry.workerId,
+            kind: 'task.cancelled',
+            payload: { exitCode: result.exitCode, costUsd: result.totalCostUsd ?? 0 },
+          });
+          break;
+        case 3:
+          this.store.saveTask({
+            ...task,
+            state: { kind: 'failed', at: this.now(), error: result.error ?? 'blocked_by_reviewer' },
+            updatedAt: this.now(),
+          });
+          this.emit({
+            ts: this.now(),
+            sprintId: task.sprintId,
+            taskId,
+            workerId: entry.workerId,
+            kind: 'task.capability_blocked',
+            payload: { exitCode: result.exitCode, error: result.error ?? null, costUsd: result.totalCostUsd ?? 0 },
+          });
+          break;
+        default:
+          this.store.saveTask({
+            ...task,
+            state: {
+              kind: 'failed',
+              at: this.now(),
+              error: result.error ?? `exit ${result.exitCode}`,
+            },
+            updatedAt: this.now(),
+          });
+          this.emit({
+            ts: this.now(),
+            sprintId: task.sprintId,
+            taskId,
+            workerId: entry.workerId,
+            kind: 'task.failed',
+            payload: { exitCode: result.exitCode, error: result.error ?? null, costUsd: result.totalCostUsd ?? 0 },
+          });
+          break;
       }
       await this.checkBudget(task.sprintId, spentUsd);
     } catch (err) {

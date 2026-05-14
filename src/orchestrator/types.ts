@@ -45,6 +45,7 @@ export type TaskState =
   | { kind: 'assigned'; workerId: WorkerId; at: number }
   | { kind: 'running'; workerId: WorkerId; startedAt: number }
   | { kind: 'completed'; at: number; pr?: string }
+  | { kind: 'cancelled'; at: number; reason: string }
   | { kind: 'failed'; at: number; error: string };
 
 export interface TaskRecord {

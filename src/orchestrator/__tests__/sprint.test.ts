@@ -342,6 +342,56 @@ test('rate-limit: sprint pauses when all workers are rate-cap blocked', async ()
   }
 });
 
+test('awaitHandle: exitCode 2 → task cancelled, task.cancelled event emitted (not task.failed)', async () => {
+  const h = makeManager({ adapter: new MockAdapter({ exitCode: 2, error: 'user cancelled' }) });
+  try {
+    const rec = h.manager.startSprint({
+      mode: 'normal',
+      goal: 'g',
+      newTaskBriefs: ['t1'],
+    });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    const task = h.env.store.loadTask(rec.tasks[0]!);
+    assert.equal(task?.state.kind, 'cancelled', 'task should be in cancelled state');
+    if (task?.state.kind === 'cancelled') {
+      assert.equal(task.state.reason, 'user cancelled');
+    }
+    const cancelledEvent = h.events.find((e) => e.kind === 'task.cancelled');
+    assert.ok(cancelledEvent, 'expected task.cancelled event');
+    const failedEvent = h.events.find((e) => e.kind === 'task.failed');
+    assert.equal(failedEvent, undefined, 'task.failed must not be emitted');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('awaitHandle: exitCode 3 → task failed, task.capability_blocked event emitted (not task.failed)', async () => {
+  const h = makeManager({ adapter: new MockAdapter({ exitCode: 3, error: 'reviewer blocked' }) });
+  try {
+    const rec = h.manager.startSprint({
+      mode: 'normal',
+      goal: 'g',
+      newTaskBriefs: ['t1'],
+    });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    const task = h.env.store.loadTask(rec.tasks[0]!);
+    assert.equal(task?.state.kind, 'failed', 'task should be in failed state');
+    if (task?.state.kind === 'failed') {
+      assert.equal(task.state.error, 'reviewer blocked');
+    }
+    const blockedEvent = h.events.find((e) => e.kind === 'task.capability_blocked');
+    assert.ok(blockedEvent, 'expected task.capability_blocked event');
+    const failedEvent = h.events.find((e) => e.kind === 'task.failed');
+    assert.equal(failedEvent, undefined, 'task.failed must not be emitted');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
 test('rate-limit: sprint auto-resumes when resetAt has passed', async () => {
   let now = 1000;
   const resetAt = 60_000;
