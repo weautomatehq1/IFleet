@@ -28,6 +28,7 @@ import { symlinkSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createGitHubQueue } from '../src/queue/github.ts';
+import { createIssueCommenter } from '../src/queue/issue-commenter.ts';
 import { classifyTask } from '../src/classifier/index.ts';
 import { createClaudeAdapter } from '../src/workers/claude.ts';
 import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
@@ -198,35 +199,6 @@ function makePipelineFactory(deps: PipelineFactoryDeps): PipelineRunnerFactory {
   };
 }
 
-function buildIssueCommenter(octokit: Octokit, owner: string, repo: string): IssueCommenter {
-  return {
-    async comment(issueNumber: number, body: string): Promise<void> {
-      await octokit.issues.createComment({ owner, repo, issue_number: issueNumber, body });
-    },
-    async waitForApproval(issueNumber, opts) {
-      // With autonomy:auto the pipeline short-circuits before calling this.
-      // If called anyway (e.g. autonomy:review), we poll for a comment from approver.
-      const deadline = Date.now() + opts.timeoutMs;
-      while (Date.now() < deadline) {
-        if (opts.abortSignal.aborted) return false;
-        const comments = await octokit.issues.listComments({
-          owner,
-          repo,
-          issue_number: issueNumber,
-        });
-        const found = comments.data.some(
-          (c) =>
-            c.user?.login === opts.approver.replace(/^@/, '') &&
-            /\bapprove\b|\blgtm\b/i.test(c.body ?? ''),
-        );
-        if (found) return true;
-        await delay(opts.pollIntervalMs);
-      }
-      return false;
-    },
-  };
-}
-
 function buildPrOpener(): PrOpener {
   return {
     async open(input) {
@@ -313,10 +285,6 @@ async function teardownWorktree(issueNumber: number, branchName?: string): Promi
 
 function log(msg: string): void {
   console.log(`[smoke ${new Date().toISOString()}] ${msg}`);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function main(): Promise<void> {
@@ -406,7 +374,7 @@ async function main(): Promise<void> {
     worktreePath,
     routing,
     verify: buildVerifyAdapter(),
-    issues: buildIssueCommenter(octokit, owner, repoName),
+    issues: createIssueCommenter(octokit, owner, repoName),
     pr: buildPrOpener(),
     git: buildGitOps(),
     abortController,
