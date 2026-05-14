@@ -19,3 +19,15 @@ export {
   createClaudeCliAdapter,
   type ClaudeCliAdapterOptions,
 } from './claude-cli.ts';
+
+export {
+  __resetPipelineAdapterRegistry,
+  createClaudeCliPipelineAdapter,
+  getActivePipelineAdapter,
+  hasPipelineAdapter,
+  listPipelineAdapters,
+  registerPipelineAdapter,
+  resolvePipelineAdapter,
+  type ClaudeCliPipelineOptions,
+  type PipelineAdapterFactory,
+} from './pipeline-registry.ts';
