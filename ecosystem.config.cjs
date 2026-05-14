@@ -30,6 +30,8 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: 'production',
+        DISCORD_IFLEET_WEBHOOK: '', // Discord webhook URL for budget-pause and rate-limit alerts
+        BUDGET_USD: '', // Sprint cost cap in USD; empty = no cap
       },
     },
   ],
