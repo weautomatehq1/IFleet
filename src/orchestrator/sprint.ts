@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { Capabilities } from './capabilities';
 import { isCapabilityAvailable } from './capabilities';
+import { PipelineBridge, type PipelineRunnerFactory } from './pipeline-bridge';
 import type { PressureTracker } from './pressure';
 import type { StateStore } from './store';
 import type { WorkerRegistry } from './workers';
@@ -29,6 +30,13 @@ export interface SprintManagerOptions {
   registry: WorkerRegistry;
   pressure: PressureTracker;
   adapter: WorkerAdapter;
+  /**
+   * When provided, the manager wraps the factory in a {@link PipelineBridge}
+   * and drives the full Architect → Editor → Reviewer pipeline instead of
+   * calling the raw `adapter`. The `adapter` field is still required as the
+   * low-level primitive (it remains the fallback when no factory is supplied).
+   */
+  pipelineFactory?: PipelineRunnerFactory;
   briefLoader: TaskBriefLoader;
   emit: (event: OrchestratorEvent) => void;
   capabilities?: Capabilities;
@@ -99,7 +107,9 @@ export class SprintManager {
     this.store = opts.store;
     this.registry = opts.registry;
     this.pressure = opts.pressure;
-    this.adapter = opts.adapter;
+    this.adapter = opts.pipelineFactory
+      ? new PipelineBridge(opts.pipelineFactory)
+      : opts.adapter;
     this.briefLoader = opts.briefLoader;
     this.emit = opts.emit;
     this.capabilities = opts.capabilities;

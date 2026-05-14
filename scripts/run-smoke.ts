@@ -8,9 +8,12 @@
  * Usage:  npx tsx scripts/run-smoke.ts [--issue <number>]
  *
  * Known Phase A limitations (surface them, don't hide them):
- *  1. WorkerAdapter type in orchestrator/types.ts diverges from the
- *     pipeline's WorkerPool interface — the orchestrator tick machinery is
- *     bypassed here; we call the pipeline runner directly.
+ *  1. The smoke driver now goes through `PipelineBridge` so it shares a
+ *     `PipelineRunnerFactory` with the orchestrator (Phase B work). The
+ *     bridge wraps `DefaultPipelineRunner` behind `WorkerAdapter`, which is
+ *     what `SprintManager` consumes. Full SprintManager wiring (store +
+ *     registry + pressure) is intentionally deferred — the bridge already
+ *     gives both code paths a single seam.
  *  2. Cross-provider reviewer rule requires Codex; Codex is not yet enabled.
  *     We spoof reviewer.provider='codex' so the assertion passes, but both
  *     editor and reviewer run on Claude. Document this so Phase B can fix it.
@@ -30,6 +33,14 @@ import { createClaudeAdapter } from '../src/workers/claude.ts';
 import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
 import { titleToBranchName } from '../src/utils/branch-name.ts';
+import {
+  PipelineBridge,
+  decodeBridgeBrief,
+  encodeBridgeBrief,
+  type PipelineRunBootstrap,
+  type PipelineRunnerFactory,
+} from '../src/orchestrator/pipeline-bridge.ts';
+import { newTaskId } from '../src/orchestrator/types.ts';
 import type {
   WorkerPool,
   WorkerSpec,
@@ -40,9 +51,10 @@ import type {
   GitOps,
   QueuedTask as PipelineTask,
   PipelineInput,
+  PipelineResult,
+  RoutingDecision,
   VerifyRunner as PipelineVerifyRunner,
 } from '../src/pipeline/types.ts';
-import type { QueuedTask } from '../src/queue/types.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, '..');
@@ -138,6 +150,51 @@ function buildVerifyAdapter(): PipelineVerifyRunner {
         .map(([k, v]) => ({ kind: k as typeof kinds[number], log: v.output }));
       return { ok: result.ok, failures };
     },
+  };
+}
+
+interface PipelineFactoryDeps {
+  workerPool: WorkerPool;
+  worktreePath: string;
+  routing: RoutingDecision;
+  verify: PipelineVerifyRunner;
+  issues: IssueCommenter;
+  pr: PrOpener;
+  git: GitOps;
+  abortController: AbortController;
+  captured: { result?: PipelineResult };
+}
+
+function makePipelineFactory(deps: PipelineFactoryDeps): PipelineRunnerFactory {
+  return async (_taskId, brief, _opts): Promise<PipelineRunBootstrap> => {
+    const decoded = decodeBridgeBrief(brief);
+    if (!decoded) {
+      throw new Error('pipeline-bridge brief is not a structured QueuedTask payload');
+    }
+    const innerRunner = new DefaultPipelineRunner();
+    const runner = {
+      async run(input: PipelineInput) {
+        const result = await innerRunner.run(input);
+        deps.captured.result = result;
+        return result;
+      },
+    };
+    const input: PipelineInput = {
+      task: decoded,
+      workerPool: deps.workerPool,
+      worktreePath: deps.worktreePath,
+      routing: deps.routing,
+      abortSignal: deps.abortController.signal,
+      verify: deps.verify,
+      issues: deps.issues,
+      pr: deps.pr,
+      git: deps.git,
+      codeowners: ['@monstersebas1'],
+      baseBranch: 'main',
+      approver: '@monstersebas1',
+      repoRoot: REPO_ROOT,
+    };
+    return { runner, input, abortController: deps.abortController };
   };
 }
 
@@ -338,29 +395,40 @@ async function main(): Promise<void> {
   if (!ghToken) throw new Error('No GitHub token: set GITHUB_TOKEN or run `gh auth login`');
   const octokit = new Octokit({ auth: ghToken });
 
-  const input: PipelineInput = {
-    task: pipelineTask,
+  // Build a factory that wires the pipeline collaborators around a brief.
+  // The bridge calls this once per spawn; SprintManager will drive the same
+  // shape in Phase B+ when it routes through PipelineBridge instead of a
+  // raw WorkerAdapter.
+  const abortController = new AbortController();
+  const captured: { result?: PipelineResult } = {};
+  const factory = makePipelineFactory({
     workerPool: buildWorkerPool(),
     worktreePath,
     routing,
-    abortSignal: new AbortController().signal,
     verify: buildVerifyAdapter(),
     issues: buildIssueCommenter(octokit, owner, repoName),
     pr: buildPrOpener(),
     git: buildGitOps(),
-    codeowners: ['@monstersebas1'],
-    baseBranch: 'main',
-    approver: '@monstersebas1',
-    repoRoot: REPO_ROOT,
-  };
+    abortController,
+    captured,
+  });
 
   log('Running pipeline...');
   log('  Phases: Architect → Editor → Verify → Reviewer → PR');
 
-  const runner = new DefaultPipelineRunner();
+  const bridge = new PipelineBridge(factory);
   let result;
   try {
-    result = await runner.run(input);
+    const handle = await bridge.spawn(
+      newTaskId(rawTask.id),
+      encodeBridgeBrief(pipelineTask),
+      {},
+    );
+    const spawnResult = await handle.done;
+    if (!captured.result) {
+      throw new Error(spawnResult.error ?? `pipeline did not produce a result (exit ${spawnResult.exitCode})`);
+    }
+    result = captured.result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`Pipeline threw: ${msg}`);
