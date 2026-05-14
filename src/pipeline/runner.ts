@@ -44,6 +44,11 @@ export class DefaultPipelineRunner implements PipelineRunner {
     if (!architect.attempt.ok) {
       return failed(attempts, 'architect failed');
     }
+    // A blank plan would silently corrupt the editor brief (`mode.plan`
+    // becomes an empty section). Bail before that happens.
+    if (architect.plan.trim().length === 0) {
+      return failed(attempts, 'architect returned empty plan');
+    }
     if (!architect.approved) {
       if (input.abortSignal.aborted) return cancelled(attempts);
       return failed(attempts, 'architect plan not approved');

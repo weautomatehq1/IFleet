@@ -116,6 +116,59 @@ describe('DefaultPipelineRunner', () => {
     expect(workerPool.calls).toHaveLength(0);
   });
 
+  it('cross-provider rule: claude editor + claude reviewer → failed before any spawn', async () => {
+    const { input, workerPool } = buildPipelineInput({
+      scripted: [],
+      routing: {
+        editor: { provider: 'claude', model: 'opus-4.7', workerId: 'claude-1' },
+        reviewer: { provider: 'claude', model: 'opus-4.7', workerId: 'claude-2' },
+      },
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('failed');
+    expect(result.failureReason).toMatch(/opposite/);
+    expect(workerPool.calls).toHaveLength(0);
+  });
+
+  it('PR gating: verify fails after reviewer fix-pass → failed, no PR opened', async () => {
+    const { input, pr } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'first pass' },
+        { role: 'reviewer', output: rejectJson(['src/x.ts:1 nit']) },
+        { role: 'editor', output: 'fix pass' },
+        // Reviewer round 2 should NOT be reached; verify-after-fix bails.
+      ],
+      verify: [
+        { ok: true, failures: [] }, // initial verify passes
+        { ok: false, failures: [{ kind: 'typecheck', log: 'TS regression' }] }, // post-fix verify fails
+      ],
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('failed');
+    expect(result.failureReason).toContain('verify failed after reviewer fix-pass');
+    expect(pr.opened).toHaveLength(0);
+  });
+
+  it('empty plan guard: architect returns whitespace → failed before editor spawns', async () => {
+    const { input, workerPool, pr } = buildPipelineInput({
+      scripted: [{ role: 'architect', output: '   \n  \n' }],
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('failed');
+    expect(result.failureReason).toContain('empty plan');
+    expect(pr.opened).toHaveLength(0);
+    // architect spawned, editor did not
+    expect(workerPool.calls).toHaveLength(1);
+    expect(workerPool.calls[0]?.opts.role).toBe('architect');
+  });
+
   it('autonomy:review waits for approval and aborts when denied', async () => {
     const { input, issues } = buildPipelineInput({
       task: { autonomy: 'review' },
