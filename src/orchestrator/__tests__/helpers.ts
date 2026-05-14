@@ -61,6 +61,7 @@ export function makeTempEnv(): TempEnv {
 export interface MockAdapterOptions {
   exitCode?: number;
   pr?: string;
+  error?: string;
   delayMs?: number;
   throwOnSpawn?: Error;
   controllable?: boolean;
@@ -93,6 +94,7 @@ export class MockAdapter implements WorkerAdapter {
           workerId: 'w1',
           exitCode: this.opts.exitCode ?? 0,
           pr: this.opts.pr,
+          error: this.opts.error,
           totalCostUsd: this.opts.totalCostUsd,
         });
       }, this.opts.delayMs ?? 0);
