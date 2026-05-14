@@ -148,6 +148,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       const reviewer = await runReviewer({
         editorSpec: input.routing.editor,
         reviewerSpec: input.routing.reviewer,
+        haikuGateSpec: input.routing.haikuGate,
         availableProviders: poolProviders,
         workerPool: input.workerPool,
         brief: input.task.body,
@@ -156,6 +157,11 @@ export class DefaultPipelineRunner implements PipelineRunner {
         abortSignal: input.abortSignal,
       });
       attempts.push(reviewer.attempt);
+      if (reviewer.gate === 'haiku') {
+        console.log(
+          `reviewer:haiku-gate-passed task=${input.task.id} round=${round} gate=${input.routing.haikuGate?.workerId ?? 'unknown'}`,
+        );
+      }
       reviewSummary = formatReviewSummary(reviewer.verdict.verdict, reviewer.verdict.concerns);
 
       if (reviewer.verdict.verdict === 'approve') {

@@ -238,10 +238,21 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   const reviewerTier: Tier = modelToTier(architectModel) ?? architectTier;
   const reviewerModel = TIERS[reviewerTier];
 
+  // Reviewer cost split: cheap haiku pre-pass runs before the full reviewer.
+  // CLEAN diffs (style-only, mechanical) short-circuit; anything ambiguous or
+  // risky falls through to the full reviewer. The gate uses the same provider
+  // as the full reviewer (claude) at the haiku tier — see TIERS.haiku.
+  const haikuGate: WorkerSpec = {
+    provider: reviewerProvider,
+    model: TIERS.haiku,
+    workerId: `${reviewerProvider}-reviewer-gate-1`,
+  };
+
   return {
     architect: makeSpec(architectProvider, architectModel, 'architect'),
     editor: makeSpec(editorProvider, editorModel, 'editor'),
     reviewer: makeSpec(reviewerProvider, reviewerModel, 'reviewer'),
+    haikuGate,
     verify,
   };
 }

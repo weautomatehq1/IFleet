@@ -4,11 +4,16 @@ import type {
   WorkerPool,
   WorkerSpec,
 } from './types.js';
-import { REVIEWER_SYSTEM_PROMPT } from './prompts.js';
+import { HAIKU_GATE_SYSTEM_PROMPT, REVIEWER_SYSTEM_PROMPT } from './prompts.js';
 
 export interface RunReviewerInput {
   editorSpec: WorkerSpec;
   reviewerSpec: WorkerSpec;
+  // Optional cheap pre-pass. When present, runs before the full reviewer and
+  // short-circuits on CLEAN. Anything else (REVIEW_NEEDED, malformed, ok=false)
+  // falls through to the full reviewer — the gate must never block a real
+  // review, only skip one when it's clearly unnecessary.
+  haikuGateSpec?: WorkerSpec;
   availableProviders?: ReadonlySet<string>;
   workerPool: WorkerPool;
   brief: string;
@@ -20,6 +25,10 @@ export interface RunReviewerInput {
 export interface ReviewerOutput {
   attempt: AttemptRecord;
   verdict: ReviewerVerdict;
+  // Which path the round took: 'haiku' = gate said CLEAN, full reviewer
+  // skipped; 'full' = full reviewer ran (either because no gate was provided
+  // or because the gate failed/escalated).
+  gate: 'haiku' | 'full';
 }
 
 export class CrossProviderRuleViolation extends Error {
@@ -52,22 +61,31 @@ export function assertCrossProviderRule(
 export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutput> {
   assertCrossProviderRule(input.editorSpec, input.reviewerSpec, input.availableProviders);
 
-  const brief = [
-    '## Original brief',
-    input.brief,
-    '',
-    '## Architect plan',
-    input.plan,
-    '',
-    '## Diff to review',
-    '```diff',
-    input.diff,
-    '```',
-  ].join('\n');
+  const brief = buildReviewerBrief(input.brief, input.plan, input.diff);
 
+  // === Haiku cost-split gate (optional, additive) ===
+  if (input.haikuGateSpec) {
+    const gateResult = await runHaikuGate({
+      gateSpec: input.haikuGateSpec,
+      workerPool: input.workerPool,
+      brief,
+      abortSignal: input.abortSignal,
+    });
+    if (gateResult.kind === 'clean') {
+      return {
+        attempt: gateResult.attempt,
+        verdict: { verdict: 'approve', concerns: [], raw: gateResult.attempt.output },
+        gate: 'haiku',
+      };
+    }
+    // 'escalate' or 'error' → fall through to full reviewer. The gate attempt
+    // is intentionally discarded here: the runner's attempt log shows one
+    // reviewer entry per round, and the full reviewer is the authoritative
+    // verdict for this round.
+  }
+
+  // === Full reviewer ===
   const startedAt = Date.now();
-
-  // Fresh session — do not pass resumeSessionId; the worker pool issues a new one.
   const handle = input.workerPool.spawn(input.reviewerSpec, brief, {
     role: 'reviewer',
     systemPrompt: REVIEWER_SYSTEM_PROMPT,
@@ -88,9 +106,100 @@ export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutp
       ok: result.ok,
       output: result.output,
       rateLimitHits: result.rateLimitHits,
+      gate: 'full',
     },
     verdict,
+    gate: 'full',
   };
+}
+
+function buildReviewerBrief(brief: string, plan: string, diff: string): string {
+  return [
+    '## Original brief',
+    brief,
+    '',
+    '## Architect plan',
+    plan,
+    '',
+    '## Diff to review',
+    '```diff',
+    diff,
+    '```',
+  ].join('\n');
+}
+
+type GateResult =
+  | { kind: 'clean'; attempt: AttemptRecord }
+  | { kind: 'escalate'; reason: string }
+  | { kind: 'error'; reason: string };
+
+export type GateDecision =
+  | { kind: 'clean' }
+  | { kind: 'escalate'; reason: string }
+  | { kind: 'error'; reason: string };
+
+interface RunHaikuGateInput {
+  gateSpec: WorkerSpec;
+  workerPool: WorkerPool;
+  brief: string;
+  abortSignal: AbortSignal;
+}
+
+async function runHaikuGate(input: RunHaikuGateInput): Promise<GateResult> {
+  const startedAt = Date.now();
+  let result;
+  try {
+    const handle = input.workerPool.spawn(input.gateSpec, input.brief, {
+      role: 'reviewer',
+      systemPrompt: HAIKU_GATE_SYSTEM_PROMPT,
+      abortSignal: input.abortSignal,
+    });
+    result = await handle.result();
+  } catch (err) {
+    return { kind: 'error', reason: err instanceof Error ? err.message : String(err) };
+  }
+  const endedAt = Date.now();
+  if (!result.ok) {
+    return { kind: 'error', reason: result.error ?? 'gate worker failed' };
+  }
+  const decision = parseGateOutput(result.output);
+  if (decision.kind !== 'clean') return decision;
+  const attempt: AttemptRecord = {
+    role: 'reviewer',
+    workerId: input.gateSpec.workerId,
+    startedAt,
+    endedAt,
+    ok: true,
+    output: result.output,
+    rateLimitHits: result.rateLimitHits,
+    gate: 'haiku',
+  };
+  return { kind: 'clean', attempt };
+}
+
+// Exported for tests. Tolerant to leading/trailing whitespace and the model
+// occasionally wrapping its answer in quotes or a code fence.
+export function parseGateOutput(raw: string): GateDecision {
+  const text = stripFences(raw).trim();
+  if (text.length === 0) {
+    return { kind: 'error', reason: 'gate returned empty output' };
+  }
+  const firstLine = (text.split(/\r?\n/).find((l) => l.trim().length > 0) ?? '').trim();
+  const cleaned = firstLine.replace(/^["'`]+|["'`]+$/g, '').trim();
+  const upper = cleaned.toUpperCase();
+  if (upper === 'CLEAN' || upper.startsWith('CLEAN:') || upper.startsWith('CLEAN ')) {
+    return { kind: 'clean' };
+  }
+  if (upper.startsWith('REVIEW_NEEDED')) {
+    const colonIdx = cleaned.indexOf(':');
+    const reason = colonIdx >= 0 ? cleaned.slice(colonIdx + 1).trim() : '';
+    return { kind: 'escalate', reason: reason || 'gate flagged REVIEW_NEEDED' };
+  }
+  return { kind: 'escalate', reason: `gate output unrecognized: ${truncate(cleaned, 200)}` };
+}
+
+function stripFences(text: string): string {
+  return text.replace(/^```[a-zA-Z0-9]*\s*/g, '').replace(/```\s*$/g, '');
 }
 
 export function parseVerdict(raw: string): ReviewerVerdict {

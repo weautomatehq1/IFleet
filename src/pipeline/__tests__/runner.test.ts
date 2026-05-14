@@ -258,6 +258,97 @@ describe('DefaultPipelineRunner', () => {
     expect(issues.approvals).toHaveLength(1);
   });
 
+  it('haiku gate CLEAN: full reviewer skipped, PR still opens', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { input, pr, workerPool } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'wrote code' },
+        // Only the gate spawn runs for the reviewer round — no full reviewer
+        // entry because CLEAN short-circuits.
+        { role: 'reviewer', output: 'CLEAN' },
+      ],
+      routing: {
+        haikuGate: { provider: 'claude', model: 'claude-haiku-4-5-20251001', workerId: 'gate-1' },
+      },
+      verify: [{ ok: true, failures: [] }],
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('pr_opened');
+    expect(pr.opened).toHaveLength(1);
+    // 3 spawns total: architect, editor, gate. Full reviewer never spawned.
+    expect(workerPool.calls).toHaveLength(3);
+    const reviewerCalls = workerPool.calls.filter((c) => c.opts.role === 'reviewer');
+    expect(reviewerCalls).toHaveLength(1);
+    expect(reviewerCalls[0]?.spec.workerId).toBe('gate-1');
+    // The reviewer attempt is recorded with gate='haiku'.
+    const reviewerAttempt = result.attempts.find((a) => a.role === 'reviewer');
+    expect(reviewerAttempt?.gate).toBe('haiku');
+    expect(reviewerAttempt?.workerId).toBe('gate-1');
+    expect(
+      logSpy.mock.calls.some(([msg]) =>
+        typeof msg === 'string' && msg.startsWith('reviewer:haiku-gate-passed'),
+      ),
+    ).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it('haiku gate REVIEW_NEEDED: full reviewer runs and decides the round', async () => {
+    const { input, pr, workerPool } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'wrote code' },
+        // Gate escalates → full reviewer spawns next and approves.
+        { role: 'reviewer', output: 'REVIEW_NEEDED: touches auth' },
+        { role: 'reviewer', output: approveJson() },
+      ],
+      routing: {
+        haikuGate: { provider: 'claude', model: 'claude-haiku-4-5-20251001', workerId: 'gate-1' },
+      },
+      verify: [{ ok: true, failures: [] }],
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('pr_opened');
+    expect(pr.opened).toHaveLength(1);
+    // 4 spawns: architect, editor, gate, full reviewer.
+    expect(workerPool.calls).toHaveLength(4);
+    const reviewerCalls = workerPool.calls.filter((c) => c.opts.role === 'reviewer');
+    expect(reviewerCalls).toHaveLength(2);
+    // The recorded reviewer attempt is the FULL reviewer (gate output is
+    // intentionally not logged as a separate attempt — see reviewer.ts).
+    const reviewerAttempt = result.attempts.find((a) => a.role === 'reviewer');
+    expect(reviewerAttempt?.gate).toBe('full');
+    expect(reviewerAttempt?.workerId).not.toBe('gate-1');
+  });
+
+  it('haiku gate errors → full reviewer runs (safe fallback)', async () => {
+    const { input, pr, workerPool } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'wrote code' },
+        // Gate worker fails (ok=false) → fall through to full reviewer.
+        { role: 'reviewer', output: '', ok: false },
+        { role: 'reviewer', output: approveJson() },
+      ],
+      routing: {
+        haikuGate: { provider: 'claude', model: 'claude-haiku-4-5-20251001', workerId: 'gate-1' },
+      },
+      verify: [{ ok: true, failures: [] }],
+    });
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('pr_opened');
+    expect(pr.opened).toHaveLength(1);
+    expect(workerPool.calls).toHaveLength(4);
+    const reviewerAttempt = result.attempts.find((a) => a.role === 'reviewer');
+    expect(reviewerAttempt?.gate).toBe('full');
+  });
+
   it('cancel mid-pipeline (abort before architect runs) → cancelled', async () => {
     const controller = new AbortController();
     controller.abort();
