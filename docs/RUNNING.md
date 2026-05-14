@@ -37,6 +37,17 @@ pnpm install
 
 ---
 
+## Account configuration
+
+IFleet uses **exactly one Claude Max plan** via the Claude Code CLI (no account rotation, no Anthropic API consumption at runtime).
+
+- The CLI spawns workers via `claude -p` (print mode), which reads `$ANTHROPIC_API_KEY` or `$CLAUDE_CODE_USER_CREDSTORE` — both point to `claude-max-1` in `config/workers.json`.
+- `config/workers.json` must have **exactly one worker enabled** (`claude-max-1`). The `claude-max-2` entry and any Codex workers are intentionally disabled.
+- The `account-pool.ts` rotation primitive exists in `src/workers/` but is not used — future plug-in adapters (vLLM, Ollama, MLX, Anthropic API) will live in `src/workers/adapters/` and can implement their own account strategies.
+- No Anthropic API key is required for runtime (though one may be set for tooling like `ts-node`; it is never consumed by IFleet itself).
+
+---
+
 ## One-shot run
 
 Pick the next `auto:ship` issue and process it once:
