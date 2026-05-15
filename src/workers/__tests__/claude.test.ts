@@ -214,6 +214,67 @@ test('claude adapter: reassembles stream-json across stdout chunks (incremental 
   assert.ok(progress.text.includes('lorem ipsum'));
 });
 
+test('claude adapter: tool_result events read is_error from top-level event', async () => {
+  // The canonical Claude stream-json shape for tool execution feedback is a
+  // top-level `{ type: 'tool_result', is_error, content }` event. Verify
+  // is_error=true → ok=false and absent/false → ok=true.
+  const errToolResult = JSON.stringify({
+    type: 'tool_result',
+    is_error: true,
+    content: { error: 'file not found' },
+  });
+  const okToolResult = JSON.stringify({
+    type: 'tool_result',
+    content: { ok: true },
+  });
+  const fake = createFakeSpawn({
+    stdoutLines: [initLine, errToolResult, okToolResult, resultLine],
+  });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+  const events = await collect(handle.events);
+  await handle.result;
+  const toolResults = events.filter((e) => e.kind === 'tool_result');
+  assert.equal(toolResults.length, 2);
+  assert.equal(toolResults[0]?.kind === 'tool_result' && toolResults[0].ok, false);
+  assert.equal(toolResults[1]?.kind === 'tool_result' && toolResults[1].ok, true);
+});
+
+test('claude adapter: user messages with embedded tool_result blocks are ignored (no spurious events)', async () => {
+  // A `type: 'user'` message that nests a `tool_result` block inside its
+  // content array was previously parsed via a dead-code branch that emitted
+  // `kind: 'tool_result'` with `ok: !block.input` — semantically meaningless,
+  // since `input` belongs to `tool_use`. The branch has been removed; this
+  // test pins that user messages do not produce tool_result events even when
+  // their content lists tool_result-shaped blocks.
+  const userWithToolResult = JSON.stringify({
+    type: 'user',
+    message: {
+      content: [
+        { type: 'tool_result', is_error: false, content: 'file body' },
+        { type: 'text', text: 'thanks' },
+      ],
+    },
+  });
+  const fake = createFakeSpawn({ stdoutLines: [initLine, userWithToolResult, resultLine] });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+  const events = await collect(handle.events);
+  await handle.result;
+  const toolResults = events.filter((e) => e.kind === 'tool_result');
+  assert.equal(toolResults.length, 0, 'user-typed message must not synthesize tool_result events');
+});
+
 test('claude adapter: categorizes 401 as authentication_failed', async () => {
   const authLine = JSON.stringify({
     type: 'system',

@@ -108,7 +108,6 @@ interface ClaudeStreamEvent {
     content?: Array<{ type?: string; text?: string; name?: string; input?: unknown; id?: string }>;
   };
   delta?: { type?: string; text?: string };
-  tool_use_id?: string;
   content?: unknown;
   is_error?: boolean;
   result?: string;
@@ -171,16 +170,15 @@ function parseClaudeEvent(
     return;
   }
 
-  if (type === 'user' && evt.message?.content) {
-    for (const block of evt.message.content) {
-      if (block.type === 'tool_result') {
-        emit({ kind: 'tool_result', ok: !block.input, output: block });
-      }
-    }
-    return;
-  }
-
   if (type === 'tool_result') {
+    // Authoritative tool_result event: read `is_error` per the Claude
+    // stream-json schema. The previously handled `type === 'user'` branch
+    // tried to surface tool_result blocks nested inside user messages with
+    // `ok: !block.input`, which has no semantic meaning — `block.input`
+    // belongs to `tool_use`, not `tool_result`. The branch was dead code
+    // for downstream consumers (no caller reads `tool_result` events from
+    // user-typed messages) and is removed to avoid emitting events with a
+    // bogus `ok` flag.
     emit({ kind: 'tool_result', ok: evt.is_error !== true, output: evt.content });
     return;
   }
