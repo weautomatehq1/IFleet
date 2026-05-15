@@ -310,6 +310,10 @@ async function main(): Promise<void> {
   log('Picking next issue...');
   const rawTask = await queue.pickNext();
   if (!rawTask) {
+    if (dryRun) {
+      log('[dry-run] No eligible issues (none with auto:ship without in_flight). Exit 0.');
+      return;
+    }
     log('ERROR: No issues ready to pick. Create a GitHub issue with the label auto:ship and rerun.');
     process.exitCode = 1;
     return;
