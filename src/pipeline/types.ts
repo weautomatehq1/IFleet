@@ -56,6 +56,11 @@ export interface SpawnResult {
   output: string;
   sessionId: string;
   rateLimitHits: number;
+  // Worker-reported USD cost when the underlying CLI surfaces it (Claude emits
+  // `total_cost_usd` in its `result` event). Undefined when the worker does not
+  // report cost (e.g. Codex today). Pipeline consumers must treat undefined as
+  // "unknown", not "free".
+  totalCostUsd?: number;
   error?: string;
 }
 
@@ -135,6 +140,10 @@ export interface AttemptRecord {
   ok: boolean;
   output: string;
   rateLimitHits: number;
+  // USD cost reported by the worker, when available. Propagated from
+  // `SpawnResult.totalCostUsd` so `logCosts` can record the real per-attempt
+  // spend in `.omc/costs.json` and the BUDGET_USD guard can enforce end-to-end.
+  totalCostUsd?: number;
   // Only set on reviewer attempts when the haiku cost-split gate is active.
   // 'haiku' = approved by gate, full reviewer skipped. 'full' = gate said
   // REVIEW_NEEDED or errored, and the full reviewer ran.

@@ -46,6 +46,7 @@ export async function runArchitect(input: RunArchitectInput): Promise<ArchitectO
     ok: result.ok,
     output: result.output,
     rateLimitHits: result.rateLimitHits,
+    ...(result.totalCostUsd !== undefined && { totalCostUsd: result.totalCostUsd }),
   };
 
   if (!result.ok) {
