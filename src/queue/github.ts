@@ -49,6 +49,20 @@ export function shouldRetryRateLimit(
   return retryCount < THROTTLE_MAX_RETRIES;
 }
 
+/**
+ * Decide whether `author` may open `auto:ship` issues for `repo`. Pure
+ * function exported so the wiring can be unit-tested.
+ *
+ * Returns `true` when the author is in `repo.allowedAuthors`. When the repo
+ * has no allowlist (undefined or empty array), the function returns `true`
+ * for backwards compatibility — the queue itself logs a one-time warning at
+ * construction so the operator notices.
+ */
+export function isAuthorAllowed(repo: RepoRef, author: string): boolean {
+  if (!repo.allowedAuthors || repo.allowedAuthors.length === 0) return true;
+  return repo.allowedAuthors.includes(author);
+}
+
 export interface GitHubQueueOptions {
   repos: RepoRef[];
   token?: string;
@@ -98,6 +112,16 @@ export class GitHubQueue implements QueueAdapter {
     this.repos = opts.repos;
     this.pollIntervalMs = opts.pollIntervalMs ?? 30_000;
     this.now = opts.now ?? Date.now;
+    for (const repo of this.repos) {
+      if (!repo.allowedAuthors || repo.allowedAuthors.length === 0) {
+        console.warn(
+          `[queue] WARNING: ${repo.owner}/${repo.name} has no allowedAuthors configured. ` +
+            `Issues from any author will be picked. This is INSECURE for public repos because ` +
+            `the worker spawns "claude -p --permission-mode auto" on the issue body. ` +
+            `Set "allowedAuthors": ["<github-login>", ...] in config/repos.json.`,
+        );
+      }
+    }
   }
 
   async pickNext(opts: PickOpts = {}): Promise<QueuedTask | null> {
@@ -110,6 +134,12 @@ export class GitHubQueue implements QueueAdapter {
       for (const task of issues) {
         if (exclude.has(task.id)) continue;
         if (task.labels.includes(LABEL_IN_FLIGHT)) continue;
+        if (!isAuthorAllowed(repo, task.author)) {
+          console.warn(
+            `[queue] skipping ${task.repo}#${task.issueNumber}: author "${task.author}" not in allowedAuthors`,
+          );
+          continue;
+        }
         candidates.push(task);
       }
     }
@@ -177,6 +207,13 @@ export class GitHubQueue implements QueueAdapter {
           for (const task of issues) {
             if (task.labels.includes(LABEL_IN_FLIGHT)) continue;
             if (seen.has(task.id)) continue;
+            if (!isAuthorAllowed(repo, task.author)) {
+              seen.add(task.id);
+              console.warn(
+                `[queue] watch: skipping ${task.repo}#${task.issueNumber}: author "${task.author}" not in allowedAuthors`,
+              );
+              continue;
+            }
             seen.add(task.id);
             callback(task);
           }
@@ -299,6 +336,7 @@ interface IssueLike {
   created_at: string;
   html_url: string;
   node_id: string;
+  user?: { login?: string | null } | null;
 }
 
 function toTask(repo: RepoRef, issue: IssueLike): QueuedTask {
@@ -311,6 +349,7 @@ function toTask(repo: RepoRef, issue: IssueLike): QueuedTask {
     issueNumber: issue.number,
     title: issue.title,
     body: issue.body ?? '',
+    author: issue.user?.login ?? '',
     labels,
     routingHints: parseLabels(labels),
     createdAt: Date.parse(issue.created_at),

@@ -11,6 +11,7 @@ function makeTask(issueNumber = 42): QueuedTask {
     issueNumber,
     title: 't',
     body: '',
+    author: '',
     labels: ['auto:ship'],
     routingHints: { priority: 'normal', verify: [], autonomy: 'auto' },
     createdAt: 0,
