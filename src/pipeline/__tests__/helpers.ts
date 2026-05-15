@@ -21,6 +21,12 @@ export interface ScriptedSpawn {
   output: string;
   ok?: boolean;
   rateLimitHits?: number;
+  /**
+   * Optional USD cost the worker would report. Mirrors the `total_cost_usd`
+   * Claude emits in its `result` event. Tests that exercise cost propagation
+   * set this to assert the value reaches `logCosts`.
+   */
+  totalCostUsd?: number;
   /** Used by tests to inspect ordering. */
   workerIdMatcher?: (id: string) => boolean;
 }
@@ -50,6 +56,7 @@ export function makeMockWorkerPool(scripted: ScriptedSpawn[]): MockWorkerPool {
         output: script.output,
         sessionId: `session-${idx}`,
         rateLimitHits: script.rateLimitHits ?? 0,
+        ...(script.totalCostUsd !== undefined && { totalCostUsd: script.totalCostUsd }),
       };
       let cancelled = false;
       return {
@@ -163,6 +170,13 @@ export interface BuildInputOpts {
   verify?: VerifyResult[];
   approvalResult?: boolean;
   abortSignal?: AbortSignal;
+  /**
+   * When set, the pipeline writes per-attempt cost records to
+   * `<repoRoot>/.omc/costs.json`. Tests asserting cost propagation should
+   * point this at a temp dir; default leaves it undefined so `logCosts`
+   * short-circuits.
+   */
+  repoRoot?: string;
 }
 
 export function buildPipelineInput(opts: BuildInputOpts): {
@@ -192,6 +206,7 @@ export function buildPipelineInput(opts: BuildInputOpts): {
     codeowners: ['@monstersebas1'],
     baseBranch: 'main',
     approver: '@monstersebas1',
+    ...(opts.repoRoot !== undefined && { repoRoot: opts.repoRoot }),
   };
   return { input, workerPool, verify, issues, pr };
 }

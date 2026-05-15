@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DefaultPipelineRunner } from '../runner.js';
+import { readCostLog } from '../../utils/costs.js';
 import {
   approveJson,
   buildPipelineInput,
@@ -361,6 +365,68 @@ describe('DefaultPipelineRunner', () => {
 
     expect(result.status).toBe('cancelled');
     expect(workerPool.calls).toHaveLength(0);
+  });
+
+  it('cost propagation: adapter-reported totalCostUsd reaches AttemptRecord and costs.json', async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), 'ifleet-cost-test-'));
+    try {
+      const { input } = buildPipelineInput({
+        scripted: [
+          { role: 'architect', output: PLAN_OUTPUT, totalCostUsd: 0.42 },
+          { role: 'editor', output: 'wrote code', totalCostUsd: 1.23 },
+          { role: 'reviewer', output: approveJson(), totalCostUsd: 0.08 },
+        ],
+        verify: [{ ok: true, failures: [] }],
+        repoRoot,
+      });
+
+      const result = await new DefaultPipelineRunner().run(input);
+
+      expect(result.status).toBe('pr_opened');
+      const byRole = Object.fromEntries(result.attempts.map((a) => [a.role, a]));
+      expect(byRole.architect?.totalCostUsd).toBe(0.42);
+      expect(byRole.editor?.totalCostUsd).toBe(1.23);
+      expect(byRole.reviewer?.totalCostUsd).toBe(0.08);
+
+      const records = await readCostLog(repoRoot);
+      const costsByRole = Object.fromEntries(records.map((r) => [r.role, r.totalCostUsd]));
+      expect(costsByRole.architect).toBe(0.42);
+      expect(costsByRole.editor).toBe(1.23);
+      expect(costsByRole.reviewer).toBe(0.08);
+      const grandTotal = records.reduce((sum, r) => sum + r.totalCostUsd, 0);
+      expect(grandTotal).toBeCloseTo(1.73, 5);
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('cost propagation: adapter omits totalCostUsd → AttemptRecord undefined, log records 0', async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), 'ifleet-cost-test-'));
+    try {
+      const { input } = buildPipelineInput({
+        scripted: [
+          { role: 'architect', output: PLAN_OUTPUT },
+          { role: 'editor', output: 'wrote code' },
+          { role: 'reviewer', output: approveJson() },
+        ],
+        verify: [{ ok: true, failures: [] }],
+        repoRoot,
+      });
+
+      const result = await new DefaultPipelineRunner().run(input);
+
+      expect(result.status).toBe('pr_opened');
+      for (const attempt of result.attempts) {
+        expect(attempt.totalCostUsd).toBeUndefined();
+      }
+      const records = await readCostLog(repoRoot);
+      expect(records).toHaveLength(3);
+      for (const record of records) {
+        expect(record.totalCostUsd).toBe(0);
+      }
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it('cancel after architect approved but before editor → cancelled', async () => {

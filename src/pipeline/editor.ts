@@ -58,6 +58,7 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
       ok: result.ok,
       output: result.output,
       rateLimitHits: result.rateLimitHits,
+      ...(result.totalCostUsd !== undefined && { totalCostUsd: result.totalCostUsd }),
     },
     diff,
   };

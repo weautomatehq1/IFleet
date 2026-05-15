@@ -67,6 +67,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorOutput> {
       ok: result.ok,
       output: result.output,
       rateLimitHits: result.rateLimitHits,
+      ...(result.totalCostUsd !== undefined && { totalCostUsd: result.totalCostUsd }),
     },
     diagnosis,
   };

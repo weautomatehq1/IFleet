@@ -112,6 +112,7 @@ function buildWorkerPool(): WorkerPool {
             output: r.text,
             sessionId: r.sessionId,
             rateLimitHits,
+            ...(r.totalCostUsd !== undefined && { totalCostUsd: r.totalCostUsd }),
           };
         },
         cancel: workerHandle.cancel,

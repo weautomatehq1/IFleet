@@ -106,6 +106,7 @@ export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutp
       ok: result.ok,
       output: result.output,
       rateLimitHits: result.rateLimitHits,
+      ...(result.totalCostUsd !== undefined && { totalCostUsd: result.totalCostUsd }),
       gate: 'full',
     },
     verdict,
@@ -172,6 +173,7 @@ async function runHaikuGate(input: RunHaikuGateInput): Promise<GateResult> {
     ok: true,
     output: result.output,
     rateLimitHits: result.rateLimitHits,
+    ...(result.totalCostUsd !== undefined && { totalCostUsd: result.totalCostUsd }),
     gate: 'haiku',
   };
   return { kind: 'clean', attempt };
