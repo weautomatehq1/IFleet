@@ -1,11 +1,16 @@
 # STATUS — IFleet
 
-Last updated: 2026-05-14
+Last updated: 2026-05-15
 
 ---
 
 ## Done (recent)
 
+- [sentry-n8n-bridge] ✅ Sentry → n8n → GitHub Issues pipeline wired and verified 2026-05-15
+- [discord-notifications] ✅ PR #79 — sprint start/success/failure notifications to #ifleet
+- [discord-webhook-env] ✅ DISCORD_IFLEET_WEBHOOK set in .env, PM2 reloaded
+- [in-flight-cleanup] ✅ stripped stale in_flight labels from #69 #70 #76 after connect timeout
+- [architect-complexity-label] ✅ PR #41 merged — complexity:high gates opus, sonnet default
 - [reviewer-haiku-cost-split] ✅ PR #74 (merged)
 - [classifier-sonnet-floor] ✅ editor + empty-diff guard PR #73
 - [pipeline-cross-provider-relax] ✅ PR #67/#68 — warn in single-provider pools
@@ -15,14 +20,18 @@ Last updated: 2026-05-14
 - [phase-1-factory] ✅ PR #62 — items 1-5, 7, 8, 10, 11
 - [single-seat-policy] ✅ PR #60 — single-seat Max-plan policy documented
 
-## In flight
+## In flight (fleet-owned)
 
-- [feat/reviewer-cost-split] (current branch) — owner: Sebas
+- #69 feat(learnings): read and append per-repo learnings in architect phase
+- #70 feat(mcp): MCP server exposing submitSprint, getSprint, cancelSprint, listActive
+- #71 feat(pipeline): deep-interview phase for vague briefs
+- #72 feat(classifier): sprint mode routing — ralph/ulw/tdd/deslop labels
+- #75 feat(orchestrator): auto-router — Haiku sprint mode selector
+- #76 feat(pipeline): doctor extension — fingerprint matching + daily learnings rollup
 
 ## Up next
 
-- [architect-complexity-label-patch] — apply `~/architect-complexity-label.patch` after PR #40 merges
-- TODO — fill from briefs/
+- [brief-library] — populate docs/briefs/ so auto-router has examples to learn from
 
 ## Blocked
 
