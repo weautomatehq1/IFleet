@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { GitHubQueue, THROTTLE_MAX_RETRIES, shouldRetryRateLimit } from '../github.js';
+import { GitHubQueue, THROTTLE_MAX_RETRIES, isAuthorAllowed, shouldRetryRateLimit } from '../github.js';
 import type { QueuedTask } from '../types.js';
 
 interface FakeIssue {
@@ -11,6 +11,7 @@ interface FakeIssue {
   created_at: string;
   html_url: string;
   node_id: string;
+  user?: { login?: string | null } | null;
 }
 
 interface MockState {
@@ -171,6 +172,7 @@ describe('GitHubQueue lifecycle', () => {
       issueNumber: 42,
       title: 't',
       body: '',
+      author: '',
       labels: ['auto:ship'],
       routingHints: { priority: 'normal', verify: ['typecheck'], autonomy: 'auto' },
       createdAt: 0,
@@ -337,5 +339,117 @@ describe('shouldRetryRateLimit (throttling wiring)', () => {
   it('does not throw when method/url are missing', () => {
     const ok = shouldRetryRateLimit(1, { request: { retryCount: 0 } }, 'primary', () => {});
     assert.equal(ok, true);
+  });
+});
+
+describe('isAuthorAllowed', () => {
+  it('accepts authors in the allowlist', () => {
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice', 'bob'] }, 'alice'), true);
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice', 'bob'] }, 'bob'), true);
+  });
+
+  it('rejects authors not in the allowlist', () => {
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice'] }, 'mallory'), false);
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice'] }, ''), false);
+  });
+
+  it('permits everyone in legacy mode (allowlist undefined)', () => {
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, 'anyone'), true);
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, ''), true);
+  });
+
+  it('permits everyone when allowlist is an empty array (legacy mode)', () => {
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: [] }, 'anyone'), true);
+  });
+});
+
+describe('GitHubQueue.pickNext author allowlist', () => {
+  const REPO_GUARDED = { owner: 'weautomatehq1', name: 'IFleet', allowedAuthors: ['alice'] } as const;
+
+  function makeGuardedQueue(state: MockState): GitHubQueue {
+    return new GitHubQueue(mockOctokit(state) as never, {
+      repos: [REPO_GUARDED],
+      now: () => Date.parse('2026-05-15T12:00:00Z'),
+    });
+  }
+
+  it('returns an issue when author is in the allowlist', async () => {
+    const state = makeState([
+      {
+        number: 7,
+        title: 'ok',
+        labels: ['auto:ship'],
+        created_at: '2026-05-15T10:00:00Z',
+        html_url: 'u',
+        node_id: 'n-ok',
+        user: { login: 'alice' },
+      },
+    ]);
+    const q = makeGuardedQueue(state);
+    const next = await q.pickNext();
+    assert.ok(next);
+    assert.equal(next!.issueNumber, 7);
+    assert.equal(next!.author, 'alice');
+  });
+
+  it('skips issues whose author is not in the allowlist', async () => {
+    const state = makeState([
+      {
+        number: 9,
+        title: 'evil',
+        labels: ['auto:ship'],
+        created_at: '2026-05-15T10:00:00Z',
+        html_url: 'u',
+        node_id: 'n-evil',
+        user: { login: 'mallory' },
+      },
+    ]);
+    const q = makeGuardedQueue(state);
+    const next = await q.pickNext();
+    assert.equal(next, null);
+  });
+
+  it('skips disallowed author and picks the next allowed one', async () => {
+    const state = makeState([
+      {
+        number: 9,
+        title: 'evil first',
+        labels: ['auto:ship', 'priority:high'],
+        created_at: '2026-05-15T09:00:00Z',
+        html_url: 'u',
+        node_id: 'n-evil',
+        user: { login: 'mallory' },
+      },
+      {
+        number: 7,
+        title: 'ok',
+        labels: ['auto:ship'],
+        created_at: '2026-05-15T10:00:00Z',
+        html_url: 'u',
+        node_id: 'n-ok',
+        user: { login: 'alice' },
+      },
+    ]);
+    const q = makeGuardedQueue(state);
+    const next = await q.pickNext();
+    assert.ok(next);
+    assert.equal(next!.issueNumber, 7);
+  });
+
+  it('treats missing user.login as empty string and rejects when allowlist is set', async () => {
+    const state = makeState([
+      {
+        number: 11,
+        title: 'no user',
+        labels: ['auto:ship'],
+        created_at: '2026-05-15T10:00:00Z',
+        html_url: 'u',
+        node_id: 'n-nouser',
+        user: null,
+      },
+    ]);
+    const q = makeGuardedQueue(state);
+    const next = await q.pickNext();
+    assert.equal(next, null);
   });
 });

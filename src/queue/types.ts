@@ -19,6 +19,8 @@ export interface QueuedTask {
   issueNumber: number;
   title: string;
   body: string;
+  /** GitHub login of the user who opened the issue. Used by the queue's author allowlist. */
+  author: string;
   labels: string[];
   routingHints: RoutingHints;
   createdAt: number;
@@ -48,6 +50,15 @@ export type TaskStatus =
 export interface RepoRef {
   owner: string;
   name: string;
+  /**
+   * GitHub logins permitted to open `auto:ship` issues for this repo. When set,
+   * `pickNext` and `watchForNew` skip issues authored by anyone else (and log
+   * a warning). When undefined or empty, every author is accepted and the
+   * queue logs a one-time warning at construction time — the permissive mode
+   * is INSECURE for public repos because the brief body is fed to a worker
+   * running `claude -p --permission-mode auto`.
+   */
+  allowedAuthors?: ReadonlyArray<string>;
 }
 
 export interface RepoConfig {

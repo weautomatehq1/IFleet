@@ -3,6 +3,12 @@ import { readFileSync } from 'node:fs';
 export interface RepoEntry {
   owner: string;
   name: string;
+  /**
+   * Optional allowlist of GitHub logins permitted to open `auto:ship` issues
+   * for this repo. See `RepoRef.allowedAuthors` in `src/queue/types.ts` for
+   * the security rationale.
+   */
+  allowedAuthors?: ReadonlyArray<string>;
 }
 
 /** Map keyed by "owner/name". */
@@ -52,10 +58,12 @@ function isLegacyFormat(raw: unknown): raw is LegacyFormat {
 }
 
 function isRepoEntry(v: unknown): v is RepoEntry {
-  return (
-    typeof v === 'object' &&
-    v !== null &&
-    typeof (v as Record<string, unknown>)['owner'] === 'string' &&
-    typeof (v as Record<string, unknown>)['name'] === 'string'
-  );
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  if (typeof r['owner'] !== 'string' || typeof r['name'] !== 'string') return false;
+  if (r['allowedAuthors'] !== undefined) {
+    if (!Array.isArray(r['allowedAuthors'])) return false;
+    if (!r['allowedAuthors'].every((x) => typeof x === 'string')) return false;
+  }
+  return true;
 }

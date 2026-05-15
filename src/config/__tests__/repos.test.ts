@@ -40,4 +40,23 @@ describe('migrateReposConfig', () => {
     const result = migrateReposConfig(legacy);
     expect('weautomatehq1/IFleet' in result).toBe(true);
   });
+
+  it('preserves allowedAuthors in the new map format', () => {
+    const newFormat = {
+      'weautomatehq1/IFleet': {
+        owner: 'weautomatehq1',
+        name: 'IFleet',
+        allowedAuthors: ['alice', 'bob'],
+      },
+    };
+    const result = migrateReposConfig(newFormat);
+    expect(result['weautomatehq1/IFleet']?.allowedAuthors).toEqual(['alice', 'bob']);
+  });
+
+  it('rejects allowedAuthors that is not a string array', () => {
+    const bad = {
+      'a/b': { owner: 'a', name: 'b', allowedAuthors: [1, 2] },
+    };
+    expect(() => migrateReposConfig(bad)).toThrow();
+  });
 });
