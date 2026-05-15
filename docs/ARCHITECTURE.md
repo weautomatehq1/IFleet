@@ -9,6 +9,8 @@
 Ship 5–15 pull requests per night, autonomously, with zero variable cost.
 Operator (Seb) reviews and merges in the morning.
 
+> **Umbrella view:** see [`weautomatehq1/factory/ARCHITECTURE.md`](https://github.com/weautomatehq1/factory/blob/main/ARCHITECTURE.md) for the system-of-systems view across Factory + IFleet + voice-discovery + spec-template + per-client repos. This file covers **IFleet-internal detail only**. IFleet is one of four Factory-umbrella repos; its job inside the umbrella is the "build robot army" container described in Factory's Container View (C4 L2).
+
 ## Constraints
 
 - Flat-rate plans only — Claude Max + Codex Pro. No per-token spillover.

@@ -4,6 +4,8 @@
 
 This repo inherits global rules from `~/.claude/CLAUDE.md`. Single-seat operational policy lives in `docs/running.md`.
 
+**Umbrella context:** `weautomatehq1/factory` is the master coordination repo for "The Factory" — voice-AI interview → 17-file spec → IFleet builds → self-heals. Read `~/dev/coordination/factory/ARCHITECTURE.md` for the system-of-systems view across Factory + IFleet + voice-discovery + spec-template + per-client repos. This repo's docs cover **IFleet-internal detail only**. Cross-repo milestones live in `factory/ROADMAP.md` with bracketed `[M-NNN]` IDs; gap issues opened in this repo should be labeled `epic:M-NNN` to link back.
+
 ## Identity
 
 - **Type:** Internal infrastructure (open-source for the show, not a product)
