@@ -574,14 +574,18 @@ export class SprintManager {
    */
   private scheduleTick(sprintId: SprintId): void {
     setImmediate(() => {
-      const sprint = this.store.loadSprint(sprintId);
-      if (!sprint) return;
-      if (TERMINAL_STATES.has(sprint.state.kind)) return;
-      // A budget pause sets state to `paused`; the cron will still call tick
-      // on schedule to check the rate-reset window, so re-driving here would
-      // just be noise.
-      if (sprint.state.kind === 'paused') return;
-      this.tick(sprintId).catch(() => undefined);
+      try {
+        const sprint = this.store.loadSprint(sprintId);
+        if (!sprint) return;
+        if (TERMINAL_STATES.has(sprint.state.kind)) return;
+        // A budget pause sets state to `paused`; the cron will still call tick
+        // on schedule to check the rate-reset window, so re-driving here would
+        // just be noise.
+        if (sprint.state.kind === 'paused') return;
+        this.tick(sprintId).catch(() => undefined);
+      } catch {
+        // Store may be closed (e.g. during test teardown) — ignore.
+      }
     });
   }
 
