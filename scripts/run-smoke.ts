@@ -293,6 +293,30 @@ function log(msg: string): void {
   console.log(`[smoke ${new Date().toISOString()}] ${msg}`);
 }
 
+function notify(msg: string): void {
+  const url = process.env['DISCORD_IFLEET_WEBHOOK'];
+  if (!url) return;
+  const body = JSON.stringify({ content: msg });
+  try {
+    const { request } = require('node:https') as typeof import('node:https');
+    const parsed = new URL(url);
+    const req = request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      },
+      (res) => { res.resume(); },
+    );
+    req.on('error', () => undefined);
+    req.write(body);
+    req.end();
+  } catch {
+    // never let Discord failures affect the sprint
+  }
+}
+
 async function main(): Promise<void> {
   const startedAt = Date.now();
 
@@ -407,6 +431,7 @@ async function main(): Promise<void> {
     captured,
   });
 
+  notify(`▶ Sprint started: #${rawTask.issueNumber} — ${rawTask.title}`);
   log('Running pipeline...');
   log('  Phases: Architect → Editor → Verify → Reviewer → PR');
 
@@ -429,6 +454,7 @@ async function main(): Promise<void> {
     if (err instanceof Error && 'stderrTail' in err && (err as { stderrTail: string }).stderrTail) {
       log(`Worker stderr:\n${(err as { stderrTail: string }).stderrTail}`);
     }
+    notify(`❌ Sprint failed: #${rawTask.issueNumber} — ${msg}`);
     await queue.markFailed(rawTask, msg);
     await teardownWorktree(rawTask.issueNumber, branchName);
     process.exitCode = 1;
@@ -439,6 +465,7 @@ async function main(): Promise<void> {
   log(`Pipeline finished in ${durationSec}s — status: ${result.status}`);
 
   if (result.status === 'pr_opened' && result.prUrl) {
+    notify(`✅ PR opened: #${rawTask.issueNumber} — ${rawTask.title}\n${result.prUrl}`);
     log(`PR opened: ${result.prUrl}`);
     await queue.markCompleted(rawTask, result.prUrl);
     log('Issue marked auto:shipped');
@@ -461,6 +488,7 @@ async function main(): Promise<void> {
         }
       }
     }
+    notify(`❌ Sprint failed: #${rawTask.issueNumber} — ${reason}`);
     await queue.markFailed(rawTask, reason);
     // Keep worktree on failure so the diff can be inspected manually.
     log(`Worktree preserved at ${worktreePath} for inspection`);
