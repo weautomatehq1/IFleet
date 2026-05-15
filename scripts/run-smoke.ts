@@ -30,7 +30,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { symlinkSync, existsSync, mkdirSync } from 'node:fs';
+import { symlinkSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createGitHubQueue } from '../src/queue/github.ts';
@@ -242,11 +242,12 @@ async function setupWorktree(issueNumber: number, branchName: string): Promise<s
   const worktreePath = join(WORKTREES_DIR, `smoke-${issueNumber}`);
   mkdirSync(WORKTREES_DIR, { recursive: true });
 
-  // Remove stale worktree if exists.
+  // Remove stale worktree if exists. git worktree remove only works when the
+  // path is still registered; fall back to rm -rf for preserved failure worktrees.
   if (existsSync(worktreePath)) {
     await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], {
       cwd: REPO_ROOT,
-    }).catch(() => undefined);
+    }).catch(() => rmSync(worktreePath, { recursive: true, force: true }));
     await execFileAsync('git', ['worktree', 'prune'], { cwd: REPO_ROOT }).catch(() => undefined);
   }
 
