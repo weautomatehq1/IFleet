@@ -26,6 +26,7 @@ yarn-error.log*
 .omc/state/
 .omc/logs/
 .omc/sprints/
+.omc/PAUSED
 state.db
 state.db-journal
 *.sqlite
