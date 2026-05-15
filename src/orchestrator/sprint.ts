@@ -122,6 +122,15 @@ export class SprintManager {
     this.budgetUsd = opts.budgetUsd;
     this.onBudgetPaused = opts.onBudgetPaused;
     this.onRatePaused = opts.onRatePaused;
+    // Rehydrate per-sprint runtime counters from persistence so a PM2 restart
+    // does not reset the BUDGET_USD guard mid-sprint or lose the rate-limit
+    // resume timestamp for a paused sprint.
+    for (const [sprintId, runtime] of this.store.loadAllSprintRuntime()) {
+      if (runtime.spentUsd > 0) this.sprintSpend.set(sprintId, runtime.spentUsd);
+      if (runtime.rateResetAt !== null) {
+        this.rateLimitResetAt.set(sprintId, runtime.rateResetAt);
+      }
+    }
   }
 
   startSprint(opts: StartSprintOpts): SprintRecord {
@@ -208,6 +217,9 @@ export class SprintManager {
       const resetAt = this.rateLimitResetAt.get(sprintId);
       if (resetAt !== undefined && this.now() >= resetAt) {
         this.rateLimitResetAt.delete(sprintId);
+        // Clear the persisted rate-reset so a subsequent restart does not
+        // re-pause the sprint on a stale timestamp.
+        this.store.saveSprintRateReset(sprintId, null, this.now());
         this.resumeSprint(sprintId, 'rate window opened');
         sprint = this.store.loadSprint(sprintId);
         if (!sprint) return;
@@ -385,6 +397,10 @@ export class SprintManager {
     const prev = this.sprintSpend.get(sprintId) ?? 0;
     const next = prev + costUsd;
     this.sprintSpend.set(sprintId, next);
+    // Persist so the running total survives a PM2 restart; the budget guard
+    // would otherwise reset to $0 every 5 minutes when the cron bounces the
+    // process and re-enters this method against a fresh in-memory Map.
+    this.store.saveSprintSpend(sprintId, next, this.now());
     return next;
   }
 
@@ -426,6 +442,9 @@ export class SprintManager {
 
     const resetAt = Math.min(...futureSlots);
     this.rateLimitResetAt.set(sprintId, resetAt);
+    // Persist so a restart while the sprint is rate-paused does not forget
+    // when to auto-resume.
+    this.store.saveSprintRateReset(sprintId, resetAt, now);
     this.transition(sprintId, {
       kind: 'paused',
       at: now,
@@ -538,6 +557,32 @@ export class SprintManager {
         payload: { error: message },
       });
     }
+    // Auto-loop: re-tick on the next event-loop turn so the next pending task
+    // dispatches as soon as a worker frees up, instead of waiting for the
+    // PM2 cron tick (~5 min). The internal guards in tick() — terminal /
+    // paused state checks, pickWorker availability — keep this from spinning
+    // when there is no work to do.
+    this.scheduleTick(entry.sprintId);
+  }
+
+  /**
+   * Schedule a deferred `tick(sprintId)` after the current microtask flushes.
+   * Used by `awaitHandle` so task completion immediately drives the next
+   * dispatch without waiting for the external cron. Errors are swallowed —
+   * the next external tick will retry, and surfacing them here would mask
+   * the original task-completion event the caller cares about.
+   */
+  private scheduleTick(sprintId: SprintId): void {
+    setImmediate(() => {
+      const sprint = this.store.loadSprint(sprintId);
+      if (!sprint) return;
+      if (TERMINAL_STATES.has(sprint.state.kind)) return;
+      // A budget pause sets state to `paused`; the cron will still call tick
+      // on schedule to check the rate-reset window, so re-driving here would
+      // just be noise.
+      if (sprint.state.kind === 'paused') return;
+      this.tick(sprintId).catch(() => undefined);
+    });
   }
 
   /**

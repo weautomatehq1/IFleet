@@ -44,6 +44,18 @@ interface RateLimitRow {
   observed_at: number;
 }
 
+interface SprintRuntimeRow {
+  sprint_id: string;
+  spent_usd: number;
+  rate_reset_at: number | null;
+  updated_at: number;
+}
+
+export interface SprintRuntimeState {
+  spentUsd: number;
+  rateResetAt: number | null;
+}
+
 const MIGRATIONS: ReadonlyArray<string> = [
   `CREATE TABLE IF NOT EXISTS sprints (
     id TEXT PRIMARY KEY,
@@ -92,6 +104,18 @@ const MIGRATIONS: ReadonlyArray<string> = [
     reset_at INTEGER NOT NULL,
     pressure REAL NOT NULL,
     observed_at INTEGER NOT NULL
+  )`,
+  // Per-sprint runtime counters that must survive a process restart. Kept in
+  // a separate table from `sprints` so the migration is additive and the
+  // sprint state machine (which lives in state_json) stays untouched. Rows
+  // are upserted as the SprintManager accumulates cost or detects a rate
+  // pause, and rehydrated into in-memory Maps on construction.
+  `CREATE TABLE IF NOT EXISTS sprint_runtime_state (
+    sprint_id TEXT PRIMARY KEY,
+    spent_usd REAL NOT NULL DEFAULT 0,
+    rate_reset_at INTEGER,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (sprint_id) REFERENCES sprints(id)
   )`,
 ];
 
@@ -348,6 +372,63 @@ export class StateStore {
            observed_at = excluded.observed_at`,
       )
       .run(snapshot);
+  }
+
+  /**
+   * Upsert the accumulated USD spend for a sprint. Called from the
+   * SprintManager every time an attempt reports `total_cost_usd`, so PM2
+   * restarts (or any other process churn) preserve the running total used
+   * by the BUDGET_USD guard.
+   */
+  saveSprintSpend(sprintId: SprintId, spentUsd: number, updatedAt: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO sprint_runtime_state (sprint_id, spent_usd, rate_reset_at, updated_at)
+         VALUES (?, ?, NULL, ?)
+         ON CONFLICT(sprint_id) DO UPDATE SET
+           spent_usd = excluded.spent_usd,
+           updated_at = excluded.updated_at`,
+      )
+      .run(sprintId, spentUsd, updatedAt);
+  }
+
+  /**
+   * Upsert the rate-limit reset timestamp for a paused sprint, or clear it
+   * by passing `null` once the window opens and the sprint is resumed.
+   */
+  saveSprintRateReset(
+    sprintId: SprintId,
+    resetAt: number | null,
+    updatedAt: number,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO sprint_runtime_state (sprint_id, spent_usd, rate_reset_at, updated_at)
+         VALUES (?, 0, ?, ?)
+         ON CONFLICT(sprint_id) DO UPDATE SET
+           rate_reset_at = excluded.rate_reset_at,
+           updated_at = excluded.updated_at`,
+      )
+      .run(sprintId, resetAt, updatedAt);
+  }
+
+  /**
+   * Snapshot every persisted sprint-runtime row. Used by the SprintManager
+   * constructor to rehydrate `sprintSpend` and `rateLimitResetAt` Maps in
+   * one read after a restart.
+   */
+  loadAllSprintRuntime(): Map<SprintId, SprintRuntimeState> {
+    const rows = this.db
+      .prepare('SELECT * FROM sprint_runtime_state')
+      .all() as ReadonlyArray<SprintRuntimeRow>;
+    const out = new Map<SprintId, SprintRuntimeState>();
+    for (const row of rows) {
+      out.set(row.sprint_id as SprintId, {
+        spentUsd: row.spent_usd,
+        rateResetAt: row.rate_reset_at,
+      });
+    }
+    return out;
   }
 
   latestPressure(workerId: WorkerId): RateLimitSnapshot | undefined {
