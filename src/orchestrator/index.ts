@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
 import { DEFAULT_REPO_ID, loadReposConfig, type ReposMap } from '../config/repos';
+import { postTaskDoneNotification } from '../observability/task-done-notify.js';
 import type { PipelineRunnerFactory } from './pipeline-bridge';
 import { PressureTracker } from './pressure';
 import { SprintManager, type StartSprintOpts, type TaskBriefLoader } from './sprint';
@@ -59,6 +60,8 @@ export interface OrchestratorOptions {
   budgetUsd?: number;
   /** Discord webhook URL for budget and rate-cap alerts. Defaults to DISCORD_IFLEET_WEBHOOK env var. */
   discordWebhookUrl?: string;
+  /** Path to the claude CLI for generating task-done summaries. Defaults to CLAUDE_PATH env var or 'claude'. */
+  claudePath?: string;
 }
 
 export class Orchestrator {
@@ -72,6 +75,8 @@ export class Orchestrator {
   private readonly killPollIntervalMs: number;
   private readonly now: () => number;
   private readonly repoId: string;
+  private readonly discordWebhookUrl: string | undefined;
+  private readonly claudePath: string;
   private tickTimer?: NodeJS.Timeout;
   private killTimer?: NodeJS.Timeout;
   private started = false;
@@ -93,6 +98,8 @@ export class Orchestrator {
     this.killPollIntervalMs = opts.killPollIntervalMs ?? DEFAULT_KILL_POLL_MS;
     const budgetUsd = opts.budgetUsd ?? parseBudgetEnv();
     const discordWebhookUrl = opts.discordWebhookUrl ?? process.env['DISCORD_IFLEET_WEBHOOK'];
+    this.discordWebhookUrl = discordWebhookUrl;
+    this.claudePath = opts.claudePath ?? process.env['CLAUDE_PATH'] ?? 'claude';
     this.sprints = new SprintManager({
       store: this.store,
       registry: this.registry,
@@ -199,6 +206,19 @@ export class Orchestrator {
       event.kind === 'sprint.failed'
     ) {
       this.activeSprintIds.delete(event.sprintId);
+    }
+    if (event.kind === 'task.completed' && event.taskId) {
+      const prUrl = event.payload['pr'] as string | undefined;
+      const task = this.store.loadTask(event.taskId);
+      if (task) {
+        void postTaskDoneNotification({
+          taskId: event.taskId,
+          prUrl,
+          brief: task.brief,
+          webhookUrl: this.discordWebhookUrl,
+          claudePath: this.claudePath,
+        });
+      }
     }
   }
 
