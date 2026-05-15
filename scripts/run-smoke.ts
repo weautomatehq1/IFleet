@@ -2,7 +2,7 @@
 /**
  * Phase A smoke test driver.
  *
- * Picks the next auto:ship issue from weautomatehq1/IFleet, runs the full
+ * Picks the next auto:ship issue from repos in config/repos.json, runs the full
  * Architect → Editor → Verify → Reviewer pipeline, and opens a PR.
  *
  * Usage:
@@ -34,6 +34,7 @@ import { symlinkSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createGitHubQueue } from '../src/queue/github.ts';
+import { loadReposConfig } from '../src/config/repos.ts';
 import { createIssueCommenter } from '../src/queue/issue-commenter.ts';
 import { classifyTask } from '../src/classifier/index.ts';
 import { createClaudeAdapter } from '../src/workers/claude.ts';
@@ -328,8 +329,9 @@ async function main(): Promise<void> {
 
   log(`Phase A smoke test starting${dryRun ? ' (dry-run — no side effects)' : ''}`);
 
+  const reposMap = loadReposConfig(resolve(REPO_ROOT, 'config', 'repos.json'));
   const queue = await createGitHubQueue({
-    repos: [{ owner: 'weautomatehq1', name: 'IFleet' }],
+    repos: Object.values(reposMap),
   });
 
   log('Picking next issue...');
