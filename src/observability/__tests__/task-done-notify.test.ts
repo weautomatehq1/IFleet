@@ -6,7 +6,7 @@ import { postTaskDoneNotification } from '../task-done-notify.js';
 vi.mock('node:https');
 vi.mock('node:child_process');
 
-function makeHttpsMock(statusCode = 200) {
+function makeHttpsMock(_statusCode = 200) {
   const res = { resume: vi.fn(), on: vi.fn((ev, cb) => { if (ev === 'end') cb(); }) };
   const req = {
     write: vi.fn(),

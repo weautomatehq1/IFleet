@@ -9,7 +9,7 @@ export interface TaskDoneNotifyOpts {
   claudePath: string;
 }
 
-const SUMMARY_PROMPT = (brief: string, prUrl: string) =>
+const SUMMARY_PROMPT = (brief: string, prUrl: string): string =>
   `You are IFleet's reporter. A task just completed and a PR was opened.\n\n` +
   `Task brief:\n${brief}\n\nPR: ${prUrl}\n\n` +
   `Write exactly 2 sentences in plain English summarising what was accomplished. ` +
