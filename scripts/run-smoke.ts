@@ -325,6 +325,12 @@ function notify(msg: string): void {
 }
 
 async function main(): Promise<void> {
+  const PAUSED_FLAG = join(REPO_ROOT, '.omc', 'PAUSED');
+  if (existsSync(PAUSED_FLAG)) {
+    log('Fleet is paused (.omc/PAUSED exists). Run `npm run fleet:resume` to resume.');
+    return;
+  }
+
   const startedAt = Date.now();
 
   // Parse optional --issue flag to target a specific issue number.
