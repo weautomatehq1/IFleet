@@ -29,6 +29,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { request } from 'node:https';
 import { promisify } from 'node:util';
 import { symlinkSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -265,9 +266,13 @@ async function setupWorktree(issueNumber: number, branchName: string): Promise<s
   );
 
   // Symlink node_modules so verify can run npm scripts.
+  // On Windows, use 'junction' so the operation does not require Developer Mode
+  // or elevated privileges (regular symlinks fail with EPERM otherwise). On
+  // POSIX, Node ignores the type argument and creates a normal symlink.
   const nmTarget = join(worktreePath, 'node_modules');
   if (!existsSync(nmTarget)) {
-    symlinkSync(join(REPO_ROOT, 'node_modules'), nmTarget);
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+    symlinkSync(join(REPO_ROOT, 'node_modules'), nmTarget, linkType);
   }
 
   log(`Worktree created at ${worktreePath} on branch ${branchName}`);
@@ -301,7 +306,6 @@ function notify(msg: string): void {
   if (!url) return;
   const body = JSON.stringify({ content: msg });
   try {
-    const { request } = require('node:https') as typeof import('node:https');
     const parsed = new URL(url);
     const req = request(
       {
