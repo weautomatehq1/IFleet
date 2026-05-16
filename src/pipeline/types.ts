@@ -113,6 +113,9 @@ export interface GitOps {
   currentBranch(worktreePath: string): Promise<string>;
 }
 
+/** Mirrors queue/types.SprintMode — pipeline stays independently testable. */
+export type SprintMode = 'ralph' | 'ulw' | 'tdd' | 'deslop' | 'default';
+
 export interface PipelineInput {
   task: QueuedTask;
   workerPool: WorkerPool;
@@ -130,6 +133,7 @@ export interface PipelineInput {
   reviewerMaxRounds?: number;
   repoRoot?: string;
   sprintId?: string;
+  sprintMode?: SprintMode;
 }
 
 export interface AttemptRecord {

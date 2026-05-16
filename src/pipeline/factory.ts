@@ -11,6 +11,7 @@ import {
 } from '../orchestrator/pipeline-bridge.js';
 import type { WorkerConfig } from '../orchestrator/types.js';
 import { createIssueCommenter } from '../queue/issue-commenter.js';
+import { parseSprintMode } from '../queue/labels.js';
 import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
 import { createAccountPool, type AccountPool } from '../workers/account-pool.js';
@@ -101,6 +102,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       baseBranch: 'main',
       approver: opts.approver ?? '@monstersebas1',
       repoRoot: opts.repoRoot,
+      sprintMode: parseSprintMode(task.labels),
     };
 
     return {

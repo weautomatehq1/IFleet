@@ -1,13 +1,14 @@
 import type {
   AttemptRecord,
   GitOps,
+  SprintMode,
   WorkerPool,
   WorkerSpec,
 } from './types.js';
 import {
+  buildEditorPrompt,
   EDITOR_DOCTOR_PROMPT_HEADER,
   EDITOR_FIX_PASS_PROMPT_HEADER,
-  EDITOR_SYSTEM_PROMPT,
 } from './prompts.js';
 
 export type EditorMode =
@@ -21,6 +22,7 @@ export interface RunEditorInput {
   git: GitOps;
   worktreePath: string;
   baseBranch: string;
+  sprintMode?: SprintMode;
   abortSignal: AbortSignal;
   mode: EditorMode;
 }
@@ -36,7 +38,7 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
 
   const handle = input.workerPool.spawn(input.spec, brief, {
     role: 'editor',
-    systemPrompt: EDITOR_SYSTEM_PROMPT,
+    systemPrompt: buildEditorPrompt(input.sprintMode ?? 'default'),
     worktreePath: input.worktreePath,
     abortSignal: input.abortSignal,
   });

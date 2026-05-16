@@ -2,10 +2,11 @@ import type {
   AttemptRecord,
   IssueCommenter,
   QueuedTask,
+  SprintMode,
   WorkerPool,
   WorkerSpec,
 } from './types.js';
-import { ARCHITECT_SYSTEM_PROMPT } from './prompts.js';
+import { buildArchitectPrompt } from './prompts.js';
 
 export interface RunArchitectInput {
   task: QueuedTask;
@@ -14,6 +15,7 @@ export interface RunArchitectInput {
   issues: IssueCommenter;
   abortSignal: AbortSignal;
   approver: string;
+  sprintMode?: SprintMode;
   approvalPollMs?: number;
   approvalTimeoutMs?: number;
 }
@@ -31,7 +33,7 @@ export async function runArchitect(input: RunArchitectInput): Promise<ArchitectO
   const startedAt = Date.now();
   const handle = input.workerPool.spawn(input.spec, input.task.body, {
     role: 'architect',
-    systemPrompt: ARCHITECT_SYSTEM_PROMPT,
+    systemPrompt: buildArchitectPrompt(input.sprintMode ?? 'default'),
     abortSignal: input.abortSignal,
   });
 

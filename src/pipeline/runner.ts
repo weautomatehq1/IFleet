@@ -43,6 +43,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       issues: input.issues,
       abortSignal: input.abortSignal,
       approver,
+      sprintMode: input.sprintMode,
     });
     attempts.push(architect.attempt);
 
@@ -75,6 +76,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         worktreePath: input.worktreePath,
         baseBranch,
         abortSignal: input.abortSignal,
+        sprintMode: input.sprintMode,
         mode: { kind: 'initial', plan, brief: input.task.body },
       });
       attempts.push(editor.attempt);
@@ -127,6 +129,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         worktreePath: input.worktreePath,
         baseBranch,
         abortSignal: input.abortSignal,
+        sprintMode: input.sprintMode,
         mode: {
           kind: 'fix_ci',
           plan,
@@ -179,6 +182,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         worktreePath: input.worktreePath,
         baseBranch,
         abortSignal: input.abortSignal,
+        sprintMode: input.sprintMode,
         mode: {
           kind: 'fix_review',
           plan,
