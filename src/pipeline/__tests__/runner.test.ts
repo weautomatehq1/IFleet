@@ -450,4 +450,43 @@ describe('DefaultPipelineRunner', () => {
     expect(result.status).toBe('cancelled');
     expect(pr.opened).toHaveLength(0);
   });
+
+  it('sprintMode ralph: editor receives ralph system prompt', async () => {
+    const { input, workerPool } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'wrote code' },
+        { role: 'reviewer', output: approveJson() },
+      ],
+      verify: [{ ok: true, failures: [] }],
+    });
+    input.sprintMode = 'ralph';
+
+    await new DefaultPipelineRunner().run(input);
+
+    const editorCall = workerPool.calls.find((c) => c.opts.role === 'editor');
+    expect(editorCall?.opts.systemPrompt).toContain('Do not stop until');
+    expect(editorCall?.opts.systemPrompt).not.toBe(undefined);
+  });
+
+  it('sprintMode default (undefined): editor receives base system prompt unchanged', async () => {
+    const { input, workerPool } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'wrote code' },
+        { role: 'reviewer', output: approveJson() },
+      ],
+      verify: [{ ok: true, failures: [] }],
+    });
+    // sprintMode intentionally not set — defaults to 'default'
+
+    await new DefaultPipelineRunner().run(input);
+
+    const editorCall = workerPool.calls.find((c) => c.opts.role === 'editor');
+    expect(editorCall?.opts.systemPrompt).not.toContain('Do not stop until');
+    expect(editorCall?.opts.systemPrompt).not.toContain('Make one focused change');
+    expect(editorCall?.opts.systemPrompt).not.toContain('Write every test listed');
+    expect(editorCall?.opts.systemPrompt).not.toContain('Remove all unnecessary complexity');
+  });
+
 });

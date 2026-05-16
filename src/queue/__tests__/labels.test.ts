@@ -6,6 +6,7 @@ import {
   ensureLabels,
   parseLabels,
   parseRequiredCapabilities,
+  parseSprintMode,
 } from '../labels.js';
 
 describe('parseLabels', () => {
@@ -205,5 +206,53 @@ describe('ensureLabels', () => {
     const result = await ensureLabels(octokit, REPO);
     assert.equal(result.created.length, 0);
     assert.equal(result.existed.length, REQUIRED_LABELS.length);
+  });
+});
+
+describe('parseSprintMode', () => {
+  it('returns ralph for mode:ralph', () => {
+    assert.equal(parseSprintMode(['mode:ralph']), 'ralph');
+  });
+  it('returns ulw for mode:ulw', () => {
+    assert.equal(parseSprintMode(['mode:ulw']), 'ulw');
+  });
+  it('returns tdd for mode:tdd', () => {
+    assert.equal(parseSprintMode(['mode:tdd']), 'tdd');
+  });
+  it('returns deslop for mode:deslop', () => {
+    assert.equal(parseSprintMode(['mode:deslop']), 'deslop');
+  });
+  it('returns default when no mode: label', () => {
+    assert.equal(parseSprintMode([]), 'default');
+  });
+  it('returns default for unknown mode:bogus', () => {
+    assert.equal(parseSprintMode(['mode:bogus']), 'default');
+  });
+  it('first mode: label wins when multiple present', () => {
+    assert.equal(parseSprintMode(['mode:ralph', 'mode:tdd']), 'ralph');
+  });
+  it('is case-insensitive — Mode:Ralph → ralph', () => {
+    assert.equal(parseSprintMode(['Mode:Ralph']), 'ralph');
+  });
+});
+
+describe('parseLabels — sprint mode', () => {
+  it('mode field defaults to default when no mode: label', () => {
+    assert.equal(parseLabels([]).mode, 'default');
+  });
+  it('mode:ralph sets mode to ralph', () => {
+    assert.equal(parseLabels(['mode:ralph']).mode, 'ralph');
+  });
+  it('mode:ulw sets mode to ulw', () => {
+    assert.equal(parseLabels(['mode:ulw']).mode, 'ulw');
+  });
+  it('mode:tdd sets mode to tdd', () => {
+    assert.equal(parseLabels(['mode:tdd']).mode, 'tdd');
+  });
+  it('mode:deslop sets mode to deslop', () => {
+    assert.equal(parseLabels(['mode:deslop']).mode, 'deslop');
+  });
+  it('mode:bogus falls through to default', () => {
+    assert.equal(parseLabels(['mode:bogus']).mode, 'default');
   });
 });
