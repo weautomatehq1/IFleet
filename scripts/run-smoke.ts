@@ -42,6 +42,7 @@ import { createClaudeAdapter } from '../src/workers/claude.ts';
 import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
 import { titleToBranchName } from '../src/utils/branch-name.ts';
+import { acquireDispatchLock } from './dispatcher-lock.ts';
 import {
   PipelineBridge,
   decodeBridgeBrief,
@@ -331,6 +332,31 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Acquire single-dispatcher lock before any GitHub I/O.
+  // PM2 cron_restart can race with overlapping invocations (or other triggers
+  // like MCP submitSprint), and `pickNext` is not atomic — two concurrent
+  // dispatchers will both claim the same auto:ship issue. The lock fences
+  // that race regardless of who fired the second invocation.
+  const lockResult = acquireDispatchLock(join(REPO_ROOT, '.omc', 'dispatcher.lock'));
+  if (!lockResult.ok) {
+    if (lockResult.reason === 'held-by-live-pid') {
+      log(`Another dispatcher run is in progress (pid ${lockResult.heldByPid}). Exit 0.`);
+      return;
+    }
+    log(`ERROR: Could not acquire dispatcher lock: ${lockResult.error ?? 'unknown'}. Exit 1.`);
+    process.exitCode = 1;
+    return;
+  }
+  const releaseLock = lockResult.lock.release;
+
+  try {
+    await runDispatch();
+  } finally {
+    releaseLock();
+  }
+}
+
+async function runDispatch(): Promise<void> {
   const startedAt = Date.now();
 
   // Parse optional --issue flag to target a specific issue number.
