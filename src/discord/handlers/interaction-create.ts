@@ -1,0 +1,195 @@
+import {
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+  type Interaction,
+} from 'discord.js';
+import type { ChannelRouter } from '../../contracts/channel-router.js';
+import type {
+  ControlCommand,
+  ControlPlaneClient,
+  DiscordCommandSource,
+} from '../../contracts/control-plane-client.js';
+import { parseCustomId, type DiscordCustomIdVerb } from '../../contracts/discord-out.js';
+import { ControlPlaneError } from '../hmac-client.js';
+
+export interface InteractionDeps {
+  router: ChannelRouter;
+  controlPlane: ControlPlaneClient;
+  log?: (msg: string) => void;
+}
+
+export async function handleInteractionCreate(
+  interaction: Interaction,
+  deps: InteractionDeps,
+): Promise<void> {
+  if (interaction.isChatInputCommand()) {
+    await handleSlashCommand(interaction, deps);
+    return;
+  }
+  if (interaction.isButton()) {
+    await handleButton(interaction, deps);
+    return;
+  }
+}
+
+async function handleSlashCommand(
+  interaction: ChatInputCommandInteraction,
+  deps: InteractionDeps,
+): Promise<void> {
+  // Discord 3s window — defer first, do work after.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const route = deps.router.resolve(interaction.channelId);
+  if (!route) {
+    await interaction.editReply(
+      `This channel isn't mapped to any repo. Ask Sebastian to add it to config/channels.json.`,
+    );
+    return;
+  }
+  if (!route.allowedUserIds.includes(interaction.user.id)) {
+    await interaction.editReply(`You are not on the allowedUserIds list for \`${route.repo}\`.`);
+    return;
+  }
+
+  const source: DiscordCommandSource = {
+    kind: 'discord',
+    channelId: interaction.channelId,
+    userId: interaction.user.id,
+    userLabel: interaction.user.username,
+  };
+
+  const command = buildCommandFromSlash(interaction, route.repo, source);
+  if (!command) {
+    await interaction.editReply(`Unknown command \`${interaction.commandName}\`.`);
+    return;
+  }
+
+  try {
+    const ack = await deps.controlPlane.postCommand(command);
+    await interaction.editReply(formatAckReply(command, ack));
+  } catch (err) {
+    await interaction.editReply(formatErrorReply(err));
+  }
+}
+
+async function handleButton(
+  interaction: ButtonInteraction,
+  deps: InteractionDeps,
+): Promise<void> {
+  const customId = interaction.customId;
+  const parsed = parseCustomId(customId);
+  if (!parsed) {
+    await interaction.reply({
+      content: `Unrecognised button \`${customId}\`.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const route = deps.router.resolve(interaction.channelId);
+  if (route && !route.allowedUserIds.includes(interaction.user.id)) {
+    await interaction.editReply(`You are not authorised for \`${route.repo}\`.`);
+    return;
+  }
+
+  const source: DiscordCommandSource = {
+    kind: 'discord',
+    channelId: interaction.channelId,
+    userId: interaction.user.id,
+    userLabel: interaction.user.username,
+  };
+
+  const command: ControlCommand = buildCommandFromButton(parsed.verb, parsed.taskId, source);
+
+  try {
+    await deps.controlPlane.postCommand(command);
+    await interaction.editReply(`✔ ${parsed.verb} dispatched for \`${parsed.taskId}\`.`);
+  } catch (err) {
+    await interaction.editReply(formatErrorReply(err));
+  }
+}
+
+export function buildCommandFromButton(
+  verb: DiscordCustomIdVerb,
+  taskId: string,
+  source: DiscordCommandSource,
+): ControlCommand {
+  if (verb === 'approve') return { type: 'approve', taskId, source };
+  return {
+    type: 'cancel',
+    taskId,
+    reason: verb === 'reject' ? 'rejected via discord' : 'cancelled via discord',
+    source,
+  };
+}
+
+export function buildCommandFromSlash(
+  interaction: ChatInputCommandInteraction,
+  repo: string,
+  source: DiscordCommandSource,
+): ControlCommand | null {
+  switch (interaction.commandName) {
+    case 'ship': {
+      const goal = interaction.options.getString('prompt', true);
+      return { type: 'sprint_goal', goal, repo, source };
+    }
+    case 'plan': {
+      const goal = interaction.options.getString('prompt', true);
+      return { type: 'sprint_goal', goal, repo, planOnly: true, source };
+    }
+    case 'status': {
+      const taskId = interaction.options.getString('taskid');
+      if (taskId) return { type: 'status', taskId, source };
+      // No taskId — server interprets a sentinel as "last 5 in this channel".
+      return { type: 'status', taskId: `__channel__:${interaction.channelId}`, source };
+    }
+    case 'cancel': {
+      const taskId = interaction.options.getString('taskid', true);
+      return { type: 'cancel', taskId, reason: 'cancelled via discord', source };
+    }
+    case 'approve': {
+      const taskId = interaction.options.getString('taskid', true);
+      return { type: 'approve', taskId, source };
+    }
+    default:
+      return null;
+  }
+}
+
+function formatAckReply(
+  command: ControlCommand,
+  ack: { accepted: boolean; taskId?: string; threadId?: string; message?: string },
+): string {
+  if (!ack.accepted) {
+    return `❌ Control plane rejected \`${command.type}\`${ack.message ? `: ${ack.message}` : ''}`;
+  }
+  switch (command.type) {
+    case 'sprint_goal': {
+      const planSuffix = command.planOnly ? ' (plan-only)' : '';
+      const thread = ack.threadId ? ` Thread: <#${ack.threadId}>` : '';
+      const tid = ack.taskId ? ` Task: \`${ack.taskId}\`.` : '';
+      return `✔ Queued${planSuffix}.${tid}${thread}`;
+    }
+    case 'status':
+      return ack.message ? `\`\`\`\n${ack.message.slice(0, 1800)}\n\`\`\`` : `✔ Status requested.`;
+    case 'cancel':
+      return `✔ Cancel dispatched for \`${command.taskId}\`.`;
+    case 'approve':
+      return `✔ Approval dispatched for \`${command.taskId}\`.`;
+    case 'run':
+      return `✔ Run dispatched.`;
+    default:
+      return `✔ ok`;
+  }
+}
+
+function formatErrorReply(err: unknown): string {
+  if (err instanceof ControlPlaneError) {
+    return `❌ Control plane error (${err.status}): ${err.responseBody || 'no body'}`;
+  }
+  if (err instanceof Error) return `❌ ${err.message}`;
+  return `❌ unknown error`;
+}
