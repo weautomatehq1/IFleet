@@ -7,6 +7,7 @@ import {
   LABEL_SHIPPED,
   type RepoRef,
   type RoutingHints,
+  type SprintMode,
   type VerifyKind,
 } from './types.js';
 
@@ -16,6 +17,7 @@ const PRIORITIES = new Set(['low', 'normal', 'high'] as const);
 type Model = NonNullable<RoutingHints['model']>;
 type Priority = RoutingHints['priority'];
 
+const MODES = new Set(['ralph', 'ulw', 'tdd', 'deslop'] as const);
 const DEFAULT_VERIFY: VerifyKind[] = ['typecheck', 'lint', 'test'];
 
 export function parseLabels(labels: readonly string[]): RoutingHints {
@@ -51,6 +53,8 @@ export function parseLabels(labels: readonly string[]): RoutingHints {
           verifyOverride = mergeVerify(verifyOverride, [value]);
         }
         break;
+      case 'mode':
+        break;
       default:
         break;
     }
@@ -65,9 +69,24 @@ export function parseLabels(labels: readonly string[]): RoutingHints {
     verify = [...DEFAULT_VERIFY];
   }
 
-  const hints: RoutingHints = { priority, verify, autonomy };
+  const mode = parseSprintMode(labels);
+  const hints: RoutingHints = { priority, verify, autonomy, mode };
   if (model !== undefined) hints.model = model;
   return hints;
+}
+
+export function parseSprintMode(labels: readonly string[]): SprintMode {
+  for (const raw of labels) {
+    const label = raw.toLowerCase().trim();
+    const colon = label.indexOf(':');
+    if (colon === -1) continue;
+    const key = label.slice(0, colon);
+    const value = label.slice(colon + 1);
+    if (key === 'mode' && (MODES as Set<string>).has(value)) {
+      return value as SprintMode;
+    }
+  }
+  return 'default';
 }
 
 function isModel(value: string): value is Model {
@@ -114,6 +133,10 @@ export const REQUIRED_LABELS: readonly LabelSpec[] = [
   { name: LABEL_SHIPPED, color: '6f42c1', description: 'IFleet shipped a PR for this issue' },
   { name: LABEL_FAILED, color: 'd73a4a', description: 'IFleet attempted but failed' },
   { name: LABEL_CAPABILITY_BLOCKED, color: 'b60205', description: 'Missing runner capability; not pickable' },
+  { name: 'mode:ralph', color: '0075ca', description: 'Sprint mode: persistence (do not stop until complete)' },
+  { name: 'mode:ulw', color: '0075ca', description: 'Sprint mode: speed (bullet-point plan, one change per commit)' },
+  { name: 'mode:tdd', color: '0075ca', description: 'Sprint mode: test-first (failing tests before implementation)' },
+  { name: 'mode:deslop', color: '0075ca', description: 'Sprint mode: cleanup (remove dead code, no new features)' },
 ];
 
 export interface EnsureLabelsResult {

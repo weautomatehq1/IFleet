@@ -27,11 +27,15 @@ export interface QueuedTask {
   url: string;
 }
 
+export type SprintMode = 'ralph' | 'ulw' | 'tdd' | 'deslop' | 'default';
+
 export interface RoutingHints {
   model?: 'opus' | 'sonnet' | 'haiku' | 'codex';
   priority: 'low' | 'normal' | 'high';
   verify: VerifyKind[];
   autonomy: 'auto' | 'review';
+  /** Sprint mode derived from a `mode:*` label. Absence means 'default'. */
+  mode?: SprintMode;
 }
 
 export type VerifyKind = 'typecheck' | 'lint' | 'test' | 'playwright' | 'screenshot';
