@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { request } from 'node:https';
+import { claudeChildEnv, wrapBriefAsData } from '../workers/claude-env.js';
 
 export interface TaskDoneNotifyOpts {
   taskId: string;
@@ -9,18 +10,37 @@ export interface TaskDoneNotifyOpts {
   claudePath: string;
 }
 
-const SUMMARY_PROMPT = (brief: string, prUrl: string): string =>
-  `You are IFleet's reporter. A task just completed and a PR was opened.\n\n` +
-  `Task brief:\n${brief}\n\nPR: ${prUrl}\n\n` +
+const SUMMARY_INSTRUCTION = (prUrl: string): string =>
+  `You are IFleet's reporter. A task just completed and a PR was opened (PR: ${prUrl}).\n` +
   `Write exactly 2 sentences in plain English summarising what was accomplished. ` +
   `No technical jargon. No markdown. No bullet points. ` +
   `Start the first sentence with "IFleet just finished".`;
 
+export function buildSummaryPrompt(brief: string, prUrl: string): string {
+  return wrapBriefAsData(SUMMARY_INSTRUCTION(prUrl), brief);
+}
+
+export function buildSummaryArgs(prompt: string): string[] {
+  // The summariser does not write files and only needs to read the prompt
+  // it received. We deliberately omit `--dangerously-skip-permissions` and
+  // restrict tools to nothing — the summary is produced by the model
+  // itself, not by tool calls. If the prompt-injected brief later tries to
+  // invoke a tool, Claude has no permitted tool to run.
+  return [
+    '-p',
+    prompt,
+    '--permission-mode',
+    'default',
+    '--allowedTools',
+    '',
+  ];
+}
+
 function runClaude(claudePath: string, prompt: string): Promise<string> {
   return new Promise((resolve) => {
     let out = '';
-    const proc = spawn(claudePath, ['-p', prompt, '--dangerously-skip-permissions'], {
-      env: { ...process.env },
+    const proc = spawn(claudePath, buildSummaryArgs(prompt), {
+      env: claudeChildEnv(),
     });
     proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
     proc.stderr.on('data', () => {});
@@ -56,7 +76,8 @@ export async function postTaskDoneNotification(opts: TaskDoneNotifyOpts): Promis
   if (!prUrl || !webhookUrl) return;
 
   try {
-    const summary = await runClaude(claudePath, SUMMARY_PROMPT(brief, prUrl));
+    const prompt = buildSummaryPrompt(brief, prUrl);
+    const summary = await runClaude(claudePath, prompt);
     const lines: string[] = [
       `✅ **Done: \`${taskId}\`**`,
       `PR: ${prUrl}`,

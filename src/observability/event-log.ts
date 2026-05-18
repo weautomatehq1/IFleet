@@ -28,6 +28,12 @@ export class FileEventLog implements EventLog {
   }
 
   sprintFile(sprintId: string): string {
+    // Reject anything that could escape rootDir via `..`, absolute paths, or
+    // shell-interpreted characters. Matches the pattern allowed elsewhere
+    // (e.g. taskId in repos/manager.ts:allocateWorktree).
+    if (!/^[a-zA-Z0-9_-]+$/.test(sprintId)) {
+      throw new Error(`invalid sprintId: ${JSON.stringify(sprintId)}`);
+    }
     return resolve(this.rootDir, sprintId, 'events.jsonl');
   }
 
