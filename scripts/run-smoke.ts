@@ -28,10 +28,10 @@
  *     so the pipeline completes end-to-end unattended.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn as spawnChild } from 'node:child_process';
 import { request } from 'node:https';
 import { promisify } from 'node:util';
-import { symlinkSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { symlinkSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createGitHubQueue } from '../src/queue/github.ts';
@@ -65,6 +65,7 @@ import type {
   RoutingDecision,
   VerifyRunner as PipelineVerifyRunner,
 } from '../src/pipeline/types.ts';
+import type { QueuedTask as RawTask } from '../src/queue/types.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, '..');
@@ -325,10 +326,127 @@ function notify(msg: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Worker mode — runs the full pipeline for a pre-picked issue.
+// Spawned as a detached child by the scheduler so PM2 cron_restart can't
+// kill it mid-pipeline.
+// ---------------------------------------------------------------------------
+
+async function runWorkerMode(issueNumber: number): Promise<void> {
+  const stateFile = join(REPO_ROOT, '.omc', 'state', `pipeline-${issueNumber}.json`);
+  if (!existsSync(stateFile)) {
+    log(`[worker] State file missing: ${stateFile}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const { rawTask, branchName, worktreePath } = JSON.parse(readFileSync(stateFile, 'utf8')) as {
+    rawTask: RawTask;
+    branchName: string;
+    worktreePath: string;
+  };
+  const startedAt = Date.now();
+
+  const reposMap = loadReposConfig(resolve(REPO_ROOT, 'config', 'repos.json'));
+  const queue = await createGitHubQueue({ repos: Object.values(reposMap) });
+
+  const pipelineTask: PipelineTask = {
+    id: rawTask.id,
+    issueNumber: rawTask.issueNumber,
+    repo: rawTask.repo,
+    title: rawTask.title,
+    body: rawTask.body,
+    autonomy: rawTask.routingHints.autonomy,
+    labels: rawTask.labels,
+  };
+
+  const routing = classifyTask({ title: rawTask.title, body: rawTask.body, labels: rawTask.labels });
+  const [owner, repoName] = rawTask.repo.split('/') as [string, string];
+
+  let ghToken = process.env.GITHUB_TOKEN;
+  if (!ghToken) {
+    const { stdout } = await execFileAsync('gh', ['auth', 'token']).catch(() => ({ stdout: '' }));
+    ghToken = stdout.trim() || undefined;
+  }
+  if (!ghToken) throw new Error('No GitHub token: set GITHUB_TOKEN or run `gh auth login`');
+  const octokit = new Octokit({ auth: ghToken });
+
+  const abortController = new AbortController();
+  const captured: { result?: PipelineResult } = {};
+  const factory = makePipelineFactory({
+    workerPool: buildWorkerPool(),
+    worktreePath,
+    routing,
+    verify: buildVerifyAdapter(),
+    issues: createIssueCommenter(octokit, owner, repoName),
+    pr: buildPrOpener(),
+    git: buildGitOps(),
+    abortController,
+    captured,
+  });
+
+  notify(`▶ Sprint started: #${issueNumber} — ${rawTask.title}`);
+  log(`[worker] Running pipeline for #${issueNumber}...`);
+  log('[worker]   Phases: Architect → Editor → Verify → Reviewer → PR');
+
+  const bridge = new PipelineBridge(factory);
+  let result;
+  try {
+    const handle = await bridge.spawn(newTaskId(rawTask.id), encodeBridgeBrief(pipelineTask), {});
+    const spawnResult = await handle.done;
+    if (!captured.result) {
+      throw new Error(spawnResult.error ?? `pipeline did not produce a result (exit ${spawnResult.exitCode})`);
+    }
+    result = captured.result;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`[worker] Pipeline threw: ${msg}`);
+    notify(`❌ Sprint failed: #${issueNumber} — ${msg}`);
+    await queue.markFailed(rawTask as Parameters<typeof queue.markFailed>[0], msg);
+    await teardownWorktree(issueNumber, branchName);
+    rmSync(stateFile, { force: true });
+    process.exitCode = 1;
+    return;
+  }
+
+  const durationSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+  log(`[worker] Pipeline finished in ${durationSec}s — status: ${result.status}`);
+
+  if (result.status === 'pr_opened' && result.prUrl) {
+    notify(`✅ PR opened: #${issueNumber} — ${rawTask.title}\n${result.prUrl}`);
+    await queue.markCompleted(rawTask as Parameters<typeof queue.markCompleted>[0], result.prUrl);
+    await teardownWorktree(issueNumber, branchName);
+    rmSync(stateFile, { force: true });
+    log('[worker] PHASE A GREEN — smoke PR is open. Do not merge without Seb review.');
+  } else {
+    const reason = result.failureReason ?? result.status;
+    log(`[worker] Pipeline did not open a PR: ${reason}`);
+    notify(`❌ Sprint failed: #${issueNumber} — ${reason}`);
+    await queue.markFailed(rawTask as Parameters<typeof queue.markFailed>[0], reason);
+    log(`[worker] Worktree preserved at ${worktreePath} for inspection`);
+    rmSync(stateFile, { force: true });
+    process.exitCode = 1;
+  }
+}
+
 async function main(): Promise<void> {
   const PAUSED_FLAG = join(REPO_ROOT, '.omc', 'PAUSED');
   if (existsSync(PAUSED_FLAG)) {
     log('Fleet is paused (.omc/PAUSED exists). Run `npm run fleet:resume` to resume.');
+    return;
+  }
+
+  // Worker mode: spawned detached by the scheduler to outlive cron restarts.
+  // Workers bypass the dispatch lock — they don't pick issues, just run pipelines.
+  const workerFlag = process.argv.indexOf('--worker');
+  if (workerFlag !== -1) {
+    const issueNumber = parseInt(process.argv[workerFlag + 1] ?? '', 10);
+    if (!Number.isFinite(issueNumber)) {
+      log('[worker] Invalid --worker argument');
+      process.exitCode = 1;
+      return;
+    }
+    await runWorkerMode(issueNumber);
     return;
   }
 
@@ -357,7 +475,6 @@ async function main(): Promise<void> {
 }
 
 async function runDispatch(): Promise<void> {
-  const startedAt = Date.now();
 
   // Parse optional --issue flag to target a specific issue number.
   const issueFlag = process.argv.indexOf('--issue');
@@ -426,115 +543,21 @@ async function runDispatch(): Promise<void> {
     return;
   }
 
-  // Build pipeline task from the queue task.
-  const pipelineTask: PipelineTask = {
-    id: rawTask.id,
-    issueNumber: rawTask.issueNumber,
-    repo: rawTask.repo,
-    title: rawTask.title,
-    body: rawTask.body,
-    autonomy: rawTask.routingHints.autonomy,
-    labels: rawTask.labels,
-  };
+  // Persist task state and spawn a detached pipeline worker.
+  // The cron_restart kills this scheduler process every 5 minutes; the worker
+  // must be detached so it outlives the cron and runs to completion.
+  const stateDir = join(REPO_ROOT, '.omc', 'state');
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, `pipeline-${rawTask.issueNumber}.json`);
+  writeFileSync(stateFile, JSON.stringify({ rawTask, branchName, worktreePath }));
 
-  const routing = classifyTask({
-    title: rawTask.title,
-    body: rawTask.body,
-    labels: rawTask.labels,
-  });
-
-  const [owner, repoName] = rawTask.repo.split('/') as [string, string];
-  // Resolve GitHub token: env var wins, then gh CLI keychain (same as GitHubQueue).
-  let ghToken = process.env.GITHUB_TOKEN;
-  if (!ghToken) {
-    const { stdout } = await execFileAsync('gh', ['auth', 'token']).catch(() => ({ stdout: '' }));
-    ghToken = stdout.trim() || undefined;
-  }
-  if (!ghToken) throw new Error('No GitHub token: set GITHUB_TOKEN or run `gh auth login`');
-  const octokit = new Octokit({ auth: ghToken });
-
-  // Build a factory that wires the pipeline collaborators around a brief.
-  // The bridge calls this once per spawn; SprintManager will drive the same
-  // shape in Phase B+ when it routes through PipelineBridge instead of a
-  // raw WorkerAdapter.
-  const abortController = new AbortController();
-  const captured: { result?: PipelineResult } = {};
-  const factory = makePipelineFactory({
-    workerPool: buildWorkerPool(),
-    worktreePath,
-    routing,
-    verify: buildVerifyAdapter(),
-    issues: createIssueCommenter(octokit, owner, repoName),
-    pr: buildPrOpener(),
-    git: buildGitOps(),
-    abortController,
-    captured,
-  });
-
-  notify(`▶ Sprint started: #${rawTask.issueNumber} — ${rawTask.title}`);
-  log('Running pipeline...');
-  log('  Phases: Architect → Editor → Verify → Reviewer → PR');
-
-  const bridge = new PipelineBridge(factory);
-  let result;
-  try {
-    const handle = await bridge.spawn(
-      newTaskId(rawTask.id),
-      encodeBridgeBrief(pipelineTask),
-      {},
-    );
-    const spawnResult = await handle.done;
-    if (!captured.result) {
-      throw new Error(spawnResult.error ?? `pipeline did not produce a result (exit ${spawnResult.exitCode})`);
-    }
-    result = captured.result;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log(`Pipeline threw: ${msg}`);
-    if (err instanceof Error && 'stderrTail' in err && (err as { stderrTail: string }).stderrTail) {
-      log(`Worker stderr:\n${(err as { stderrTail: string }).stderrTail}`);
-    }
-    notify(`❌ Sprint failed: #${rawTask.issueNumber} — ${msg}`);
-    await queue.markFailed(rawTask, msg);
-    await teardownWorktree(rawTask.issueNumber, branchName);
-    process.exitCode = 1;
-    return;
-  }
-
-  const durationSec = ((Date.now() - startedAt) / 1000).toFixed(1);
-  log(`Pipeline finished in ${durationSec}s — status: ${result.status}`);
-
-  if (result.status === 'pr_opened' && result.prUrl) {
-    notify(`✅ PR opened: #${rawTask.issueNumber} — ${rawTask.title}\n${result.prUrl}`);
-    log(`PR opened: ${result.prUrl}`);
-    await queue.markCompleted(rawTask, result.prUrl);
-    log('Issue marked auto:shipped');
-    await teardownWorktree(rawTask.issueNumber, branchName);
-    log('PHASE A GREEN — smoke PR is open. Do not merge without Seb review.');
-  } else {
-    const reason = result.failureReason ?? result.status;
-    log(`Pipeline did not open a PR: ${reason}`);
-    if (result.reviewSummary) {
-      log(`Review summary:\n${result.reviewSummary}`);
-    }
-    if (result.attempts.length > 0) {
-      for (const attempt of result.attempts) {
-        log(
-          `  [${attempt.role}] ok=${attempt.ok} rateLimitHits=${attempt.rateLimitHits} ` +
-            `durationMs=${attempt.endedAt - attempt.startedAt}`,
-        );
-        if (attempt.role === 'reviewer') {
-          log(`    output: ${attempt.output.slice(0, 500)}`);
-        }
-      }
-    }
-    notify(`❌ Sprint failed: #${rawTask.issueNumber} — ${reason}`);
-    await queue.markFailed(rawTask, reason);
-    // Keep worktree on failure so the diff can be inspected manually.
-    log(`Worktree preserved at ${worktreePath} for inspection`);
-    log(`PHASE A RED — reason: ${reason}`);
-    process.exitCode = 1;
-  }
+  const worker = spawnChild(
+    process.execPath,
+    ['--import', 'tsx', resolve(REPO_ROOT, 'scripts', 'run-smoke.ts'), '--worker', String(rawTask.issueNumber)],
+    { detached: true, stdio: 'ignore', cwd: REPO_ROOT, env: process.env },
+  );
+  worker.unref();
+  log(`Detached pipeline worker (PID ${worker.pid ?? '?'}) for #${rawTask.issueNumber} — scheduler exiting`);
 }
 
 main().catch((err) => {
