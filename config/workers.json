@@ -1,0 +1,36 @@
+{
+  "$schema": "./workers.schema.json",
+  "workers": [
+    {
+      "id": "claude-max-1",
+      "provider": "claude",
+      "tier": "max-100",
+      "authProfile": "default",
+      "permissionMode": "auto",
+      "models": ["opus-4.7", "sonnet-4.6", "haiku-4.5"],
+      "maxConcurrent": 3,
+      "enabled": true,
+      "notes": "Primary Claude Max account ($100 tier). Auto Mode enabled."
+    },
+    {
+      "id": "claude-max-2",
+      "provider": "claude",
+      "tier": "max-100",
+      "authProfile": "claude-max-2",
+      "permissionMode": "auto",
+      "models": ["opus-4.7", "sonnet-4.6", "haiku-4.5"],
+      "maxConcurrent": 3,
+      "enabled": false,
+      "notes": "Second Claude Max account. Enable when profile is configured."
+    }
+  ],
+  "_pending": [
+    {
+      "id": "codex-pro-1",
+      "provider": "codex",
+      "tier": "pro-20",
+      "enabled": false,
+      "notes": "Purchasing this week. Enable when codex-lb is wired."
+    }
+  ]
+}

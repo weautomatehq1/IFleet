@@ -1,0 +1,12 @@
+{
+  "weautomatehq1/IFleet": {
+    "owner": "weautomatehq1",
+    "name": "IFleet",
+    "allowedAuthors": ["monstersebas1", "esmelyvaldivieso99-code"]
+  },
+  "weautomatehq1/factory": {
+    "owner": "weautomatehq1",
+    "name": "factory",
+    "allowedAuthors": ["monstersebas1", "esmelyvaldivieso99-code"]
+  }
+}

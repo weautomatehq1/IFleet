@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# Runs before every git push. Fails the push if checks fail.
+# To bypass in an emergency: git push --no-verify (NOT recommended).
+
+set -e
+
+echo "→ typecheck"
+npm run typecheck
+
+echo "→ lint"
+npm run lint || echo "  (lint not configured yet — skipping)"
+
+echo "→ test"
+npm test
+
+echo "✓ pre-push checks passed"
