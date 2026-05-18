@@ -1,3 +1,4 @@
+import type { QueuedTask as UnifiedQueuedTask } from '../contracts/task.js';
 import type {
   PipelineInput,
   PipelineResult,
@@ -42,17 +43,19 @@ export type PipelineRunnerFactory = (
 ) => Promise<PipelineRunBootstrap>;
 
 /**
- * Envelope used when a {@link TaskRecord.brief} carries a structured
- * {@link QueuedTask} payload instead of a raw markdown brief. The bridge
- * helper {@link decodeBridgeBrief} extracts the task; factories may use it
- * directly or roll their own format.
+ * Envelope used when a {@link TaskRecord.brief} carries a structured task
+ * payload instead of a raw markdown brief. The wire format accepts either
+ * the legacy pipeline shape (GitHub-only: `issueNumber`, `body`, `labels`,
+ * `autonomy`) or the unified {@link UnifiedQueuedTask} shape (any source).
+ * {@link decodeBridgeBrief} normalises both shapes into the legacy pipeline
+ * task type so {@link makeProductionFactory} can keep its current consumer.
  */
 export interface BridgeBrief {
   kind: 'ifleet.pipeline.v1';
-  task: QueuedTask;
+  task: QueuedTask | UnifiedQueuedTask;
 }
 
-export function encodeBridgeBrief(task: QueuedTask): string {
+export function encodeBridgeBrief(task: QueuedTask | UnifiedQueuedTask): string {
   const payload: BridgeBrief = { kind: 'ifleet.pipeline.v1', task };
   return JSON.stringify(payload);
 }
@@ -60,8 +63,9 @@ export function encodeBridgeBrief(task: QueuedTask): string {
 /**
  * Best-effort decode of a brief written by {@link encodeBridgeBrief}. Returns
  * `undefined` if the brief is not a structured bridge payload or if the inner
- * {@link QueuedTask} is missing required fields. Callers should fall back to
- * treating the brief as a raw issue body when `undefined` is returned.
+ * task is missing required fields. Unified-shape payloads are converted to
+ * the legacy {@link QueuedTask} shape so callers (pipeline factory) keep a
+ * single internal type.
  */
 export function decodeBridgeBrief(brief: string): QueuedTask | undefined {
   const trimmed = brief.trim();
@@ -81,10 +85,13 @@ export function decodeBridgeBrief(brief: string): QueuedTask | undefined {
   }
   const task = (parsed as { task?: unknown }).task;
   if (!task || typeof task !== 'object') return undefined;
-  return isValidQueuedTask(task) ? (task as QueuedTask) : undefined;
+  if (isUnifiedQueuedTask(task)) {
+    return unifiedToPipelineTask(task as UnifiedQueuedTask);
+  }
+  return isValidLegacyQueuedTask(task) ? (task as QueuedTask) : undefined;
 }
 
-function isValidQueuedTask(t: object): boolean {
+function isValidLegacyQueuedTask(t: object): boolean {
   const q = t as Record<string, unknown>;
   return (
     typeof q['id'] === 'string' &&
@@ -95,6 +102,32 @@ function isValidQueuedTask(t: object): boolean {
     typeof q['autonomy'] === 'string' &&
     Array.isArray(q['labels'])
   );
+}
+
+function isUnifiedQueuedTask(t: object): boolean {
+  const q = t as Record<string, unknown>;
+  if (typeof q['id'] !== 'string') return false;
+  if (typeof q['brief'] !== 'string') return false;
+  if (typeof q['repo'] !== 'string') return false;
+  if (typeof q['title'] !== 'string') return false;
+  const source = q['source'];
+  if (typeof source !== 'object' || source === null) return false;
+  const kind = (source as { kind?: unknown }).kind;
+  return kind === 'github' || kind === 'discord';
+}
+
+function unifiedToPipelineTask(task: UnifiedQueuedTask): QueuedTask {
+  const issueNumber = task.source.kind === 'github' ? task.source.issueNumber : 0;
+  const autonomy = task.routingHints?.autonomy ?? 'auto';
+  return {
+    id: task.id,
+    issueNumber,
+    repo: task.repo,
+    title: task.title,
+    body: task.brief,
+    autonomy,
+    labels: [],
+  };
 }
 
 /**
