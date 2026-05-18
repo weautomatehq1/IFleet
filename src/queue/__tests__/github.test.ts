@@ -114,6 +114,22 @@ describe('GitHubQueue.pickNext', () => {
     assert.equal(next, null);
   });
 
+  it('skips issues already labeled auto:failed (terminal state, no auto-retry)', async () => {
+    const state = makeState([
+      {
+        number: 75,
+        title: 'previously attempted',
+        labels: ['auto:ship', 'auto:failed', 'priority:high'],
+        created_at: '2026-05-10T00:00:00Z',
+        html_url: 'u',
+        node_id: 'a',
+      },
+    ]);
+    const q = makeQueue(state);
+    const next = await q.pickNext();
+    assert.equal(next, null);
+  });
+
   it('prefers priority:high then oldest createdAt', async () => {
     const state = makeState([
       {
