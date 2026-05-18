@@ -1,55 +1,78 @@
 #!/usr/bin/env bash
-# Deploy IFleet to the VPS. Idempotent — safe to re-run.
 #
-# Required env:
-#   IFLEET_VPS_HOST       — e.g. root@vps.example.com
-#   IFLEET_VPS_PATH       — e.g. /opt/ifleet (target dir on VPS)
+# deploy.sh — iterative laptop→VPS deploy.
 #
-# Optional env:
-#   RSYNC_EXTRA           — extra flags appended to rsync (e.g. --dry-run)
+#   bash deploy/deploy.sh                # default: build, rsync, reload, healthcheck
+#   SKIP_BUILD=1 bash deploy/deploy.sh   # rsync-only (when dist/ already fresh)
+#   DRY_RUN=1 bash deploy/deploy.sh      # show rsync plan, no changes
 #
-# Run from the repo root: `bash deploy/deploy.sh`
+# Requires SSH access to root@187.124.77.142 (key auth, no password prompts).
 
 set -euo pipefail
 
-: "${IFLEET_VPS_HOST:?set IFLEET_VPS_HOST=user@host}"
-: "${IFLEET_VPS_PATH:=/opt/ifleet}"
+VPS="${IFLEET_VPS:-root@187.124.77.142}"
+REMOTE_DIR="${IFLEET_REMOTE_DIR:-/opt/ifleet}"
+LOCAL_REPO="${IFLEET_LOCAL_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
+DOMAIN="${IFLEET_DOMAIN:-control.weautomatehq.cloud}"
 
-RSYNC_FLAGS=(
-  -avz
-  --delete
+log() { printf '\n\033[1;32m[deploy]\033[0m %s\n' "$*"; }
+fail() { printf '\n\033[1;31m[deploy]\033[0m %s\n' "$*" >&2; exit 1; }
+
+cd "$LOCAL_REPO"
+
+# ---- 1. Local build ---------------------------------------------------------
+if [[ "${SKIP_BUILD:-}" != "1" ]]; then
+  log "Installing local deps (npm ci)"
+  npm ci
+
+  log "Building TypeScript → dist/"
+  npx tsc -p tsconfig.build.json
+  [[ -d dist ]] || fail "Build produced no dist/ — check tsconfig.build.json"
+else
+  log "SKIP_BUILD=1 — assuming dist/ is current"
+fi
+
+# ---- 2. Rsync ---------------------------------------------------------------
+RSYNC_FLAGS=(-avz --delete
   --exclude=node_modules
   --exclude=.git
   --exclude=.omc
   --exclude=state
   --exclude='.env*'
   --exclude='*.log'
-  --exclude=coverage
-  # CRITICAL: these paths are written by the running daemon on the VPS.
-  # Including them in --delete would wipe active worktrees, fetched repos,
-  # and the rolling PM2 logs mid-sprint.
-  --exclude=repos
-  --exclude=worktrees
-  --exclude=logs
-)
+  --exclude=coverage)
 
-if [[ -n "${RSYNC_EXTRA:-}" ]]; then
-  # shellcheck disable=SC2206
-  RSYNC_FLAGS+=( ${RSYNC_EXTRA} )
+if [[ "${DRY_RUN:-}" == "1" ]]; then
+  RSYNC_FLAGS+=(--dry-run -i)
+  log "DRY_RUN=1 — listing changes only"
 fi
 
-echo "[deploy] syncing repo → ${IFLEET_VPS_HOST}:${IFLEET_VPS_PATH}"
-rsync "${RSYNC_FLAGS[@]}" \
-  ./ \
-  "${IFLEET_VPS_HOST}:${IFLEET_VPS_PATH}/"
+log "Rsyncing to $VPS:$REMOTE_DIR/"
+rsync "${RSYNC_FLAGS[@]}" ./ "$VPS:$REMOTE_DIR/"
 
-echo "[deploy] installing dependencies + reloading PM2"
-ssh "${IFLEET_VPS_HOST}" "
-  set -euo pipefail
-  cd '${IFLEET_VPS_PATH}'
-  pnpm install --frozen-lockfile
-  pm2 startOrReload ecosystem.config.cjs --update-env
-  pm2 save
-"
+[[ "${DRY_RUN:-}" == "1" ]] && { log "DRY_RUN complete."; exit 0; }
 
-echo "[deploy] done"
+# ---- 3. Remote install + reload --------------------------------------------
+log "Installing prod deps on VPS + reloading PM2"
+ssh "$VPS" bash <<EOF
+set -euo pipefail
+cd "$REMOTE_DIR"
+npm ci --omit=dev
+pm2 reload ecosystem.config.cjs --env production --update-env
+pm2 save
+EOF
+
+# ---- 4. Health check --------------------------------------------------------
+log "Waiting 3s for control-plane to settle"
+sleep 3
+
+HEALTH_URL="https://$DOMAIN/healthz"
+log "Health check: $HEALTH_URL"
+if ! curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
+  log "HTTPS healthcheck failed — falling back to direct port 3001 via SSH tunnel test"
+  ssh "$VPS" 'curl -fsS http://127.0.0.1:3001/healthz' || fail "Control plane is not responding. Check: ssh $VPS pm2 logs control-plane --lines 50"
+  fail "Local healthz works but $HEALTH_URL does not — check nginx + certbot."
+fi
+
+log "Deploy OK."
+ssh "$VPS" 'pm2 list --no-color'
