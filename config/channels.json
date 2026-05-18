@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "channels": [
+    {
+      "channelId": "1504867483411025970",
+      "name": "factory",
+      "repo": "weautomatehq1/factory",
+      "defaultBranch": "main",
+      "defaultModel": "opus",
+      "allowedUserIds": ["1503477896402960405"],
+      "codeowners": ["@monstersebas1"]
+    },
+    {
+      "channelId": "1504120127791042631",
+      "name": "ifleet",
+      "repo": "weautomatehq1/IFleet",
+      "defaultBranch": "main",
+      "defaultModel": "opus",
+      "allowedUserIds": ["1503477896402960405"],
+      "codeowners": ["@monstersebas1"]
+    },
+    {
+      "channelId": "1503769258981589012",
+      "name": "allstate",
+      "repo": "weautomatehq1/allstate",
+      "defaultBranch": "main",
+      "defaultModel": "sonnet",
+      "allowedUserIds": ["1503477896402960405"],
+      "codeowners": ["@monstersebas1"]
+    }
+  ]
+}
