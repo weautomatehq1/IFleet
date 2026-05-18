@@ -1,4 +1,5 @@
-import { createHmac } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { signPayload } from '../contracts/hmac.js';
 import type {
   ControlCommand,
   ControlPlaneAck,
@@ -10,19 +11,22 @@ export interface HmacControlPlaneClientOptions {
   secret: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Test seam — produce a fresh nonce per request. Defaults to randomUUID(). */
+  nonceFactory?: () => string;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-export function signPayload(secret: string, timestamp: string, body: string): string {
-  return createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
-}
+// Re-exported for callers/tests that still import `signPayload` from this
+// module. The implementation now lives in src/contracts/hmac.ts.
+export { signPayload } from '../contracts/hmac.js';
 
 export class HmacControlPlaneClient implements ControlPlaneClient {
   private readonly url: string;
   private readonly secret: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly nonceFactory: () => string;
 
   constructor(opts: HmacControlPlaneClientOptions) {
     if (!opts.url) throw new Error('HmacControlPlaneClient: url is required');
@@ -31,12 +35,14 @@ export class HmacControlPlaneClient implements ControlPlaneClient {
     this.secret = opts.secret;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.nonceFactory = opts.nonceFactory ?? (() => randomUUID());
   }
 
   async postCommand(cmd: ControlCommand): Promise<ControlPlaneAck> {
     const body = JSON.stringify(cmd);
-    const ts = String(Math.floor(Date.now() / 1000));
-    const signature = signPayload(this.secret, ts, body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const nonce = this.nonceFactory();
+    const signature = signPayload({ timestamp, nonce, body }, this.secret);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -46,7 +52,8 @@ export class HmacControlPlaneClient implements ControlPlaneClient {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-ifleet-timestamp': ts,
+          'x-ifleet-timestamp': timestamp,
+          'x-ifleet-nonce': nonce,
           'x-ifleet-signature': signature,
         },
         body,
