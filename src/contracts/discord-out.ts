@@ -18,6 +18,13 @@ export interface DiscordOut {
   postPlanForApproval(threadId: string, plan: string): Promise<{ messageId: string }>;
   postCompleted(threadId: string, prUrl: string): Promise<void>;
   postFailed(threadId: string, reason: string): Promise<void>;
+  /**
+   * Optional. Bind a Discord-sourced task's existing thread to its taskId so
+   * subsequent `postPlanForApproval` calls emit `<verb>:<taskId>` customIds
+   * instead of falling back to the threadId. Implementations that route
+   * everything via fresh threads (created in `postTaskCreated`) can omit it.
+   */
+  bindThreadToTask?(threadId: string, taskId: string): void;
 }
 
 /**
@@ -38,8 +45,21 @@ export const DISCORD_CUSTOM_ID_VERBS = ['approve', 'reject', 'cancel'] as const;
 
 export type DiscordCustomIdVerb = (typeof DISCORD_CUSTOM_ID_VERBS)[number];
 
+export const DISCORD_CUSTOM_ID_MAX = 100;
+
 export function buildCustomId(verb: DiscordCustomIdVerb, taskId: string): string {
-  return `${verb}:${taskId}`;
+  const result = `${verb}:${taskId}`;
+  if (result.length > DISCORD_CUSTOM_ID_MAX) {
+    // Discord silently rejects the entire message send when customId > 100
+    // chars, so the HITL approval button would vanish without any error
+    // surfacing. ULID-derived taskIds (~26 chars) sit well under today's
+    // limit but a future scheme switch (e.g. embedding repo + ULID) would
+    // breach it invisibly — fail loud instead.
+    throw new RangeError(
+      `Discord customId exceeds ${DISCORD_CUSTOM_ID_MAX} chars: got ${result.length} (verb=${verb}, taskId=${taskId})`,
+    );
+  }
+  return result;
 }
 
 export function parseCustomId(

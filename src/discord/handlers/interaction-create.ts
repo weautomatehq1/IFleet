@@ -65,6 +65,10 @@ async function handleSlashCommand(
     return;
   }
 
+  // Idempotency: include a key derived from the channel + interaction id so
+  // a slash-command double-tap is collapsed server-side into one task.
+  command.idempotencyKey = `discord:${interaction.channelId}:${interaction.id}`;
+
   try {
     const ack = await deps.controlPlane.postCommand(command);
     await interaction.editReply(formatAckReply(command, ack));
@@ -89,9 +93,13 @@ async function handleButton(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+  // Deny on missing route. The previous form short-circuited when `route` was
+  // null (DM or unmapped channel), so any guild member could approve/reject/
+  // cancel any task by guessing its taskId. Treat unmapped channels as
+  // hostile and require an explicit allowlist hit.
   const route = deps.router.resolve(interaction.channelId);
-  if (route && !route.allowedUserIds.includes(interaction.user.id)) {
-    await interaction.editReply(`You are not authorised for \`${route.repo}\`.`);
+  if (!route || !route.allowedUserIds.includes(interaction.user.id)) {
+    await interaction.editReply(`You are not authorised for this action.`);
     return;
   }
 
@@ -103,6 +111,7 @@ async function handleButton(
   };
 
   const command: ControlCommand = buildCommandFromButton(parsed.verb, parsed.taskId, source);
+  command.idempotencyKey = `discord:${interaction.channelId}:${interaction.id}`;
 
   try {
     await deps.controlPlane.postCommand(command);

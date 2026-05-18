@@ -2,9 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildCommandFromButton,
   buildCommandFromSlash,
+  handleInteractionCreate,
 } from '../handlers/interaction-create.js';
-import { parseCustomId, buildCustomId } from '../../contracts/discord-out.js';
-import type { DiscordCommandSource } from '../../contracts/control-plane-client.js';
+import {
+  DISCORD_CUSTOM_ID_MAX,
+  parseCustomId,
+  buildCustomId,
+} from '../../contracts/discord-out.js';
+import type {
+  ControlCommand,
+  ControlPlaneClient,
+  DiscordCommandSource,
+} from '../../contracts/control-plane-client.js';
+import type { ChannelRouter } from '../../contracts/channel-router.js';
 
 const ALLSTATE = '1503769258981589012';
 const SOURCE: DiscordCommandSource = {
@@ -122,6 +132,87 @@ describe('button customId round-trip (T5 contract)', () => {
       verb: 'cancel',
       taskId: 'project:42',
     });
+  });
+});
+
+describe('HIGH-6: buildCustomId length guard', () => {
+  it('round-trips short taskIds (ULID range)', () => {
+    const id = buildCustomId('approve', '01HXYZABCDEFG');
+    expect(id.length).toBeLessThanOrEqual(DISCORD_CUSTOM_ID_MAX);
+  });
+
+  it('throws on taskIds that would push the customId past 100 chars', () => {
+    const huge = 'x'.repeat(120);
+    expect(() => buildCustomId('approve', huge)).toThrow(/exceeds 100/);
+  });
+});
+
+describe('CRIT-2: handleInteractionCreate authz on unmapped channels', () => {
+  function makeRouter(mappedChannel: string | null): ChannelRouter {
+    return {
+      resolve: (channelId: string) =>
+        channelId === mappedChannel
+          ? {
+              channelId,
+              repo: 'weautomatehq1/allstate',
+              defaultBranch: 'main',
+              defaultModel: 'opus',
+              allowedUserIds: ['SOMEONE_ELSE'],
+              codeowners: [],
+              workDir: '/tmp/r',
+            }
+          : null,
+      list: () => [],
+    };
+  }
+
+  function makeControlPlane(): ControlPlaneClient & { posted: ControlCommand[] } {
+    const posted: ControlCommand[] = [];
+    return {
+      posted,
+      postCommand: async (cmd) => {
+        posted.push(cmd);
+        return { accepted: true };
+      },
+    };
+  }
+
+  function makeButtonInteraction(channelId: string, customId: string): any {
+    const editReply = vi.fn();
+    return {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId,
+      channelId,
+      user: { id: '111', username: 'attacker' },
+      deferReply: vi.fn(async () => undefined),
+      reply: vi.fn(),
+      editReply,
+    };
+  }
+
+  it('denies a button click in a DM / unmapped channel even with a valid customId', async () => {
+    const router = makeRouter('CHAN_MAPPED');
+    const controlPlane = makeControlPlane();
+    const customId = buildCustomId('approve', 'T1');
+    const interaction = makeButtonInteraction('CHAN_UNMAPPED', customId);
+
+    await handleInteractionCreate(interaction, { router, controlPlane });
+
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(/not authorised/i),
+    );
+    expect(controlPlane.posted).toHaveLength(0);
+  });
+
+  it('denies a button click from a user not on the allowedUserIds list', async () => {
+    const router = makeRouter('CHAN_MAPPED');
+    const controlPlane = makeControlPlane();
+    const interaction = makeButtonInteraction('CHAN_MAPPED', 'approve:T1');
+
+    await handleInteractionCreate(interaction, { router, controlPlane });
+
+    expect(controlPlane.posted).toHaveLength(0);
   });
 });
 

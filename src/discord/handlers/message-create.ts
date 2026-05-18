@@ -57,6 +57,10 @@ export async function handleMessageCreate(
     goal: brief,
     repo: route.repo,
     source,
+    // Idempotency: a duplicate Discord message (network retry / bot restart
+    // re-delivery) will hash to the same key and the unified store will
+    // dedup via the UNIQUE idempotency_key index.
+    idempotencyKey: `discord:${message.channelId}:${message.id}`,
   });
 
   return { kind: 'posted', commandType: 'sprint_goal' };

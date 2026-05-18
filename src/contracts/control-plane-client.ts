@@ -8,11 +8,17 @@ export type ControlCommand =
       repo?: string;
       planOnly?: boolean;
       source?: DiscordCommandSource;
+      /**
+       * Idempotency key generated at the originating Discord client so the
+       * control plane can dedup a double-tap of the same slash command or a
+       * retried POST. Format: `discord:${channelId}:${messageId ?? interactionId}`.
+       */
+      idempotencyKey?: string;
     }
-  | { type: 'run'; repo?: string; source?: DiscordCommandSource }
-  | { type: 'cancel'; taskId: string; reason?: string; source?: DiscordCommandSource }
-  | { type: 'status'; taskId: string; source?: DiscordCommandSource }
-  | { type: 'approve'; taskId: string; source?: DiscordCommandSource };
+  | { type: 'run'; repo?: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  | { type: 'cancel'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  | { type: 'status'; taskId: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  | { type: 'approve'; taskId: string; source?: DiscordCommandSource; idempotencyKey?: string };
 
 export interface DiscordCommandSource {
   kind: 'discord';
