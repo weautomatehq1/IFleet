@@ -18,15 +18,6 @@
       "defaultModel": "opus",
       "allowedUserIds": ["1503477896402960405"],
       "codeowners": ["@monstersebas1"]
-    },
-    {
-      "channelId": "1503769258981589012",
-      "name": "allstate",
-      "repo": "weautomatehq1/allstate",
-      "defaultBranch": "main",
-      "defaultModel": "sonnet",
-      "allowedUserIds": ["1503477896402960405"],
-      "codeowners": ["@monstersebas1"]
     }
   ]
 }
