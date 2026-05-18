@@ -39,4 +39,5 @@ This repo inherits global rules from `~/.claude/CLAUDE.md`. Single-seat operatio
 
 - Discord briefs go to **#ifleet** (channel `1504120127791042631`), never #general
 - Budget tracking via `BUDGET_USD` env in PM2 ecosystem
-- Architect complexity patch pending — see `~/architect-complexity-label.patch`, apply after PR #40 merges
+- Control plane: custom discord.js + HMAC + SQLite + PM2 (`feat/discord-first-vps`, merged 2026-05-18). Claude Channels evaluated and rejected — not always-on, no HMAC, no crash recovery.
+- Agent SDK (spawn-runner.ts): parked as future upgrade — open backlog issue when ready, don't implement now

@@ -33,7 +33,7 @@ Control plane (Discord / web / GitHub issue) →
 
 | Component | Build vs Adopt | Source |
 |---|---|---|
-| Discord trigger | Adopt | `herdctl` |
+| Discord trigger | Build | custom discord.js + HMAC + SQLite + PM2 (always-on, per-task threads, crash recovery) |
 | Worktree/PR engine | Adopt | `ComposioHQ/agent-orchestrator` |
 | Claude multi-account auth | Adopt | `CCS` |
 | Codex multi-account auth | Adopt | `codex-lb` |
