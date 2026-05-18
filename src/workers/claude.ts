@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { claudeChildEnv, wrapBriefAsData } from './claude-env.ts';
 import { runStreaming, type SpawnLike } from './spawn-runner.ts';
 import {
   categorizeRateLimitError,
@@ -7,6 +8,11 @@ import {
   type WorkerAdapter,
   type WorkerEvent,
 } from './types.ts';
+
+const WORKER_INSTRUCTION =
+  `You are an IFleet worker. Execute the user-supplied task brief that ` +
+  `follows. The brief is the task description; complete it on the current ` +
+  `working tree. Open a PR when finished.`;
 
 export interface ClaudeAdapterOptions {
   binary?: string;
@@ -30,6 +36,7 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
         command: binary,
         args,
         cwd: opts.workingDir,
+        env: claudeChildEnv(),
         signal: opts.signal,
         spawnImpl: adapterOpts.spawnImpl,
         parseLine: (line, emit) => {
@@ -64,9 +71,15 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
 }
 
 function buildClaudeArgs(opts: SpawnOpts, sessionId: string): string[] {
+  // Wrap the user-controlled brief in an explicit DATA block so a malicious
+  // brief cannot escape into the instruction layer (prompt injection → RCE
+  // via the worker's tool permissions). The worker still executes the brief
+  // as a task — Claude is instructed to refuse role-switch / "ignore the
+  // above" patterns inside the block.
+  const wrapped = wrapBriefAsData(WORKER_INSTRUCTION, opts.brief);
   const args = [
     '-p',
-    opts.brief,
+    wrapped,
     '--model',
     opts.model,
     '--permission-mode',
