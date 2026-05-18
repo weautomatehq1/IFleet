@@ -13,7 +13,9 @@ let bareRepo: string;
 let channelsPath: string;
 
 function git(cwd: string, ...args: string[]): void {
-  const res = spawnSync('git', args, { cwd, stdio: 'pipe' });
+  // Strip git hook env vars so spawned processes use cwd for repo discovery.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+  const res = spawnSync('git', args, { cwd, stdio: 'pipe', env });
   if (res.status !== 0) throw new Error(`git ${args.join(' ')}: ${res.stderr.toString()}`);
 }
 
@@ -96,8 +98,10 @@ describe('RepoHealthChecker', () => {
       remoteUrlFor: () => `file://${bareRepo}`,
     });
     const route = router.resolve('111111111111111111')!;
-    await manager.ensureClone(route);
-    await manager.sync(route); // creates FETCH_HEAD
+    const { path: repoPath } = await manager.ensureClone(route);
+    // Write FETCH_HEAD directly — manager.sync inherits GIT_DIR from the
+    // pre-push hook env and fetches into the wrong repo, leaving it absent.
+    writeFileSync(join(repoPath, '.git', 'FETCH_HEAD'), '');
     const checker = new RepoHealthChecker(router, manager);
     const result = await checker.checkOne(route);
     expect(result.reachable).toBe(true);

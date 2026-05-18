@@ -12,7 +12,9 @@ let reposDir: string;
 let route: ChannelRoute;
 
 function git(cwd: string, ...args: string[]): void {
-  const res = spawnSync('git', args, { cwd, stdio: 'pipe' });
+  // Strip git hook env vars so spawned processes use cwd for repo discovery.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+  const res = spawnSync('git', args, { cwd, stdio: 'pipe', env });
   if (res.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed: ${res.stderr.toString()}`);
   }
