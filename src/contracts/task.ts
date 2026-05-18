@@ -16,7 +16,8 @@ export type TaskSource =
   | {
       kind: 'discord';
       channelId: string;
-      messageId: string;
+      /** Optional — slash commands have only an interaction.id; dedup happens via idempotencyKey. */
+      messageId?: string;
       threadId?: string;
       userId: string;
       userLabel: string;

@@ -300,11 +300,9 @@ export class Orchestrator {
           await out.postProgress(threadId, '🛑 cancelled');
           this.taskThreadIds.delete(taskId);
           return;
-        case 'architect.plan_ready': {
-          const plan = event.payload['plan'] as string | undefined;
-          if (plan) await out.postPlanForApproval(threadId, plan);
-          return;
-        }
+        // architect.plan_ready is NOT routed here — the pipeline calls
+        // discordOutPlanReady directly via the onArchitectPlan callback
+        // injected in daemon.ts. Avoids racing the event bus.
         default:
           return;
       }

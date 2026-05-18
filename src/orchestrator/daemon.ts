@@ -139,18 +139,24 @@ async function main(): Promise<void> {
     hmacSecret,
     port,
     onSprintGoal: async (cmd) => {
-      if (!cmd.channelId || !cmd.messageId || !cmd.userId || !cmd.userLabel) {
-        throw new Error('sprint_goal requires Discord-source fields');
+      if (!cmd.channelId || !cmd.userId || !cmd.userLabel) {
+        throw new Error('sprint_goal requires Discord-source fields (channelId, userId, userLabel)');
+      }
+      // Slash commands carry only an interaction.id, not a messageId — T1
+      // sends idempotencyKey instead. Require at least one of the two so
+      // dedup is always anchored to a stable client-side identifier.
+      if (!cmd.messageId && !cmd.idempotencyKey) {
+        throw new Error('sprint_goal requires messageId or idempotencyKey for dedup');
       }
       const task = await discordSource.ingest(
         {
           goal: cmd.goal,
           channelId: cmd.channelId,
-          messageId: cmd.messageId,
+          ...(cmd.messageId ? { messageId: cmd.messageId } : {}),
           userId: cmd.userId,
           userLabel: cmd.userLabel,
-          idempotencyKey: cmd.idempotencyKey,
-          planOnly: cmd.planOnly,
+          ...(cmd.idempotencyKey ? { idempotencyKey: cmd.idempotencyKey } : {}),
+          ...(cmd.planOnly ? { planOnly: cmd.planOnly } : {}),
           ...(cmd.repo ? { repo: cmd.repo } : {}),
         },
         store,

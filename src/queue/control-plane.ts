@@ -276,12 +276,24 @@ export function parseCommand(body: string): ControlCommand {
       if (typeof parsed.goal !== 'string' || parsed.goal.trim().length === 0) {
         throw new Error('sprint_goal requires goal');
       }
+      // Accept Discord audit fields either flat (legacy) or nested under
+      // `source` (current client contract — DiscordCommandSource). Nested
+      // takes precedence. Server normalizes to flat for downstream handlers.
+      const source = isRecord(parsed.source) ? parsed.source : undefined;
+      const pickStr = (k: string): string | undefined => {
+        const v = source?.[k] ?? parsed[k];
+        return typeof v === 'string' ? v : undefined;
+      };
       const cmd: ControlCommand = { type: 'sprint_goal', goal: parsed.goal };
       if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
-      if (typeof parsed.channelId === 'string') cmd.channelId = parsed.channelId;
-      if (typeof parsed.messageId === 'string') cmd.messageId = parsed.messageId;
-      if (typeof parsed.userId === 'string') cmd.userId = parsed.userId;
-      if (typeof parsed.userLabel === 'string') cmd.userLabel = parsed.userLabel;
+      const channelId = pickStr('channelId');
+      if (channelId) cmd.channelId = channelId;
+      const messageId = pickStr('messageId');
+      if (messageId) cmd.messageId = messageId;
+      const userId = pickStr('userId');
+      if (userId) cmd.userId = userId;
+      const userLabel = pickStr('userLabel');
+      if (userLabel) cmd.userLabel = userLabel;
       if (typeof parsed.idempotencyKey === 'string') cmd.idempotencyKey = parsed.idempotencyKey;
       if (typeof parsed.planOnly === 'boolean') cmd.planOnly = parsed.planOnly;
       return cmd;

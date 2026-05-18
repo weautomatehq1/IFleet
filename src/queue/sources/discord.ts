@@ -11,7 +11,9 @@ export interface DiscordIngestCommand {
   goal: string;
   repo?: string;
   channelId: string;
-  messageId: string;
+  /** Optional — slash commands have only an interaction.id. Caller MUST
+   * provide either `messageId` or `idempotencyKey` for dedup. */
+  messageId?: string;
   userId: string;
   userLabel: string;
   idempotencyKey?: string;
@@ -52,8 +54,13 @@ export class DiscordSource implements TaskSource {
       throw new Error(`no channel route for ${cmd.channelId}`);
     }
 
-    const idempotencyKey =
-      cmd.idempotencyKey ?? idempotencyForDiscord(cmd.channelId, cmd.messageId);
+    let idempotencyKey = cmd.idempotencyKey;
+    if (!idempotencyKey) {
+      if (!cmd.messageId) {
+        throw new Error('discord ingest requires either messageId or idempotencyKey');
+      }
+      idempotencyKey = idempotencyForDiscord(cmd.channelId, cmd.messageId);
+    }
 
     const existing = store.findByIdempotencyKey(idempotencyKey);
     if (existing) return existing;
@@ -61,7 +68,7 @@ export class DiscordSource implements TaskSource {
     const source: TaskSourceType = {
       kind: 'discord',
       channelId: cmd.channelId,
-      messageId: cmd.messageId,
+      ...(cmd.messageId ? { messageId: cmd.messageId } : {}),
       userId: cmd.userId,
       userLabel: cmd.userLabel,
     };

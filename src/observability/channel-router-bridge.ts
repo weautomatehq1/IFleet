@@ -31,11 +31,18 @@ export function resolveTaskChannel(
   fallbackChannelId: string | undefined,
 ): ChannelResolution | null {
   if (task.source.kind === 'discord') {
-    return {
-      kind: 'discord-thread-anchor',
-      channelId: task.source.channelId,
-      messageId: task.source.messageId,
-    };
+    // Slash commands have no messageId — fall back to channel-only routing
+    // so the thread anchors under a fresh embed in the same channel rather
+    // than trying to start a thread under a non-existent message.
+    if (task.source.messageId) {
+      return {
+        kind: 'discord-thread-anchor',
+        channelId: task.source.channelId,
+        messageId: task.source.messageId,
+      };
+    }
+    const route = router.resolve(task.source.channelId);
+    return { kind: 'channel-only', channelId: task.source.channelId, route: route ?? null };
   }
   const route = router.list().find((r) => r.repo === task.repo) ?? null;
   if (route) {
