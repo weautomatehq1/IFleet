@@ -42,7 +42,7 @@ import { DiscordSource } from '../queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
 import { UnifiedQueueAdapter } from '../queue/unified-adapter.js';
 import { FileChannelRouter } from '../repos/router.js';
-import { newTaskId, type OrchestratorEvent, type WorkerConfig } from './types.js';
+import { newTaskId, type OrchestratorEvent, type SprintId, type WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
 import { encodeBridgeBrief } from './pipeline-bridge.js';
@@ -302,10 +302,18 @@ function wireSprintCompletion(
 
     if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
       orchestrator.off('event', handler);
+      // sprint.failed / sprint.cancelled events carry only { from, to } in
+      // payload — the actual error/reason lives on SprintState. Read it from
+      // the store via the orchestrator instead of trusting the payload.
+      const sprint = orchestrator.getSprint(sprintId as SprintId);
       const reason =
-        event.kind === 'sprint.failed'
-          ? ((event.payload['error'] as string | undefined) ?? 'pipeline failed')
-          : ((event.payload['reason'] as string | undefined) ?? 'cancelled');
+        sprint?.state.kind === 'failed'
+          ? sprint.state.error
+          : sprint?.state.kind === 'cancelled'
+            ? sprint.state.reason
+            : event.kind === 'sprint.failed'
+              ? 'pipeline failed'
+              : 'cancelled';
       void adapter.markFailed(task, reason).catch((err) =>
         console.warn('[daemon] markFailed failed:', err),
       );

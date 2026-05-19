@@ -195,7 +195,11 @@ function buildGitOps(): GitOps {
         execFileAsync('git', ['diff', `${baseRef}..HEAD`], { cwd: worktreePath }).catch(() => ({ stdout: '' })),
         execFileAsync('git', ['diff'], { cwd: worktreePath }).catch(() => ({ stdout: '' })),
       ]);
-      return committed || unstaged;
+      // Concatenate so the reviewer / PR opener sees both halves. The editor
+      // is instructed to commit, so `unstaged` is usually empty — but if
+      // `git add -A` partially failed (locked files, permissions) the
+      // remaining changes would silently disappear with a simple OR.
+      return [committed, unstaged].filter((s) => s.length > 0).join('\n');
     },
     async currentBranch(worktreePath: string): Promise<string> {
       const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: worktreePath });

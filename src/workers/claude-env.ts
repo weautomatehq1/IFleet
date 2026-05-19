@@ -55,3 +55,15 @@ export function wrapBriefAsData(instruction: string, brief: string): string {
     BRIEF_DATA_MARKER_CLOSE,
   ].join('\n');
 }
+
+/**
+ * Quote a user-controlled string as a labeled DATA block, without prepending
+ * a standalone instruction line. Use this when embedding user input inside a
+ * larger composed prompt (e.g. an editor brief that mixes a trusted plan with
+ * the original user task body). The surrounding prompt remains the
+ * instruction layer; only the block between the markers is data.
+ */
+export function quoteAsUserData(brief: string): string {
+  const sanitized = brief.replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
+  return [BRIEF_DATA_MARKER_OPEN, sanitized, BRIEF_DATA_MARKER_CLOSE].join('\n');
+}
