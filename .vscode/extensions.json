@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "mattpocock.ts-error-translator",
+    "yoavbls.pretty-ts-errors",
+    "usernamehw.errorlens",
+    "mikestead.dotenv",
+    "humao.rest-client",
+    "ms-vscode-remote.remote-ssh",
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+    "vivaxy.vscode-conventional-commits",
+    "gruntfuggly.todo-tree",
+    "streetsidesoftware.code-spell-checker",
+    "yzhang.markdown-all-in-one",
+    "vitest.explorer"
+  ],
+  "unwantedRecommendations": []
+}
