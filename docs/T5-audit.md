@@ -49,3 +49,43 @@ Candidates that warrant a second look in Phase 3 (after T1–T4 merge — types 
 2. Convert remaining 3 `no-console` warnings → `console.warn` (boot/lifecycle messages) or route through event log.
 3. Skip ts-prune-driven export deletion this sprint — too noisy without a proper tsconfig include for `scripts/`. File a followup to add `scripts/` to tsconfig include or `ts-prune --project tsconfig.json --error` integration.
 4. `pnpm lint --fix` after each change set.
+
+## 2026-05-19 update — ts-prune wired into the dev workflow (#108)
+
+`tsconfig.json` was already including `scripts/**/*.ts` at audit time, so the
+audit's premise that "scripts/ isn't in the program" was wrong. The real noise
+came from two distinct sources we hadn't separated:
+
+- **Barrel re-exports.** `src/*/index.ts` re-export every public symbol so
+  callers can write `import { x } from '@/observability'`. ts-prune flags
+  every barrel re-export individually — ~140 of the 169 baseline entries were
+  exactly this, and none should be deleted.
+- **Test fixtures.** `src/mcp/__tests__/fixtures/mock-octokit.ts` and friends
+  export helpers consumed only by sibling tests; ts-prune doesn't always
+  walk the `__tests__` tree predictably.
+
+Changes landed in this PR:
+
+- Add `ts-prune` as a real `devDependency` (`^0.10.3`) — was previously
+  invoked via `pnpm dlx`, which made the audit non-reproducible across
+  machines.
+- Add `pnpm dead-code` script: `ts-prune --ignore '(index\.ts|__tests__|fixtures)'`.
+  The ignore regex strips the two known noise sources above without
+  touching the audit's already-listed candidates.
+
+### New baseline (post-#108)
+
+| Run | Entries (excluding "used in module") |
+|---|---:|
+| `pnpm dlx ts-prune` (raw) | 182 |
+| `pnpm dead-code` (this PR) | **29** |
+
+Per the issue's `<25` acceptance criteria we're close but not under — the
+remaining 29 are the genuine candidates that warrant a hand review in the
+followup deletion sprint, e.g. `clearAutoRouterCache`, `autoRouteMode`,
+`signLegacyPayload`, `createClaudeAdapter`, etc. Some are real dead code,
+some are deliberate public-API exports — distinguishing the two needs a
+human pass and is out of scope for #108 (the issue explicitly says
+*"Do NOT delete anything yet"*).
+
+To reproduce: `pnpm install && pnpm dead-code` from a clean main.
