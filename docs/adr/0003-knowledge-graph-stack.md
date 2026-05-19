@@ -78,7 +78,7 @@ Per RepoGraph: **chunk by symbol, not by line.** A function is one node (full bo
 
 ## Open questions for M3.W1
 
-- Postgres on Hostinger VPS or Supabase? (Supabase preferred — already used; backup + UI for free)
+- ~~Postgres on Hostinger VPS or Supabase?~~ **DECIDED → Supabase** (project: `ifleet-kg`, region: `us-east-1` N. Virginia, host: `db.exswghbtgtdykklcsdxq.supabase.co`). Provisioned 2026-05-19. pgvector enabled and smoke-tested. **VPS note:** direct connection (port 5432) is IPv4-incompatible; indexer on VPS must use Session Pooler (port 6543) — swap URL at M3.W1 wiring time.
 - Voyage AI vs. OpenAI embeddings? (Voyage code-3 has better benchmarks; OpenAI is simpler to integrate)
 - Tree-sitter language coverage day-1: TS only, or TS + Python + Go simultaneously? (TS-only M3.W1, expand M3.W5)
 
