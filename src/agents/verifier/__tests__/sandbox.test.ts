@@ -81,8 +81,11 @@ describe('StubSandboxRunner', () => {
 });
 
 describe('DockerSandboxRunner', () => {
-  it('returns error when worktreePath is missing', async () => {
-    const runner = new DockerSandboxRunner({ spawnFn: fakeSpawn(new Map()) });
+  it('returns error when worktreePath is missing and clone fails', async () => {
+    const plan = new Map<string, { exit: number; stdout?: string; stderr?: string }>([
+      ['clone', { exit: 128, stderr: 'fatal: repository not found' }],
+    ]);
+    const runner = new DockerSandboxRunner({ spawnFn: fakeSpawn(plan) });
     const result = await runner.run({
       taskId: 't' as TaskId,
       sprintId: 's' as SprintId,
@@ -92,7 +95,41 @@ describe('DockerSandboxRunner', () => {
       attempt: 1,
     });
     expect(result.status).toBe('error');
-    expect(result.failures[0]?.message).toMatch(/worktreePath is required/);
+    expect(result.failures[0]?.message).toMatch(/git clone/);
+  });
+
+  it('clones from SHA when worktreePath is not provided', async () => {
+    const calls: { cmd: string; args: readonly string[] }[] = [];
+    const plan = new Map<string, { exit: number; stdout?: string; stderr?: string }>([
+      ['clone', { exit: 0 }],
+      ['checkout', { exit: 0 }],
+      ['info', { exit: 1 }], // docker info fails → fallback
+      ['install', { exit: 0 }],
+    ]);
+    const baseSpawn = fakeSpawn(plan);
+    const trackingSpawn = ((cmd: string, args?: readonly string[] | object) => {
+      const argList = Array.isArray(args) ? (args as readonly string[]) : [];
+      calls.push({ cmd, args: argList });
+      return (baseSpawn as unknown as (c: string, a?: readonly string[] | object) => unknown)(cmd, args);
+    }) as unknown as typeof import('node:child_process').spawn;
+    const runner = new DockerSandboxRunner({ spawnFn: trackingSpawn });
+    const result = await runner.run({
+      taskId: 't' as TaskId,
+      sprintId: 's' as SprintId,
+      repoUrl: 'https://github.com/weautomatehq1/IFleet',
+      branch: 'feat/x',
+      sha: 'cafebabe',
+      attempt: 1,
+    });
+    // status will be 'partial' (no test script in cloned dir's package.json which doesn't exist)
+    // or 'error' if install fails on the empty temp dir — what we really care about is the git calls.
+    expect(result.status).not.toBe('passed');
+    const gitClone = calls.find((c) => c.cmd === 'git' && c.args.includes('clone'));
+    const gitCheckout = calls.find((c) => c.cmd === 'git' && c.args.includes('checkout'));
+    expect(gitClone).toBeTruthy();
+    expect(gitClone?.args).toContain('https://github.com/weautomatehq1/IFleet');
+    expect(gitCheckout).toBeTruthy();
+    expect(gitCheckout?.args).toContain('cafebabe');
   });
 
   it('returns error when worktreePath does not exist', async () => {

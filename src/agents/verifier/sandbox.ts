@@ -126,22 +126,85 @@ export class DockerSandboxRunner implements SandboxRunner {
   async run(input: VerifierRunInput): Promise<VerifierRunResult> {
     const startedAt = this.now();
     const runId = newVerifierRunId(randomUUID());
-    if (!input.worktreePath) {
-      const finishedAt = this.now();
+
+    let worktreePath = input.worktreePath;
+    let tempCloneDir: string | undefined;
+    if (!worktreePath) {
+      const cloned = await this.cloneFromSha(input.repoUrl, input.sha);
+      if (!cloned.ok) {
+        const finishedAt = this.now();
+        return {
+          runId,
+          status: 'error',
+          startedAt,
+          finishedAt,
+          durationMs: finishedAt - startedAt,
+          attempt: input.attempt,
+          failures: [{ kind: 'install', message: cloned.error }],
+          phases: [],
+        };
+      }
+      worktreePath = cloned.path;
+      tempCloneDir = cloned.path;
+    }
+
+    try {
+      return await this.runInWorktree(input, runId, worktreePath, startedAt);
+    } finally {
+      if (tempCloneDir) {
+        try {
+          rmSync(tempCloneDir, { recursive: true, force: true });
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+  }
+
+  private async cloneFromSha(
+    repoUrl: string,
+    sha: string,
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    let tempDir: string;
+    try {
+      tempDir = mkdtempSync(join(tmpdir(), 'ifleet-verifier-clone-'));
+    } catch (err) {
+      return { ok: false, error: `mkdtemp failed: ${(err as Error).message}` };
+    }
+    const cloneRes = await this.runCommand(
+      'git',
+      ['clone', '--quiet', repoUrl, tempDir],
+      { timeoutMs: this.timeoutMs },
+    );
+    if (cloneRes.exitCode !== 0) {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort */ }
       return {
-        runId,
-        status: 'error',
-        startedAt,
-        finishedAt,
-        durationMs: finishedAt - startedAt,
-        attempt: input.attempt,
-        failures: [
-          { kind: 'install', message: 'worktreePath is required (clone-from-SHA not yet supported)' },
-        ],
-        phases: [],
+        ok: false,
+        error: `git clone ${repoUrl} failed (exit ${cloneRes.exitCode}): ${cloneRes.output.slice(0, 500)}`,
       };
     }
-    if (!existsSync(input.worktreePath)) {
+    const checkoutRes = await this.runCommand(
+      'git',
+      ['-C', tempDir, 'checkout', '--quiet', sha],
+      { timeoutMs: 60_000 },
+    );
+    if (checkoutRes.exitCode !== 0) {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+      return {
+        ok: false,
+        error: `git checkout ${sha} failed (exit ${checkoutRes.exitCode}): ${checkoutRes.output.slice(0, 500)}`,
+      };
+    }
+    return { ok: true, path: tempDir };
+  }
+
+  private async runInWorktree(
+    input: VerifierRunInput,
+    runId: ReturnType<typeof newVerifierRunId>,
+    worktreePath: string,
+    startedAt: number,
+  ): Promise<VerifierRunResult> {
+    if (!existsSync(worktreePath)) {
       const finishedAt = this.now();
       return {
         runId,
@@ -150,7 +213,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         finishedAt,
         durationMs: finishedAt - startedAt,
         attempt: input.attempt,
-        failures: [{ kind: 'install', message: `worktree not found: ${input.worktreePath}` }],
+        failures: [{ kind: 'install', message: `worktree not found: ${worktreePath}` }],
         phases: [],
       };
     }
@@ -160,7 +223,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     const banner = useFallback
       ? 'sandbox: unavailable (Docker daemon unreachable, ran in-worktree)'
       : undefined;
-    const pkg = readPackageJson(input.worktreePath);
+    const pkg = readPackageJson(worktreePath);
     const plan = planPhases(pkg);
 
     const phaseReports: VerifierPhaseReport[] = [];
@@ -184,7 +247,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         continue;
       }
 
-      let outcome = await this.runPhase(kind, input.worktreePath, useFallback);
+      let outcome = await this.runPhase(kind, worktreePath, useFallback);
       phaseReports.push(outcome.report);
       rawLogChunks.push(
         `=== ${kind} (exit=${outcome.report.exitCode}, ${outcome.report.durationMs}ms) ===\n${outcome.rawOutput}\n`,
@@ -196,7 +259,7 @@ export class DockerSandboxRunner implements SandboxRunner {
           /network|ENOTFOUND|ECONNRESET|ERR_PNPM_FETCH/i.test(outcome.rawOutput)
         ) {
           await sleep(2000);
-          outcome = await this.runPhase('install', input.worktreePath, useFallback);
+          outcome = await this.runPhase('install', worktreePath, useFallback);
           phaseReports.pop();
           phaseReports.push(outcome.report);
           rawLogChunks.push(
