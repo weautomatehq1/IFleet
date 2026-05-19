@@ -117,6 +117,46 @@ const MIGRATIONS: ReadonlyArray<string> = [
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (sprint_id) REFERENCES sprints(id)
   )`,
+  // Closed-loop verifier runs (M1 / docs/elevation/upgrades/01-verifier.md).
+  // One row per VerifierAgent invocation. Created additively in M0.W1 so the
+  // M1.W2 implementation can immediately persist results without a follow-up
+  // migration. fingerprint_before / fingerprint_after stay NULL until M4
+  // (behavioral fingerprinting upgrade).
+  `CREATE TABLE IF NOT EXISTS verifier_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    sprint_id TEXT NOT NULL,
+    repo_url TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    sha TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    duration_ms INTEGER,
+    attempt INTEGER NOT NULL DEFAULT 1,
+    cost_usd REAL,
+    fingerprint_before TEXT,
+    fingerprint_after TEXT,
+    raw_log_url TEXT,
+    FOREIGN KEY (task_id) REFERENCES tasks(id),
+    FOREIGN KEY (sprint_id) REFERENCES sprints(id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_verifier_runs_task ON verifier_runs(task_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_verifier_runs_sprint ON verifier_runs(sprint_id)`,
+  // Structured failures parsed from sandbox output. Drives the editor-feedback
+  // retry loop in M1.W2 and the canary disagreement-rate metric (task #14).
+  `CREATE TABLE IF NOT EXISTS verifier_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    file TEXT,
+    line INTEGER,
+    column_num INTEGER,
+    message TEXT NOT NULL,
+    raw_output TEXT,
+    FOREIGN KEY (run_id) REFERENCES verifier_runs(id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_verifier_failures_run ON verifier_failures(run_id)`,
 ];
 
 interface AttemptRecordInput {
