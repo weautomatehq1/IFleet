@@ -116,5 +116,25 @@ module.exports = {
       out_file: '/var/log/pm2/ifleet-mcp-out.log',
       error_file: '/var/log/pm2/ifleet-mcp-error.log',
     },
+    {
+      // Doctor self-heal cadence (periodic Haiku scan + morning learnings
+      // rollup). Disabled by default — T5 flips both env+autorestart on after
+      // review. Manual enable:
+      //   pm2 set doctor-scan:DOCTOR_SCAN_DISABLED 0
+      //   pm2 restart doctor-scan
+      name: 'doctor-scan',
+      script: 'scripts/doctor-scan.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      watch: false,
+      env: {
+        ...baseEnv,
+        DOCTOR_SCAN_DISABLED: '1',
+        IFLEET_ROLE: 'doctor-scan',
+      },
+      out_file: '/var/log/pm2/doctor-scan-out.log',
+      error_file: '/var/log/pm2/doctor-scan-error.log',
+    },
   ],
 };

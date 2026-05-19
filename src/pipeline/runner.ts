@@ -45,11 +45,21 @@ export class DefaultPipelineRunner implements PipelineRunner {
       approver,
       ...(input.approvalGate ? { approvalGate: input.approvalGate } : {}),
       ...(input.onArchitectPlan ? { onPlanReady: input.onArchitectPlan } : {}),
+      ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
+      ...(input.interviewPoster ? { interviewPoster: input.interviewPoster } : {}),
     });
     attempts.push(architect.attempt);
 
     if (!architect.attempt.ok) {
       return failed(attempts, 'architect failed');
+    }
+    if (architect.interview) {
+      // Sprint halts here; control plane resumes once Discord answers land.
+      return {
+        status: 'awaiting_interview',
+        attempts,
+        interviewQuestions: architect.interview.questions,
+      };
     }
     // A blank plan would silently corrupt the editor brief (`mode.plan`
     // becomes an empty section). Bail before that happens.

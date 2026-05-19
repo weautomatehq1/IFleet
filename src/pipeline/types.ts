@@ -1,3 +1,5 @@
+import type { InterviewPoster } from './interview.js';
+
 // Public types for the Architect → Editor → Reviewer pipeline.
 //
 // Other modules (queue, workers, verify) own the placeholder interfaces below;
@@ -15,6 +17,14 @@ export type Provider = 'claude' | 'codex';
 
 export type Autonomy = 'auto' | 'review';
 
+/**
+ * Per-task routing mode mirrored from `src/orchestrator/types.ts.SprintMode`.
+ * Re-declared here to keep the pipeline package free of an inbound cross-package
+ * import (same pattern as {@link QueuedTask} below). Kept in lockstep with the
+ * orchestrator union; adding a new mode requires updates in both files.
+ */
+export type SprintMode = 'standard' | 'ralph' | 'ulw' | 'tdd' | 'deslop';
+
 export interface QueuedTask {
   id: string;
   issueNumber: number;
@@ -23,6 +33,12 @@ export interface QueuedTask {
   body: string;
   autonomy: Autonomy;
   labels: string[];
+  /**
+   * Per-task routing mode. Read by the architect/editor steps to pick the
+   * mode-specific prompt template; absent / `null` → use the standard prompt.
+   * Mirrored from {@link QueuedTask} in `src/contracts/task.ts`.
+   */
+  mode?: SprintMode | null;
 }
 
 export interface WorkerSpec {
@@ -40,6 +56,13 @@ export interface RoutingDecision {
   // and the full reviewer is never spawned. Absent → gate disabled.
   haikuGate?: WorkerSpec;
   verify: VerifyKind[];
+  /**
+   * Per-task routing mode chosen by the classifier. Architect/editor use this
+   * to pick the mode-specific prompt template; absent / `null` → use the
+   * standard prompt. Set by `classifyTask` when an explicit `mode:*` label is
+   * present or when the auto-router emits a high-confidence mode.
+   */
+  mode?: SprintMode | null;
 }
 
 export interface SpawnOpts {
@@ -145,6 +168,14 @@ export interface PipelineInput {
    * approve, `false` on reject/cancel/timeout.
    */
   approvalGate?: ApprovalGate;
+  /**
+   * Optional poster for the deep-interview phase. When set AND the brief is
+   * vague, the architect asks up to 3 clarifying questions, posts them via
+   * this poster, and the pipeline halts with status `awaiting_interview`.
+   * Absent → interview phase disabled.
+   * `repoRoot` (above) doubles as the source for `.omc/learnings.md`.
+   */
+  interviewPoster?: InterviewPoster;
 }
 
 export interface ApprovalGate {
@@ -176,6 +207,7 @@ export interface AttemptRecord {
 export type PipelineStatus =
   | 'pr_opened'
   | 'blocked_by_reviewer'
+  | 'awaiting_interview'
   | 'failed'
   | 'cancelled';
 
@@ -186,6 +218,10 @@ export interface PipelineResult {
   reviewSummary?: string;
   attempts: AttemptRecord[];
   failureReason?: string;
+  // Set when status === 'awaiting_interview'. Populated by the architect's
+  // deep-interview phase and used by the control plane to seed the Discord
+  // thread reply handler.
+  interviewQuestions?: string[];
 }
 
 export interface PipelineRunner {
