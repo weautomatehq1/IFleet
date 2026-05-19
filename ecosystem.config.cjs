@@ -96,5 +96,25 @@ module.exports = {
       out_file: '/var/log/pm2/ifleet-out.log',
       error_file: '/var/log/pm2/ifleet-error.log',
     },
+    {
+      // ifleet-mcp — stdio MCP server. Disabled by default because MCP
+      // clients (Claude Desktop / Claude Code) spawn their own per-session
+      // child process; the PM2 entry exists for ad-hoc smoke testing only.
+      // Flip autorestart on intentionally when you have a long-running
+      // client (e.g. a remote VS Code session) that holds the stdio open.
+      name: 'ifleet-mcp',
+      script: 'scripts/mcp-server.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'mcp',
+        MCP_DEFAULT_REPO: process.env.MCP_DEFAULT_REPO ?? 'weautomatehq1/IFleet',
+      },
+      out_file: '/var/log/pm2/ifleet-mcp-out.log',
+      error_file: '/var/log/pm2/ifleet-mcp-error.log',
+    },
   ],
 };
