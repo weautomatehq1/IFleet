@@ -130,6 +130,29 @@ export interface PipelineInput {
   reviewerMaxRounds?: number;
   repoRoot?: string;
   sprintId?: string;
+  /**
+   * Optional hook called when the architect finishes and a plan is ready for
+   * human review. The daemon uses this to surface the plan in a Discord
+   * thread (and emit an `architect.plan_ready` orchestrator event). Returning
+   * a value is ignored; failures should be swallowed by the implementation.
+   */
+  onArchitectPlan?: (plan: string) => void | Promise<void>;
+  /**
+   * Optional Discord-aware approval gate. When set, the architect uses this
+   * instead of `IssueCommenter.waitForApproval` (the GitHub-only path). The
+   * daemon resolves the returned promise when a `approve` / `reject` /
+   * `cancel` ControlCommand POSTs in for this taskId. Resolve to `true` on
+   * approve, `false` on reject/cancel/timeout.
+   */
+  approvalGate?: ApprovalGate;
+}
+
+export interface ApprovalGate {
+  awaitApproval(opts: {
+    taskId: string;
+    timeoutMs: number;
+    abortSignal: AbortSignal;
+  }): Promise<boolean>;
 }
 
 export interface AttemptRecord {

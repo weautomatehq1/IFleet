@@ -154,6 +154,56 @@ test('PipelineBridge exit codes: pr_opened=0, failed=1, cancelled=2, blocked_by_
   assert.equal(await exitCodeFor('blocked_by_reviewer'), 3);
 });
 
+test('decodeBridgeBrief converts a unified discord-sourced task into a legacy pipeline task', () => {
+  const unified = {
+    id: 'tk_disc',
+    source: {
+      kind: 'discord' as const,
+      channelId: 'c1',
+      messageId: 'm1',
+      threadId: 't1',
+      userId: 'u1',
+      userLabel: 'seb',
+    },
+    repo: 'org/repo',
+    brief: 'Fix the thing',
+    title: 'Fix the thing',
+    routingHints: { priority: 'normal' as const, verify: [], autonomy: 'review' as const },
+    createdAt: 1,
+    idempotencyKey: 'k1',
+  };
+  const decoded = decodeBridgeBrief(JSON.stringify({ kind: 'ifleet.pipeline.v1', task: unified }));
+  assert.ok(decoded, 'decoded should be defined');
+  assert.equal(decoded?.id, 'tk_disc');
+  assert.equal(decoded?.issueNumber, 0, 'discord source carries no issue number');
+  assert.equal(decoded?.body, 'Fix the thing');
+  assert.equal(decoded?.repo, 'org/repo');
+  assert.equal(decoded?.autonomy, 'review');
+  assert.deepEqual(decoded?.labels, []);
+});
+
+test('decodeBridgeBrief converts a unified github-sourced task into a legacy pipeline task', () => {
+  const unified = {
+    id: 'tk_gh',
+    source: {
+      kind: 'github' as const,
+      repo: 'org/repo',
+      issueNumber: 99,
+      issueNodeId: 'I_99',
+      url: 'https://x/issues/99',
+    },
+    repo: 'org/repo',
+    brief: 'Add greeting',
+    title: 'Add greeting',
+    routingHints: { priority: 'normal' as const, verify: [], autonomy: 'auto' as const },
+    createdAt: 1,
+    idempotencyKey: 'k99',
+  };
+  const decoded = decodeBridgeBrief(JSON.stringify({ kind: 'ifleet.pipeline.v1', task: unified }));
+  assert.equal(decoded?.issueNumber, 99);
+  assert.equal(decoded?.autonomy, 'auto');
+});
+
 // Item 5: decodeBridgeBrief rejects malformed QueuedTask payloads
 test('decodeBridgeBrief returns undefined when task is missing required fields', () => {
   const bad = (task: unknown): string =>

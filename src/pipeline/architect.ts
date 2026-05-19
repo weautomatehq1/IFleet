@@ -1,4 +1,5 @@
 import type {
+  ApprovalGate,
   AttemptRecord,
   IssueCommenter,
   QueuedTask,
@@ -16,6 +17,14 @@ export interface RunArchitectInput {
   approver: string;
   approvalPollMs?: number;
   approvalTimeoutMs?: number;
+  /**
+   * Source-aware approval gate. When provided, takes precedence over the
+   * `issues.waitForApproval` GitHub-only path. The daemon constructs this
+   * to bridge `ControlPlane.onApprove` (Discord button) → architect resume.
+   */
+  approvalGate?: ApprovalGate;
+  /** Called once with the architect's plan text before the approval gate. */
+  onPlanReady?: (plan: string) => void | Promise<void>;
 }
 
 export interface ArchitectOutput {
@@ -54,13 +63,39 @@ export async function runArchitect(input: RunArchitectInput): Promise<ArchitectO
   }
 
   const plan = result.output;
-  await input.issues.comment(
-    input.task.issueNumber,
-    formatPlanComment(plan, input.spec),
-  );
+
+  // Surface the plan to any subscriber (the daemon emits
+  // `architect.plan_ready` and DiscordOut posts the approval buttons).
+  if (input.onPlanReady) {
+    try {
+      await input.onPlanReady(plan);
+    } catch (err) {
+      // never let a subscriber failure derail the pipeline
+      // eslint-disable-next-line no-console
+      console.warn('[architect] onPlanReady threw:', err);
+    }
+  }
+
+  // GitHub issue commenters are useless for issueNumber=0 (Discord source).
+  // Skip the GitHub comment when there is no real issue to post against.
+  if (input.task.issueNumber > 0) {
+    await input.issues.comment(
+      input.task.issueNumber,
+      formatPlanComment(plan, input.spec),
+    );
+  }
 
   if (input.task.autonomy === 'auto') {
     return { attempt, plan, approved: true };
+  }
+
+  if (input.approvalGate) {
+    const approved = await input.approvalGate.awaitApproval({
+      taskId: input.task.id,
+      timeoutMs: input.approvalTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+      abortSignal: input.abortSignal,
+    });
+    return { attempt, plan, approved };
   }
 
   const approved = await input.issues.waitForApproval(input.task.issueNumber, {

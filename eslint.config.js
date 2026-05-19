@@ -2,7 +2,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', 'dist/**', '.omc/**', 'config/**'],
+    ignores: ['node_modules/**', 'dist/**', '.omc/**', 'config/**', '.claude/**'],
   },
   {
     files: ['src/**/*.ts', 'scripts/**/*.ts'],

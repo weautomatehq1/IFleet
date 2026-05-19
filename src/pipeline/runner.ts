@@ -43,6 +43,8 @@ export class DefaultPipelineRunner implements PipelineRunner {
       issues: input.issues,
       abortSignal: input.abortSignal,
       approver,
+      ...(input.approvalGate ? { approvalGate: input.approvalGate } : {}),
+      ...(input.onArchitectPlan ? { onPlanReady: input.onArchitectPlan } : {}),
     });
     attempts.push(architect.attempt);
 

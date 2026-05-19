@@ -3,6 +3,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
 import { DEFAULT_REPO_ID, loadReposConfig, type ReposMap } from '../config/repos';
+import type { DiscordOut } from '../contracts/discord-out.js';
+import type { QueuedTask } from '../contracts/task.js';
 import { postTaskDoneNotification } from '../observability/task-done-notify.js';
 import type { PipelineRunnerFactory } from './pipeline-bridge';
 import { PressureTracker } from './pressure';
@@ -14,6 +16,7 @@ import type {
   RateLimitHeaders,
   SprintId,
   SprintRecord,
+  TaskId,
   WorkerAdapter,
   WorkerConfig,
   WorkerId,
@@ -62,6 +65,18 @@ export interface OrchestratorOptions {
   discordWebhookUrl?: string;
   /** Path to the claude CLI for generating task-done summaries. Defaults to CLAUDE_PATH env var or 'claude'. */
   claudePath?: string;
+  /**
+   * Discord output adapter. When provided, task lifecycle events are routed
+   * to per-task Discord threads (see src/observability/discord-output.ts).
+   * Requires {@link queuedTaskLoader} to resolve taskId → QueuedTask.
+   */
+  discordOut?: DiscordOut;
+  /**
+   * Resolves an orchestrator-side taskId to T2's unified {@link QueuedTask}.
+   * Required when {@link discordOut} is set. Returning null is treated as
+   * "no Discord routing for this task" and silently dropped.
+   */
+  queuedTaskLoader?: (taskId: TaskId) => QueuedTask | null;
 }
 
 export class Orchestrator {
@@ -77,6 +92,11 @@ export class Orchestrator {
   private readonly repoId: string;
   private readonly discordWebhookUrl: string | undefined;
   private readonly claudePath: string;
+  private readonly discordOut: DiscordOut | undefined;
+  private readonly queuedTaskLoader: ((taskId: TaskId) => QueuedTask | null) | undefined;
+  /** taskId → Discord threadId. Memoized per-process so a single PR thread
+   *  collects assigned/progress/completed messages without reopening. */
+  private readonly taskThreadIds = new Map<TaskId, string>();
   private tickTimer?: NodeJS.Timeout;
   private killTimer?: NodeJS.Timeout;
   private started = false;
@@ -100,6 +120,8 @@ export class Orchestrator {
     const discordWebhookUrl = opts.discordWebhookUrl ?? process.env['DISCORD_IFLEET_WEBHOOK'];
     this.discordWebhookUrl = discordWebhookUrl;
     this.claudePath = opts.claudePath ?? process.env['CLAUDE_PATH'] ?? 'claude';
+    this.discordOut = opts.discordOut;
+    this.queuedTaskLoader = opts.queuedTaskLoader;
     this.sprints = new SprintManager({
       store: this.store,
       registry: this.registry,
@@ -207,7 +229,11 @@ export class Orchestrator {
     ) {
       this.activeSprintIds.delete(event.sprintId);
     }
-    if (event.kind === 'task.completed' && event.taskId) {
+    // Only run the legacy single-channel webhook notification when no
+    // DiscordOut adapter is wired. With DiscordOut active, dispatchToDiscord
+    // already posts a per-task thread message — running both would
+    // double-post.
+    if (!this.discordOut && event.kind === 'task.completed' && event.taskId) {
       const prUrl = event.payload['pr'] as string | undefined;
       const task = this.store.loadTask(event.taskId);
       if (task) {
@@ -219,6 +245,74 @@ export class Orchestrator {
           claudePath: this.claudePath,
         });
       }
+    }
+    if (this.discordOut && this.queuedTaskLoader && event.taskId) {
+      void this.dispatchToDiscord(event, event.taskId);
+    }
+  }
+
+  /**
+   * Route a task lifecycle event to its Discord thread. Idempotent per event:
+   * opens the thread lazily on first observed event for a task, then reuses
+   * the memoized threadId. Errors inside DiscordOut are caught by the adapter;
+   * any error that escapes here is logged but never rethrown so the
+   * orchestrator's event loop stays alive.
+   */
+  private async dispatchToDiscord(event: OrchestratorEvent, taskId: TaskId): Promise<void> {
+    if (!this.discordOut || !this.queuedTaskLoader) return;
+    try {
+      const out = this.discordOut;
+      let threadId = this.taskThreadIds.get(taskId);
+      if (!threadId) {
+        const task = this.queuedTaskLoader(taskId);
+        if (!task) return;
+        const existing =
+          task.source.kind === 'discord' ? task.source.threadId : undefined;
+        if (existing) {
+          threadId = existing;
+          // Tell the adapter the threadId belongs to this taskId so
+          // postPlanForApproval can emit `<verb>:<taskId>` customIds.
+          out.bindThreadToTask?.(existing, task.id);
+        } else {
+          const result = await out.postTaskCreated(task);
+          if (!result.threadId) return;
+          threadId = result.threadId;
+        }
+        this.taskThreadIds.set(taskId, threadId);
+      }
+      switch (event.kind) {
+        case 'task.assigned':
+          await out.postProgress(threadId, '🟡 picked up — architect starting');
+          return;
+        case 'task.completed': {
+          const pr = event.payload['pr'] as string | undefined;
+          await out.postCompleted(threadId, pr ?? '(no PR url)');
+          this.taskThreadIds.delete(taskId);
+          return;
+        }
+        case 'task.failed': {
+          const reason = event.payload['error'] as string | undefined;
+          await out.postFailed(threadId, reason ?? 'unknown failure');
+          this.taskThreadIds.delete(taskId);
+          return;
+        }
+        case 'task.cancelled':
+          await out.postProgress(threadId, '🛑 cancelled');
+          this.taskThreadIds.delete(taskId);
+          return;
+        // architect.plan_ready is NOT routed here — the pipeline calls
+        // discordOutPlanReady directly via the onArchitectPlan callback
+        // injected in daemon.ts. Avoids racing the event bus.
+        default:
+          return;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[orchestrator] dispatchToDiscord failed for task ${taskId} / ${event.kind}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 

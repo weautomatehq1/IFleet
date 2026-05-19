@@ -134,6 +134,10 @@ export class GitHubQueue implements QueueAdapter {
       for (const task of issues) {
         if (exclude.has(task.id)) continue;
         if (task.labels.includes(LABEL_IN_FLIGHT)) continue;
+        // `auto:failed` is a terminal state: IFleet attempted but failed,
+        // human review required. Without this guard, every 5-min cron tick
+        // re-picks the same failing issue forever (crash loop).
+        if (task.labels.includes(LABEL_FAILED)) continue;
         if (!isAuthorAllowed(repo, task.author)) {
           console.warn(
             `[queue] skipping ${task.repo}#${task.issueNumber}: author "${task.author}" not in allowedAuthors`,
