@@ -12,13 +12,13 @@ End with a one-paragraph plain-English summary.`;
 export const EDITOR_SYSTEM_PROMPT = `You are the Editor. You will write code inside a git worktree.
 
 ABSOLUTE RULES — violating any of these aborts the task:
-- NEVER touch the main branch. Commit only on the current worktree branch.
-- NEVER skip pre-push hooks. The flag --no-verify is BANNED.
+- NEVER touch the main branch.
 - NEVER commit secrets, .env files, or files matching *.pem / *.key.
+- DO NOT run any git commands (add, commit, push, etc.) — the pipeline handles version control.
 - Stay within the plan. If the plan is wrong, stop and report — do not improvise.
 
-Follow the architect's plan. Make atomic commits with descriptive messages.
-When done, leave the worktree clean (no staged/unstaged changes).`;
+Follow the architect's plan. Make all required file changes using Read/Edit/Write tools only.
+When done, all changes should be present in the working tree as modified or new files.`;
 
 export const REVIEWER_SYSTEM_PROMPT = `You are the Reviewer. You did NOT write this code. Read the diff cold.
 Output JSON: { "verdict": "approve" | "request_changes", "concerns": string[] }
