@@ -155,7 +155,7 @@ export function parseVitestOutput(raw: string): VerifierFailure[] {
 export function parsePnpmInstallOutput(raw: string): VerifierFailure[] {
   const cleaned = stripAnsi(raw);
   const failures: VerifierFailure[] = [];
-  const errRe = /(ERR_PNPM_[A-Z_]+)\b\s*([^\n]*)/g;
+  const errRe = /(ERR_PNPM_[A-Z0-9_]+)\s*([^\n]*)/g;
   let m: RegExpExecArray | null;
   while ((m = errRe.exec(cleaned)) !== null) {
     failures.push({

@@ -78,6 +78,6 @@ export function parseCustomId(
   const verb = customId.slice(0, idx);
   const taskId = customId.slice(idx + 1);
   if (!taskId) return null;
-  if (verb !== 'approve' && verb !== 'reject' && verb !== 'cancel') return null;
-  return { verb, taskId };
+  if (!(DISCORD_CUSTOM_ID_VERBS as ReadonlyArray<string>).includes(verb)) return null;
+  return { verb: verb as DiscordCustomIdVerb, taskId };
 }

@@ -239,8 +239,10 @@ export class DockerSandboxRunner implements SandboxRunner {
       phases: phaseReports,
     };
     if (rawLogUrl) result.rawLogUrl = rawLogUrl;
-    const finalBanner = banner ?? (plan.partial ? 'verified: partial (no test script)' : undefined);
-    if (finalBanner) result.banner = finalBanner;
+    const bannerParts: string[] = [];
+    if (banner) bannerParts.push(banner);
+    if (plan.partial) bannerParts.push('verified: partial (no test script)');
+    if (bannerParts.length > 0) result.banner = bannerParts.join(' | ');
     return result;
   }
 
