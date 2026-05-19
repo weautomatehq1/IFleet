@@ -40,39 +40,76 @@ function walkTs(dir: string): string[] {
 // ── Import extractor ─────────────────────────────────────────────────────────
 
 interface ImportRef {
-  path: string;   // the import specifier as written
+  path: string;
   line: number;
 }
 
+/** Returns a function that maps a character index to its 1-based line number. */
+function makeLineMapper(src: string): (idx: number) => number {
+  const newlines: number[] = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '\n') newlines.push(i);
+  }
+  return (idx: number): number => {
+    let lo = 0;
+    let hi = newlines.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((newlines[mid] ?? -1) < idx) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo + 1;
+  };
+}
+
+/**
+ * Extracts all import specifiers from a TypeScript file, including multiline
+ * imports. Works on full file content rather than line-by-line so that imports
+ * like `import {\n  foo\n} from '../queue'` are not missed.
+ */
 function extractImports(filePath: string): ImportRef[] {
   const src = readFileSync(filePath, 'utf8');
+  const lineOf = makeLineMapper(src);
   const refs: ImportRef[] = [];
-  // Match static import/export ... from '...' and require('...')
-  const re = /(?:import|export)\s+(?:type\s+)?(?:[^'"]+\s+from\s+)?['"]([^'"]+)['"]/g;
-  const lines = src.split('\n');
-  lines.forEach((line: string, idx: number) => {
-    let m: RegExpExecArray | null;
-    const lineRe = /(?:import|export)\s+(?:type\s+)?(?:[^'"]+\s+from\s+)?['"]([^'"]+)['"]/g;
-    while ((m = lineRe.exec(line)) !== null) {
-      refs.push({ path: m[1] as string, line: idx + 1 });
+  const seen = new Set<string>(); // dedupe by "path@line"
+
+  function add(path: string, idx: number): void {
+    const key = `${path}@${idx}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      refs.push({ path, line: lineOf(idx) });
     }
-    // require()
-    const reqRe = /require\(['"]([^'"]+)['"]\)/g;
-    let rm: RegExpExecArray | null;
-    while ((rm = reqRe.exec(line)) !== null) {
-      refs.push({ path: rm[1] as string, line: idx + 1 });
-    }
-  });
-  void re; // suppress unused-var warning — we use the per-line version above
+  }
+
+  // from-style: import ... from '...', export ... from '...'
+  // [\s\S]*? is lazy and stops at the shortest match so it doesn't span
+  // across unrelated statements. \bfrom\b with word boundary avoids matching
+  // identifiers like `getSomethingFrom`.
+  const fromRe = /\b(?:import|export)\b[\s\S]*?\bfrom\b\s+['"]([^'"]+)['"]/gm;
+  let m: RegExpExecArray | null;
+  while ((m = fromRe.exec(src)) !== null) {
+    add(m[1] as string, m.index);
+  }
+
+  // side-effect: import '...' (no bindings)
+  const sideRe = /\bimport\b\s+['"]([^'"]+)['"]/gm;
+  while ((m = sideRe.exec(src)) !== null) {
+    add(m[1] as string, m.index);
+  }
+
+  // require('...')
+  const reqRe = /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/gm;
+  while ((m = reqRe.exec(src)) !== null) {
+    add(m[1] as string, m.index);
+  }
+
   return refs;
 }
 
 // ── Rule runner ──────────────────────────────────────────────────────────────
 
 interface RuleOptions {
-  /** Absolute paths of files in scope for the "from" side. */
   fromFiles: string[];
-  /** The import specifier must match this predicate to be a violation. */
   importMatches: (spec: string) => boolean;
   ruleName: string;
   repoRoot: string;
@@ -109,7 +146,6 @@ function main(): void {
   //
   // Why: SprintManager emits events; it must never call the queue bridge
   // directly. The queue subscribes TO SprintManager events — not the reverse.
-  // Allowing the import would couple sprint logic to GitHub rate-limit handling.
   {
     const sprintFile = join(srcDir, 'orchestrator', 'sprint.ts');
     violations.push(
@@ -126,10 +162,9 @@ function main(): void {
   // ── Assertion 2 ──────────────────────────────────────────────────────────
   // src/pipeline/** must NOT import from src/discord/**
   //
-  // Why: the pipeline (architect/editor/reviewer/verifier) must remain
-  // Discord-agnostic so it can be driven by other interfaces (REST, eval
-  // harness, CLI). Discord awareness leaking into pipeline logic couples the
-  // two layers and makes the eval harness unreliable.
+  // Why: the pipeline must remain Discord-agnostic so it can be driven by the
+  // eval harness, REST interface, or CLI. Discord awareness in pipeline logic
+  // couples two layers that should be independent.
   {
     const pipelineFiles = allTs.filter(f =>
       f.startsWith(join(srcDir, 'pipeline') + '/')
@@ -148,27 +183,25 @@ function main(): void {
   // ── Assertion 3 ──────────────────────────────────────────────────────────
   // Test files (*.test.ts) must NOT be imported by non-test source code.
   //
-  // Why: importing test files in production code drags test-only setup,
-  // mocks, and fixtures into the runtime bundle. It also creates a circular
-  // dependency risk that obscures real module boundaries.
+  // Why: importing test files drags test-only setup, mocks, and fixtures into
+  // the runtime bundle and creates circular dependency risk.
   {
     const testFiles = new Set(allTs.filter(f => f.endsWith('.test.ts')));
     const nonTestFiles = allTs.filter(f => !f.endsWith('.test.ts'));
 
     for (const file of nonTestFiles) {
       for (const ref of extractImports(file)) {
-        // Resolve relative imports to absolute paths to detect test files
-        if (ref.path.startsWith('.')) {
-          const resolved =
-            resolve(join(file, '..'), ref.path) + '.ts';
-          if (testFiles.has(resolved)) {
-            violations.push({
-              rule: 'no-test-imports-in-src',
-              file: relative(repoRoot, file),
-              importPath: ref.path,
-              line: ref.line,
-            });
-          }
+        if (!ref.path.startsWith('.')) continue;
+        const base = resolve(join(file, '..'), ref.path);
+        // Try the common resolution candidates: bare path, .ts, /index.ts
+        const candidates = [base, base + '.ts', join(base, 'index.ts')];
+        if (candidates.some(c => testFiles.has(c))) {
+          violations.push({
+            rule: 'no-test-imports-in-src',
+            file: relative(repoRoot, file),
+            importPath: ref.path,
+            line: ref.line,
+          });
         }
       }
     }
