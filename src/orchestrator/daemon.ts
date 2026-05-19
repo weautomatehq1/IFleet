@@ -42,7 +42,7 @@ import { DiscordSource } from '../queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
 import { UnifiedQueueAdapter } from '../queue/unified-adapter.js';
 import { FileChannelRouter } from '../repos/router.js';
-import { newTaskId, type WorkerConfig } from './types.js';
+import { newTaskId, type OrchestratorEvent, type WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
 import { encodeBridgeBrief } from './pipeline-bridge.js';
@@ -253,18 +253,66 @@ async function runTickLoop(
       const task = await adapter.pickNext();
       if (task) {
         const brief = encodeBridgeBrief(task);
-        orchestrator.submitSprint({
+        const sprintRec = orchestrator.submitSprint({
           mode: 'normal',
           goal: task.title,
           newTaskBriefs: [brief],
         });
-        // adapter already flipped the row to in_flight inside pickNext()
+        // adapter already flipped the row to in_flight inside pickNext().
+        // Wire the sprint's terminal event back to the unified queue so the
+        // task row transitions out of in_flight (done / failed).
+        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator);
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
     }
     await sleep(tickMs);
   }
+}
+
+/**
+ * Registers a one-shot listener on the orchestrator event bus. When the
+ * sprint with {@link sprintId} reaches a terminal state (completed/failed/
+ * cancelled), the corresponding unified-queue lifecycle method is called so
+ * the queue task transitions out of `in_flight`.
+ */
+function wireSprintCompletion(
+  sprintId: string,
+  task: import('../contracts/task.js').QueuedTask,
+  adapter: UnifiedQueueAdapter,
+  orchestrator: Orchestrator,
+): void {
+  let lastPrUrl: string | undefined;
+
+  const handler = (event: OrchestratorEvent): void => {
+    if (event.sprintId !== sprintId) return;
+
+    if (event.kind === 'task.completed') {
+      lastPrUrl = event.payload['pr'] as string | undefined;
+      return;
+    }
+
+    if (event.kind === 'sprint.completed') {
+      orchestrator.off('event', handler);
+      void adapter.markCompleted(task, lastPrUrl ?? '').catch((err) =>
+        console.warn('[daemon] markCompleted failed:', err),
+      );
+      return;
+    }
+
+    if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
+      orchestrator.off('event', handler);
+      const reason =
+        event.kind === 'sprint.failed'
+          ? ((event.payload['error'] as string | undefined) ?? 'pipeline failed')
+          : ((event.payload['reason'] as string | undefined) ?? 'cancelled');
+      void adapter.markFailed(task, reason).catch((err) =>
+        console.warn('[daemon] markFailed failed:', err),
+      );
+    }
+  };
+
+  orchestrator.on('event', handler);
 }
 
 /**
