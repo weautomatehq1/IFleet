@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, type SlashCommandOptionsOnlyBuilder } from 'discord.js';
 
-export const SLASH_COMMAND_NAMES = ['ship', 'plan', 'status', 'cancel', 'approve'] as const;
+export const SLASH_COMMAND_NAMES = ['ship', 'plan', 'status', 'cancel', 'approve', 'verify'] as const;
 export type SlashCommandName = (typeof SLASH_COMMAND_NAMES)[number];
 
 /** Returned builders always have at least one option, hence the union. */
@@ -48,6 +48,12 @@ export function buildSlashCommands(): SlashCommandDef[] {
       .setDescription('Approve a paused plan and resume the pipeline.')
       .addStringOption((o) =>
         o.setName('taskid').setDescription('Task ID waiting at the HITL gate.').setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName('verify')
+      .setDescription('Manually rerun the verifier for a task (sandbox build/typecheck/lint/test/invariants).')
+      .addStringOption((o) =>
+        o.setName('taskid').setDescription('Task ID to re-verify.').setRequired(true),
       ),
   ];
 }

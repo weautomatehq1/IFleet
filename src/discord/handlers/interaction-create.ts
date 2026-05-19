@@ -127,12 +127,18 @@ export function buildCommandFromButton(
   source: DiscordCommandSource,
 ): ControlCommand {
   if (verb === 'approve') return { type: 'approve', taskId, source };
-  return {
-    type: 'cancel',
-    taskId,
-    reason: verb === 'reject' ? 'rejected via discord' : 'cancelled via discord',
-    source,
-  };
+  if (verb === 'verify_retry') return { type: 'verify', taskId, source };
+  if (verb === 'verify_force_pr') {
+    return { type: 'force_pr', taskId, reason: 'force-pr via discord (verifier failed)', source };
+  }
+  // Remaining verbs (reject, cancel, verify_cancel) all map to cancel.
+  const reason =
+    verb === 'reject'
+      ? 'rejected via discord'
+      : verb === 'verify_cancel'
+        ? 'verifier cancelled via discord'
+        : 'cancelled via discord';
+  return { type: 'cancel', taskId, reason, source };
 }
 
 export function buildCommandFromSlash(

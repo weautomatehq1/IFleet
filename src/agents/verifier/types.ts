@@ -46,6 +46,14 @@ export interface VerifierRunInput {
   sha: string;
   /** 1-based attempt counter. Caller enforces the max-3-retry rule. */
   attempt: number;
+  /**
+   * Optional path to an already-checked-out worktree on the host. When set, the
+   * Docker sandbox mounts this directory at /work instead of cloning. The
+   * pipeline always passes this in production; `/verify <taskId>` reruns that
+   * happen after the worktree was torn down fall back to clone-from-SHA when
+   * the runner supports it.
+   */
+  worktreePath?: string;
 }
 
 export type VerifierStatus =
@@ -54,6 +62,21 @@ export type VerifierStatus =
   | 'timeout'
   | 'error'
   | 'partial';
+
+/**
+ * Per-phase summary appended to {@link VerifierRunResult.phases}. Surfaces in
+ * Discord (`/status <taskId>`) and is persisted as part of the raw_log_url
+ * artifact. Treated as best-effort — a phase that crashed before producing
+ * output still appears here with `exitCode: null` and an empty output.
+ */
+export interface VerifierPhaseReport {
+  kind: VerifierFailureKind;
+  ok: boolean;
+  exitCode: number | null;
+  durationMs: number;
+  /** True when the phase was skipped (e.g. no `test` script in package.json). */
+  skipped?: boolean;
+}
 
 export interface VerifierRunResult {
   runId: VerifierRunId;
@@ -71,6 +94,15 @@ export interface VerifierRunResult {
    * upload path lands. Undefined in the scaffold.
    */
   rawLogUrl?: string;
+  /** Per-phase summary for Discord rendering. Empty in the stub. */
+  phases?: ReadonlyArray<VerifierPhaseReport>;
+  /**
+   * Free-form banner surfaced to the operator when the sandbox could not run
+   * normally (Docker daemon down → ran in-worktree; no `test` script → ran
+   * build+lint+typecheck only). Drives the `verified: partial` PR label and
+   * the `sandbox: unavailable` Discord banner.
+   */
+  banner?: string;
 }
 
 /**
