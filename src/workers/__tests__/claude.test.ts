@@ -95,7 +95,7 @@ test('claude adapter: spawn args include flags and session-id for new run', asyn
   assert.ok(call.args.includes('--model'));
   assert.ok(call.args.includes('claude-sonnet-4-6'));
   assert.ok(call.args.includes('--permission-mode'));
-  assert.ok(call.args.includes('auto'));
+  assert.ok(call.args.includes('acceptEdits'));
   assert.ok(call.args.includes('--output-format'));
   assert.ok(call.args.includes('stream-json'));
   assert.ok(call.args.includes('--verbose'));
