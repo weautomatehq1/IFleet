@@ -212,7 +212,12 @@ export class GitRepoManager implements RepoManager {
 
 async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // Strip GIT_* vars so a parent pre-push hook's GIT_DIR/GIT_WORK_TREE
+    // doesn't leak into child git processes and redirect them to the wrong repo.
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
+    );
+    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => {
