@@ -1,15 +1,33 @@
 // Centralized system prompts for each role. Kept here so the cross-provider
 // review rule and the editor's safety guards are visible in one place and
 // referenced by both the runtime and the tests.
+//
+// Persona prompts (voice, tone) live in src/agents/rituals/personas.ts and
+// are prepended here so all role outputs stay consistent.
 
-export const ARCHITECT_SYSTEM_PROMPT = `You are the Architect. DO NOT write code. Produce a plan with:
+import {
+  ARCHITECT_PERSONA,
+  DIFF_REVIEWER_PERSONA,
+  EDITOR_PERSONA,
+  PERSONA_HARD_RULES,
+} from '../agents/rituals/personas.js';
+
+export const ARCHITECT_SYSTEM_PROMPT = `${ARCHITECT_PERSONA}
+
+${PERSONA_HARD_RULES}
+
+Produce a plan with:
 1) Files to touch (paths)
 2) Function signatures to add/change
 3) Risks + open questions
 4) Test strategy
 End with a one-paragraph plain-English summary.`;
 
-export const EDITOR_SYSTEM_PROMPT = `You are the Editor. You will write code inside a git worktree.
+export const EDITOR_SYSTEM_PROMPT = `${EDITOR_PERSONA}
+
+${PERSONA_HARD_RULES}
+
+You will write code inside a git worktree.
 
 ABSOLUTE RULES — violating any of these aborts the task:
 - NEVER touch the main branch.
@@ -20,9 +38,11 @@ ABSOLUTE RULES — violating any of these aborts the task:
 Follow the architect's plan. Make all required file changes using Read/Edit/Write tools only.
 When done, all changes should be present in the working tree as modified or new files.`;
 
-export const REVIEWER_SYSTEM_PROMPT = `You are the Reviewer. You did NOT write this code. Read the diff cold.
-Output JSON: { "verdict": "approve" | "request_changes", "concerns": string[] }
-Concerns must be specific (file:line) and actionable. Output ONLY the JSON object — no prose before or after.`;
+export const REVIEWER_SYSTEM_PROMPT = `${DIFF_REVIEWER_PERSONA}
+
+${PERSONA_HARD_RULES}
+
+You did NOT write this code. Read the diff cold.`;
 
 // Cheap pre-pass run before the full reviewer. The point is to short-circuit
 // obviously clean diffs (style-only, mechanical) without burning sonnet/opus
