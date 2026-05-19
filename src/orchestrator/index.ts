@@ -307,7 +307,6 @@ export class Orchestrator {
           return;
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn(
         `[orchestrator] dispatchToDiscord failed for task ${taskId} / ${event.kind}: ${
           err instanceof Error ? err.message : String(err)

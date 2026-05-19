@@ -25,7 +25,7 @@ export interface DiscordClientDeps {
 }
 
 export function createDiscordClient(deps: DiscordClientDeps): Client {
-  const log = deps.log ?? ((m) => console.log(m));
+  const log = deps.log ?? ((m) => console.warn(m));
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,

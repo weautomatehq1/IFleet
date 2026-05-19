@@ -170,7 +170,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       });
       attempts.push(reviewer.attempt);
       if (reviewer.gate === 'haiku') {
-        console.log(
+        console.warn(
           `reviewer:haiku-gate-passed task=${input.task.id} round=${round} gate=${input.routing.haikuGate?.workerId ?? 'unknown'}`,
         );
       }
