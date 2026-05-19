@@ -31,7 +31,7 @@
 import { execFile, spawn as spawnChild } from 'node:child_process';
 import { request } from 'node:https';
 import { promisify } from 'node:util';
-import { symlinkSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { symlinkSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, openSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createGitHubQueue } from '../src/queue/github.ts';
@@ -551,13 +551,17 @@ async function runDispatch(): Promise<void> {
   const stateFile = join(stateDir, `pipeline-${rawTask.issueNumber}.json`);
   writeFileSync(stateFile, JSON.stringify({ rawTask, branchName, worktreePath }));
 
+  const logsDir = join(REPO_ROOT, '.omc', 'logs');
+  mkdirSync(logsDir, { recursive: true });
+  const logFile = join(logsDir, `worker-${rawTask.issueNumber}.log`);
+  const logFd = openSync(logFile, 'a');
   const worker = spawnChild(
     process.execPath,
     ['--import', 'tsx', resolve(REPO_ROOT, 'scripts', 'run-smoke.ts'), '--worker', String(rawTask.issueNumber)],
-    { detached: true, stdio: 'ignore', cwd: REPO_ROOT, env: process.env },
+    { detached: true, stdio: ['ignore', logFd, logFd], cwd: REPO_ROOT, env: process.env },
   );
   worker.unref();
-  log(`Detached pipeline worker (PID ${worker.pid ?? '?'}) for #${rawTask.issueNumber} — scheduler exiting`);
+  log(`Detached pipeline worker (PID ${worker.pid ?? '?'}) for #${rawTask.issueNumber} — logs → ${logFile} — scheduler exiting`);
 }
 
 main().catch((err) => {
