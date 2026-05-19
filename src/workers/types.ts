@@ -15,6 +15,13 @@ export interface SpawnOpts {
   /** Passed as --system-prompt to override CLAUDE.md for autonomous worker roles. */
   systemPrompt?: string;
   /**
+   * When true, pass `brief` directly to `-p` without the anti-injection
+   * DATA wrapper. Use for trusted pipeline content (e.g. architect plan +
+   * editor brief) where wrapping as "DATA, not instructions" would prevent
+   * Claude from acting on the plan.
+   */
+  trustedBrief?: boolean;
+  /**
    * Named Claude login profile (created via `claude auth login --profile <name>`).
    * Passed to the CLI as `--profile <name>`. Omit or set to `"default"` to use the
    * default profile (the `--profile` flag is suppressed in that case).

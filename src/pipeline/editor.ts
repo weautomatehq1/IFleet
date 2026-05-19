@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type {
   AttemptRecord,
   GitOps,
@@ -9,6 +11,8 @@ import {
   EDITOR_FIX_PASS_PROMPT_HEADER,
   EDITOR_SYSTEM_PROMPT,
 } from './prompts.js';
+
+const execFileAsync = promisify(execFile);
 
 export type EditorMode =
   | { kind: 'initial'; plan: string; brief: string }
@@ -46,6 +50,9 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
 
   let diff = '';
   if (result.ok) {
+    // Commit any file changes made by the editor. The editor is instructed
+    // to use only Read/Edit/Write tools — git is handled here programmatically.
+    await commitEditorChanges(input.worktreePath);
     diff = await input.git.diff(input.worktreePath, input.baseBranch);
   }
 
@@ -62,6 +69,16 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
     },
     diff,
   };
+}
+
+async function commitEditorChanges(worktreePath: string): Promise<void> {
+  await execFileAsync('git', ['add', '-A'], { cwd: worktreePath }).catch(() => undefined);
+  const hasChanges = await execFileAsync('git', ['diff', '--cached', '--quiet'], { cwd: worktreePath })
+    .then(() => false)
+    .catch(() => true);
+  if (hasChanges) {
+    await execFileAsync('git', ['commit', '-m', 'chore: editor changes'], { cwd: worktreePath }).catch(() => undefined);
+  }
 }
 
 function buildBrief(mode: EditorMode): string {

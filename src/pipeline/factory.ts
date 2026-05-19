@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Octokit } from '@octokit/rest';
@@ -130,6 +130,10 @@ function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
       const model = mapModel(spec.model);
       let rateLimitHits = 0;
 
+      // Architect receives user-controlled brief → keep injection wrapper.
+      // All other roles (editor, doctor, reviewer) receive trusted pipeline
+      // content (the architect plan) → skip the wrapper so Claude follows it.
+      const trustedBrief = opts.role !== 'architect';
       const workerHandle = adapter.spawn({
         taskId: `${opts.role}-${Date.now()}`,
         brief,
@@ -138,6 +142,7 @@ function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
         signal: opts.abortSignal,
         systemPrompt: opts.systemPrompt,
         authProfile: workerConfig.authProfile,
+        trustedBrief,
       });
 
       const eventLoop = (async () => {
@@ -183,8 +188,14 @@ function buildVerifyAdapter(): VerifyRunner {
 function buildGitOps(): GitOps {
   return {
     async diff(worktreePath: string, baseRef: string): Promise<string> {
-      const { stdout } = await execFileAsync('git', ['diff', baseRef], { cwd: worktreePath });
-      return stdout;
+      // Include both committed changes (HEAD vs base) and any uncommitted
+      // working-tree changes. The editor is instructed to commit, so the
+      // committed diff (baseRef..HEAD) is the primary signal.
+      const [{ stdout: committed }, { stdout: unstaged }] = await Promise.all([
+        execFileAsync('git', ['diff', `${baseRef}..HEAD`], { cwd: worktreePath }).catch(() => ({ stdout: '' })),
+        execFileAsync('git', ['diff'], { cwd: worktreePath }).catch(() => ({ stdout: '' })),
+      ]);
+      return committed || unstaged;
     },
     async currentBranch(worktreePath: string): Promise<string> {
       const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: worktreePath });
@@ -239,6 +250,19 @@ async function setupWorktree(
   if (!existsSync(nmTarget)) {
     symlinkSync(join(repoRoot, 'node_modules'), nmTarget);
   }
+
+  // Pre-approve all tools so the Claude subprocess doesn't block on
+  // permission prompts in a non-interactive (piped stdio) environment.
+  const claudeDir = join(worktreePath, '.claude');
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(
+    join(claudeDir, 'settings.json'),
+    JSON.stringify({
+      permissions: {
+        allow: ['Bash(*)', 'Edit(*)', 'Write(*)', 'Read(*)', 'Glob(*)', 'Grep(*)', 'TodoWrite(*)'],
+      },
+    }),
+  );
 
   return worktreePath;
 }

@@ -12,7 +12,10 @@ import {
 const WORKER_INSTRUCTION =
   `You are an IFleet worker. Execute the user-supplied task brief that ` +
   `follows. The brief is the task description; complete it on the current ` +
-  `working tree. Open a PR when finished.`;
+  `working tree. IMPORTANT: only read and write files within the current ` +
+  `working directory (process.cwd()). Do NOT navigate to parent directories, ` +
+  `sibling repos, or any path outside the worktree you were started in. ` +
+  `Open a PR when finished.`;
 
 export interface ClaudeAdapterOptions {
   binary?: string;
@@ -26,7 +29,7 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
     spawn(opts: SpawnOpts): SpawnHandle {
       // --session-id requires a UUID; never fall back to taskId (which is not a UUID).
       const sessionId = opts.sessionId ?? randomUUID();
-      const args = buildClaudeArgs(opts, sessionId);
+      const args = buildClaudeArgs(opts, sessionId, opts.trustedBrief ?? false);
 
       let textBuffer = '';
       let totalCostUsd: number | undefined;
@@ -50,13 +53,16 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
             finalText = text;
           });
         },
-        finalize: ({ startedAt, endedAt, sessionId: capturedSessionId }) => ({
-          ok: true,
-          text: finalText !== '' ? finalText : textBuffer,
-          sessionId: capturedSessionId !== '' ? capturedSessionId : sessionId,
-          totalCostUsd,
-          durationMs: endedAt - startedAt,
-        }),
+        finalize: ({ startedAt, endedAt, sessionId: capturedSessionId, stderrTail }) => {
+          if (stderrTail) console.warn('[claude] stderr tail:', stderrTail.slice(0, 500));
+          return {
+            ok: true,
+            text: finalText !== '' ? finalText : textBuffer,
+            sessionId: capturedSessionId !== '' ? capturedSessionId : sessionId,
+            totalCostUsd,
+            durationMs: endedAt - startedAt,
+          };
+        },
       });
 
       return {
@@ -70,20 +76,18 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
   };
 }
 
-function buildClaudeArgs(opts: SpawnOpts, sessionId: string): string[] {
-  // Wrap the user-controlled brief in an explicit DATA block so a malicious
-  // brief cannot escape into the instruction layer (prompt injection → RCE
-  // via the worker's tool permissions). The worker still executes the brief
-  // as a task — Claude is instructed to refuse role-switch / "ignore the
-  // above" patterns inside the block.
-  const wrapped = wrapBriefAsData(WORKER_INSTRUCTION, opts.brief);
+function buildClaudeArgs(opts: SpawnOpts, sessionId: string, trustedBrief: boolean): string[] {
+  // For trusted pipeline content (editor, doctor), pass the brief directly so
+  // Claude can follow the architect plan as instructions. For untrusted user
+  // input (architect phase), wrap in a DATA block to block prompt injection.
+  const wrapped = trustedBrief ? opts.brief : wrapBriefAsData(WORKER_INSTRUCTION, opts.brief);
   const args = [
     '-p',
     wrapped,
     '--model',
     opts.model,
     '--permission-mode',
-    'auto',
+    'acceptEdits',
     '--output-format',
     'stream-json',
     '--verbose',

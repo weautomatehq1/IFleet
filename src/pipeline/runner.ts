@@ -36,6 +36,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
     if (input.abortSignal.aborted) return cancelled(attempts);
 
     // === Architect ===
+    console.warn('[pipeline] architect starting');
     const architect = await runArchitect({
       task: input.task,
       workerPool: input.workerPool,
@@ -49,6 +50,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       ...(input.interviewPoster ? { interviewPoster: input.interviewPoster } : {}),
     });
     attempts.push(architect.attempt);
+    console.warn(`[pipeline] architect done ok=${architect.attempt.ok} approved=${architect.approved} planLen=${architect.plan.length}`);
 
     if (!architect.attempt.ok) {
       return failed(attempts, 'architect failed');
@@ -80,6 +82,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
     let lastVerify: VerifyResult | null = null;
 
     {
+      console.warn(`[pipeline] editor starting model=${input.routing.editor.model} worktree=${input.worktreePath}`);
       const editor = await runEditor({
         spec: input.routing.editor,
         workerPool: input.workerPool,
@@ -90,6 +93,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         mode: { kind: 'initial', plan, brief: input.task.body },
       });
       attempts.push(editor.attempt);
+      console.warn(`[pipeline] editor done ok=${editor.attempt.ok} diffLen=${editor.diff.length} outputSnip=${JSON.stringify(editor.attempt.output.slice(0, 300))}`);
       if (!editor.attempt.ok) return failed(attempts, 'editor failed');
       diff = editor.diff;
       // Empty diff means the editor returned ok=true but made no file edits —
