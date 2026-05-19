@@ -32,6 +32,9 @@
     "nanoid": "^5.0.7",
     "resend": "^6.12.3"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.0.0",
