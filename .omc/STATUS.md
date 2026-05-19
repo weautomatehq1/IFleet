@@ -6,6 +6,7 @@ Last updated: 2026-05-15
 
 ## Done (recent)
 
+- [doctor-self-heal] ✅ doctor extension — fingerprint matching (.omc/fingerprints.json), 30-min Haiku scan, daily 06:00 learnings rollup; PM2 entry off by default (#76)
 - [sentry-n8n-bridge] ✅ Sentry → n8n → GitHub Issues pipeline wired and verified 2026-05-15
 - [discord-notifications] ✅ PR #79 — sprint start/success/failure notifications to #ifleet
 - [discord-webhook-env] ✅ DISCORD_IFLEET_WEBHOOK set in .env, PM2 reloaded
@@ -27,7 +28,6 @@ Last updated: 2026-05-15
 - #71 feat(pipeline): deep-interview phase for vague briefs
 - #72 feat(classifier): sprint mode routing — ralph/ulw/tdd/deslop labels
 - #75 feat(orchestrator): auto-router — Haiku sprint mode selector
-- #76 feat(pipeline): doctor extension — fingerprint matching + daily learnings rollup
 
 ## Up next
 
