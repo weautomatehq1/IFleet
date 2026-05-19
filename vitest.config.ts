@@ -10,6 +10,7 @@ export default defineConfig({
       'src/config/**/*.test.ts',
       'src/repos/**/*.test.ts',
       'src/discord/**/*.test.ts',
+      'src/agents/**/*.test.ts',
       'scripts/__tests__/**/*.test.ts',
     ],
     environment: 'node',
