@@ -1,6 +1,10 @@
 import { z } from 'zod';
+import { SPRINT_MODES } from '../../classifier/modes.js';
 import { LABEL_AUTO_SHIP } from '../../queue/types.js';
+import type { SprintMode } from '../../orchestrator/types.js';
 import type { McpOctokit } from '../octokit.js';
+
+const SPRINT_MODE_VALUES = SPRINT_MODES as readonly [SprintMode, ...SprintMode[]];
 
 export const submitSprintShape = {
   brief: z.string().min(1).describe('Sprint brief / task description (markdown).'),
@@ -10,9 +14,9 @@ export const submitSprintShape = {
     .optional()
     .describe('Target repo as "owner/name". Defaults to MCP_DEFAULT_REPO env var.'),
   mode: z
-    .enum(['normal', 'overnight'])
+    .enum(SPRINT_MODE_VALUES)
     .optional()
-    .describe('Sprint mode tag — embedded in the issue body for the classifier.'),
+    .describe('Classifier SprintMode — emitted as a `mode:<value>` GitHub label.'),
   title: z
     .string()
     .max(120)
@@ -49,14 +53,17 @@ export async function submitSprint(
   const repo = target.slice(slash + 1);
 
   const title = parsed.title ?? deriveTitle(parsed.brief);
-  const body = renderBody(parsed.brief, parsed.mode);
+  const body = renderBody(parsed.brief);
+  const labels = parsed.mode
+    ? [LABEL_AUTO_SHIP, `mode:${parsed.mode}`]
+    : [LABEL_AUTO_SHIP];
 
   const issue = await deps.octokit.createIssue({
     owner,
     repo,
     title,
     body,
-    labels: [LABEL_AUTO_SHIP],
+    labels,
   });
   return {
     id: `${target}#${issue.number}`,
@@ -72,8 +79,6 @@ function deriveTitle(brief: string): string {
   return trimmed.length > 100 ? `${trimmed.slice(0, 97)}...` : trimmed;
 }
 
-function renderBody(brief: string, mode: 'normal' | 'overnight' | undefined): string {
-  const header = ['<!-- source: mcp -->'];
-  if (mode) header.push(`<!-- mode: ${mode} -->`);
-  return `${header.join('\n')}\n\n${brief}`;
+function renderBody(brief: string): string {
+  return `<!-- source: mcp -->\n\n${brief}`;
 }

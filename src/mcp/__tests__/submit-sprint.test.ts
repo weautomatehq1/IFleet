@@ -27,18 +27,41 @@ describe('submitSprint', () => {
     assert.match(args.body, /<!-- source: mcp -->/);
   });
 
-  it('honours an explicit repo override and embeds the mode tag in the body', async () => {
+  it('honours an explicit repo override and emits a mode:<value> label', async () => {
     const { client, state } = createMockOctokit();
     await submitSprint(
       { octokit: client, defaultRepo: DEFAULT_REPO },
-      { brief: 'tune classifier', repo: 'weautomatehq1/factory', mode: 'overnight' },
+      { brief: 'tune classifier', repo: 'weautomatehq1/factory', mode: 'ralph' },
     );
 
     const call = state.calls.find((c) => c.tool === 'createIssue')!;
-    const args = call.args as { owner: string; repo: string; body: string };
+    const args = call.args as { owner: string; repo: string; body: string; labels: string[] };
     assert.equal(args.owner, 'weautomatehq1');
     assert.equal(args.repo, 'factory');
-    assert.match(args.body, /<!-- mode: overnight -->/);
+    assert.deepEqual(args.labels, ['auto:ship', 'mode:ralph']);
+    assert.doesNotMatch(args.body, /<!-- mode:/);
+  });
+
+  it('omits the mode label when no mode is supplied', async () => {
+    const { client, state } = createMockOctokit();
+    await submitSprint(
+      { octokit: client, defaultRepo: DEFAULT_REPO },
+      { brief: 'plain brief' },
+    );
+    const call = state.calls.find((c) => c.tool === 'createIssue')!;
+    const args = call.args as { labels: string[] };
+    assert.deepEqual(args.labels, ['auto:ship']);
+  });
+
+  it('rejects mode values outside the classifier SprintMode union', async () => {
+    const { client } = createMockOctokit();
+    await assert.rejects(
+      submitSprint(
+        { octokit: client, defaultRepo: DEFAULT_REPO },
+        // @ts-expect-error — exercising the runtime zod guard
+        { brief: 'x', mode: 'overnight' },
+      ),
+    );
   });
 
   it('derives a title from the first non-empty brief line when no title is supplied', async () => {
