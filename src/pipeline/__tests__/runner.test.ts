@@ -429,6 +429,41 @@ describe('DefaultPipelineRunner', () => {
     }
   });
 
+  it('deep interview: vague brief + interviewPoster → awaiting_interview, no editor spawn', async () => {
+    const posts: Array<{ taskId: string; questions: string[] }> = [];
+    const { input, workerPool, pr } = buildPipelineInput({
+      // Vague body so interview triggers; only the interview spawn runs.
+      task: { body: 'improve the dashboard? maybe? somehow?' },
+      scripted: [
+        {
+          role: 'architect',
+          output: `<questions>
+1. Which dashboard?
+2. What metric matters?
+3. Is mobile in scope?
+</questions>`,
+        },
+      ],
+    });
+    input.interviewPoster = {
+      async post({ taskId, questions }) {
+        posts.push({ taskId, questions });
+        return { channelId: 'C1', threadId: 'T1', messageId: 'M1' };
+      },
+    };
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('awaiting_interview');
+    expect(result.interviewQuestions).toHaveLength(3);
+    expect(result.interviewQuestions?.[0]).toBe('Which dashboard?');
+    expect(pr.opened).toHaveLength(0);
+    expect(workerPool.calls).toHaveLength(1);
+    expect(workerPool.calls[0]?.opts.role).toBe('architect');
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.taskId).toBe(input.task.id);
+  });
+
   it('cancel after architect approved but before editor → cancelled', async () => {
     const controller = new AbortController();
     const { input, pr } = buildPipelineInput({

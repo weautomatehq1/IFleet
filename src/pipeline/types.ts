@@ -1,3 +1,5 @@
+import type { InterviewPoster } from './interview.js';
+
 // Public types for the Architect → Editor → Reviewer pipeline.
 //
 // Other modules (queue, workers, verify) own the placeholder interfaces below;
@@ -166,6 +168,14 @@ export interface PipelineInput {
    * approve, `false` on reject/cancel/timeout.
    */
   approvalGate?: ApprovalGate;
+  /**
+   * Optional poster for the deep-interview phase. When set AND the brief is
+   * vague, the architect asks up to 3 clarifying questions, posts them via
+   * this poster, and the pipeline halts with status `awaiting_interview`.
+   * Absent → interview phase disabled.
+   * `repoRoot` (above) doubles as the source for `.omc/learnings.md`.
+   */
+  interviewPoster?: InterviewPoster;
 }
 
 export interface ApprovalGate {
@@ -197,6 +207,7 @@ export interface AttemptRecord {
 export type PipelineStatus =
   | 'pr_opened'
   | 'blocked_by_reviewer'
+  | 'awaiting_interview'
   | 'failed'
   | 'cancelled';
 
@@ -207,6 +218,10 @@ export interface PipelineResult {
   reviewSummary?: string;
   attempts: AttemptRecord[];
   failureReason?: string;
+  // Set when status === 'awaiting_interview'. Populated by the architect's
+  // deep-interview phase and used by the control plane to seed the Discord
+  // thread reply handler.
+  interviewQuestions?: string[];
 }
 
 export interface PipelineRunner {

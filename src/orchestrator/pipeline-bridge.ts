@@ -213,5 +213,6 @@ function statusToExitCode(status: PipelineResult['status']): number {
     case 'failed': return 1;
     case 'cancelled': return 2;
     case 'blocked_by_reviewer': return 3;
+    case 'awaiting_interview': return 4;
   }
 }
