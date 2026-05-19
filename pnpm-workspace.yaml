@@ -1,10 +1,12 @@
 # pnpm v11+ moved settings out of package.json#pnpm. This file is the new
-# home even for single-package (non-workspace) repos. Without it, a fresh
-# `pnpm install` warns and refuses to run install scripts for native
-# modules — leaving better-sqlite3 unbuilt and crashing the daemon at boot.
+# home even for single-package (non-workspace) repos. The legacy
+# `onlyBuiltDependencies` key was replaced by `allowBuilds` (boolean map)
+# starting in v11. Without an explicit allowlist, pnpm v11 refuses to run
+# build scripts for native modules — leaving better-sqlite3 unbuilt and
+# crashing the daemon at boot on a fresh install.
 #
-# Keep in sync with package.json#pnpm.onlyBuiltDependencies (kept there for
-# backward compatibility with pnpm <11 / external tooling).
-onlyBuiltDependencies:
-  - better-sqlite3
-  - esbuild
+# package.json#pnpm.onlyBuiltDependencies is kept in parallel for backward
+# compatibility with pnpm v10 / external tooling (CI on older runners).
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
