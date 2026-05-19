@@ -2,6 +2,9 @@
 // See ~/.omc/splits/20260516-1430-ifleet-discord-rebuild/MASTER.md §"Shared contracts".
 
 import type { RoutingHints } from '../queue/types.js';
+import type { SprintMode } from '../orchestrator/types.js';
+
+export type { SprintMode };
 
 export type TaskState = 'pending' | 'in_flight' | 'done' | 'failed' | 'blocked';
 
@@ -34,6 +37,13 @@ export interface QueuedTask {
   idempotencyKey: string;
   state?: TaskState;
   stateMeta?: Record<string, unknown>;
+  /**
+   * Per-task routing mode (`ralph` | `ulw` | `tdd` | `deslop` | `standard`).
+   * Set by the classifier (`mode:*` label override or Haiku auto-router).
+   * Pipeline consumers read this to pick the architect/editor prompt template.
+   * `null` / undefined → use the standard prompt with no mode-specific routing.
+   */
+  mode?: SprintMode | null;
 }
 
 export function isDiscordSource(s: TaskSource): s is Extract<TaskSource, { kind: 'discord' }> {

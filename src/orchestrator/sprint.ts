@@ -11,6 +11,7 @@ import {
   type OrchestratorEvent,
   type SprintId,
   type SprintMode,
+  type SprintOperatingMode,
   type SprintRecord,
   type SprintState,
   type SpawnHandle,
@@ -50,7 +51,17 @@ export interface SprintManagerOptions {
 }
 
 export interface StartSprintOpts {
-  mode: SprintMode;
+  /** How the orchestrator operates the sprint (normal vs overnight). */
+  mode: SprintOperatingMode;
+  /**
+   * Optional per-task routing mode passed through to the classifier/pipeline.
+   * Most call sites leave this undefined — the classifier infers it from
+   * `mode:*` labels or the Haiku auto-router. Set explicitly when an operator
+   * pins the mode via Discord slash-command and wants to bypass detection.
+   * Stored on each new TaskRecord so the pipeline factory can forward it as a
+   * synthetic label into `classifyTask` (see `TaskRecord.mode`).
+   */
+  taskMode?: SprintMode;
   goal: string;
   taskIds?: ReadonlyArray<TaskId>;
   newTaskBriefs?: ReadonlyArray<string>;
@@ -154,10 +165,16 @@ export class SprintManager {
       for (const [i, brief] of opts.newTaskBriefs.entries()) {
         const tid = newTaskId(`tk_${nanoid(10)}`);
         const requirements = opts.newTaskRequirements?.[i];
+        // Pin the per-task mode by prepending a `mode: <x>` header to the brief.
+        // The classifier reads body headers (see `detectExplicitMode`) so the
+        // pipeline picks up the mode without a schema migration on the store.
+        const briefWithMode = opts.taskMode
+          ? `mode: ${opts.taskMode}\n\n${brief}`
+          : brief;
         const tRec: TaskRecord = {
           id: tid,
           sprintId: id,
-          brief,
+          brief: briefWithMode,
           state: { kind: 'pending' },
           attempts: 0,
           createdAt: now,
