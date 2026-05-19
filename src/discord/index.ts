@@ -47,7 +47,7 @@ export async function startDiscordBot(bootstrap: DiscordBootstrap): Promise<() =
   const shutdown = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
-    console.log('[discord] SIGTERM/shutdown — closing ws');
+    console.warn('[discord] SIGTERM/shutdown — closing ws');
     try {
       await client.destroy();
     } catch (err) {

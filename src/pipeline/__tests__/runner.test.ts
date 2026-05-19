@@ -263,7 +263,7 @@ describe('DefaultPipelineRunner', () => {
   });
 
   it('haiku gate CLEAN: full reviewer skipped, PR still opens', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { input, pr, workerPool } = buildPipelineInput({
       scripted: [
         { role: 'architect', output: PLAN_OUTPUT },
