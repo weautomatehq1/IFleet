@@ -15,6 +15,14 @@ export type Provider = 'claude' | 'codex';
 
 export type Autonomy = 'auto' | 'review';
 
+/**
+ * Per-task routing mode mirrored from `src/orchestrator/types.ts.SprintMode`.
+ * Re-declared here to keep the pipeline package free of an inbound cross-package
+ * import (same pattern as {@link QueuedTask} below). Kept in lockstep with the
+ * orchestrator union; adding a new mode requires updates in both files.
+ */
+export type SprintMode = 'standard' | 'ralph' | 'ulw' | 'tdd' | 'deslop';
+
 export interface QueuedTask {
   id: string;
   issueNumber: number;
@@ -23,6 +31,12 @@ export interface QueuedTask {
   body: string;
   autonomy: Autonomy;
   labels: string[];
+  /**
+   * Per-task routing mode. Read by the architect/editor steps to pick the
+   * mode-specific prompt template; absent / `null` → use the standard prompt.
+   * Mirrored from {@link QueuedTask} in `src/contracts/task.ts`.
+   */
+  mode?: SprintMode | null;
 }
 
 export interface WorkerSpec {
@@ -40,6 +54,13 @@ export interface RoutingDecision {
   // and the full reviewer is never spawned. Absent → gate disabled.
   haikuGate?: WorkerSpec;
   verify: VerifyKind[];
+  /**
+   * Per-task routing mode chosen by the classifier. Architect/editor use this
+   * to pick the mode-specific prompt template; absent / `null` → use the
+   * standard prompt. Set by `classifyTask` when an explicit `mode:*` label is
+   * present or when the auto-router emits a high-confidence mode.
+   */
+  mode?: SprintMode | null;
 }
 
 export interface SpawnOpts {

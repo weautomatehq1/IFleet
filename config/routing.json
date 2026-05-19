@@ -6,6 +6,27 @@
     "sonnet": "claude-sonnet-4-6",
     "opus": "claude-opus-4-7"
   },
+  "modes": {
+    "ralph": {
+      "architect": "claude-sonnet-4-6",
+      "editor": "claude-sonnet-4-6",
+      "verify": ["typecheck", "lint", "test"]
+    },
+    "ulw": {
+      "architect": "claude-sonnet-4-6",
+      "editor": "claude-sonnet-4-6"
+    },
+    "tdd": {
+      "architect": "claude-sonnet-4-6",
+      "editor": "claude-sonnet-4-6",
+      "verify": ["typecheck", "lint", "test"]
+    },
+    "deslop": {
+      "architect": "claude-haiku-4-5-20251001",
+      "editor": "claude-sonnet-4-6"
+    },
+    "standard": {}
+  },
   "rules": [
     {
       "match": { "keywords": ["architect", "design", "security", "auth", "migration", "rls", "critical"] },

@@ -14,7 +14,7 @@
     "start:control-plane": "node --import tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'src/workers/**/*.test.ts' && vitest run",
+    "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'src/workers/**/*.test.ts' 'src/classifier/**/*.test.ts' && vitest run",
     "test:watch": "vitest",
     "smoke:email": "node --import tsx scripts/smoke-email.ts",
     "deploy:commands": "node --import tsx scripts/deploy-commands.ts",

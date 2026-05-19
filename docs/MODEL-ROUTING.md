@@ -138,6 +138,60 @@ Editor overrides from `routing.json` are **not** subject to the Phase B cap — 
 
 ---
 
+## Sprint modes (per-task routing)
+
+Independent of the tier/score pipeline above, a task can carry a **mode** that
+reshapes the architect's planning prompt and (optionally) overrides the
+architect/editor model from `config/routing.json`. Modes mirror the operator
+slash-commands the team uses on Discord.
+
+| Mode | What it does | Architect override | Editor override | Verify extras |
+|---|---|---|---|---|
+| `standard` | Default architect plan, no special handling. | — | — | — |
+| `ralph` | Persistence loop: plan a retry-friendly fix, enumerate fallback steps. | sonnet | sonnet | typecheck + lint + test |
+| `ulw` | Ultrawork: parallel-safe multi-file edits, shared types first. | sonnet | sonnet | — |
+| `tdd` | Failing tests first, then implementation. | sonnet | sonnet | typecheck + lint + test |
+| `deslop` | Deletion-heavy clean-up of AI-generated boilerplate. | haiku | sonnet | — |
+
+### How a mode is picked
+
+Priority, highest → lowest:
+
+1. `task.mode` field on the unified `QueuedTask` contract (operator-pinned, e.g.
+   Discord slash-command `/ralph …`).
+2. A `mode:<x>` label on the GitHub issue.
+3. A `mode: <x>` header line at the top of the brief body.
+4. A `/<mode> ...` prefix at the start of the brief body.
+5. The **Haiku auto-router** (`src/classifier/auto-router.ts`) — only invoked
+   from `classifyTaskAsync`, never from the sync `classifyTask` path.
+6. **No mode** — RoutingDecision.mode stays `undefined`; architect uses the
+   standard prompt.
+
+### Auto-router behavior
+
+- Reads brief + last 50 lines of `.omc/learnings.md` + risk flags from
+  `docs/SECURITY.md` (optional file; keyword-only fallback when missing).
+- Calls `claude --print --model claude-haiku-4-5-20251001` with a 5-second
+  timeout and a 2000-char output cap (≈200 tokens).
+- Caches by `sha256(title|body|labels)` for the process lifetime — sprint
+  retries do not re-bill Haiku.
+- **Kill switch:** `AUTO_ROUTER_DISABLED=1` short-circuits to the standard
+  fallback without spawning the CLI.
+- **Confidence floor:** below `0.6` the decision is dropped, the routing
+  decision stays mode-less, and an optional `onLowConfidence` callback fires
+  so the operator can be notified (see Discord posting in `daemon.ts`).
+
+### Mode-tagging examples
+
+- Label-driven: add `mode:ralph` to a GitHub issue.
+- Body-header: first line of the brief is `mode: tdd`.
+- Slash-prefix: paste `/deslop clean up the generated worker stub` into a
+  Discord channel watched by the bot.
+
+See `docs/briefs/_examples/` for one full example per mode.
+
+---
+
 ## When to add `complexity:high`
 
 Use it sparingly — it hits the 5-hour Claude Max rate limit and blocks all other fleet lanes until the session resets.
