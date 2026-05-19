@@ -137,3 +137,15 @@ pm2 delete ifleet    # remove from PM2 entirely
 5. Seb reviews and merges the draft PR in the morning.
 
 Issues that need human input are labeled `autonomy:review` and the pipeline pauses waiting for a `@monstersebas1` approval comment on the issue.
+
+---
+
+## MCP server (optional)
+
+The `ifleet-mcp` stdio server lets a Claude Code or Claude Desktop session enqueue and inspect sprints over the Model Context Protocol. It is a thin Octokit wrapper over the same `auto:ship` issue intake the queue already polls — submitting via MCP and submitting via the GitHub UI flow through the identical pipeline.
+
+```
+pnpm mcp:start
+```
+
+The server reads `GITHUB_TOKEN` from its own env block — Claude Code's child-process spawn does NOT inherit your shell env, so set the token in the MCP server's `env:` section in `~/.claude.json`. Full registration snippet and protocol notes live in [MCP.md](MCP.md).
