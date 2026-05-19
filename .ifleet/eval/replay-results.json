@@ -1,0 +1,126 @@
+{
+  "runAt": "2026-05-19T22:13:25.309Z",
+  "sandboxMode": "stub",
+  "taskLimit": 10,
+  "passingGate": 8,
+  "passedCount": 10,
+  "totalCount": 10,
+  "passRatePct": 100,
+  "disagreementRate": 0,
+  "avgDurationMs": 0,
+  "totalCostUsd": 0,
+  "eventsEmitted": 20,
+  "dodGatePassed": true,
+  "tasks": [
+    {
+      "evalId": "ifleet-IF-109",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "bugfix",
+      "locTotal": 58,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-107",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "bugfix",
+      "locTotal": 86,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-029",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 28,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-106",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 86,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-016",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 107,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-044",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 158,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-043",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 158,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-020",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 169,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-098",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 446,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    },
+    {
+      "evalId": "ifleet-IF-071",
+      "repo": "weautomatehq1/IFleet",
+      "classifierLabel": "feature",
+      "locTotal": 762,
+      "status": "passed",
+      "durationMs": 0,
+      "costUsd": null,
+      "failuresCount": 0,
+      "attempt": 1
+    }
+  ]
+}

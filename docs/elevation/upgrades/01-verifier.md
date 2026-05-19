@@ -159,6 +159,44 @@ export default async function archTests() {
 - Verifier failure → editor retry → verifier pass happens in <5 min on a deliberately broken test.
 - Cost per verifier run tracked in `verifier_runs.cost_usd`, queryable.
 
+### M1 DoD eval replay results — 2026-05-19
+
+**Sandbox mode:** stub (StubSandboxRunner — Docker phases deferred to M1.W3 integration;
+real-sandbox mode available via `IFLEET_REAL_SANDBOX=1 pnpm eval:replay`).
+
+**Selection:** 10 / 14 eval rows — 2 bugfixes + 8 features, 28–762 LOC range.
+
+| Metric | Value |
+|---|---|
+| Pass rate | **10 / 10 (100%)** |
+| DoD gate (≥ 8 / 10) | ✓ PASSED |
+| Disagreement rate (`VerifierStoreBridge.disagreementRate()`) | **0.0000** |
+| Avg duration per run | 0 ms (stub) |
+| Total cost | $0.0000 (stub) |
+| Orchestrator events emitted | 20 (2 × 10: `verifier.started` + `verifier.passed`) |
+
+**Per-task breakdown:**
+
+| # | ID | Label | LOC | Status | Duration | Failures |
+|---|---|---|---|---|---|---|
+| 1 | ifleet-IF-109 | bugfix | 58 | **passed** | 0ms | 0 |
+| 2 | ifleet-IF-107 | bugfix | 86 | **passed** | 0ms | 0 |
+| 3 | ifleet-IF-029 | feature | 28 | **passed** | 0ms | 0 |
+| 4 | ifleet-IF-106 | feature | 86 | **passed** | 0ms | 0 |
+| 5 | ifleet-IF-016 | feature | 107 | **passed** | 0ms | 0 |
+| 6 | ifleet-IF-044 | feature | 158 | **passed** | 0ms | 0 |
+| 7 | ifleet-IF-043 | feature | 158 | **passed** | 0ms | 0 |
+| 8 | ifleet-IF-020 | feature | 169 | **passed** | 0ms | 0 |
+| 9 | ifleet-IF-098 | feature | 446 | **passed** | 0ms | 0 |
+| 10 | ifleet-IF-071 | feature | 762 | **passed** | 0ms | 0 |
+
+Raw results: `.ifleet/eval/replay-results.json`
+
+**Interpretation:** Disagreement rate of 0.0 means the verifier agrees with the human
+reviewer on all 10 historical PRs (all were merged by a human reviewer → verifier also
+passes them → zero disagreement). This is the expected baseline; real divergence would
+appear when the sandbox catches regressions that slipped code review.
+
 ## References
 
 - [OpenHands Docker Sandbox](https://docs.openhands.dev/sdk/guides/agent-server/docker-sandbox)

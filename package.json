@@ -20,6 +20,8 @@
     "smoke:email": "node --import tsx scripts/smoke-email.ts",
     "deploy:commands": "node --import tsx scripts/deploy-commands.ts",
     "channels:health": "node --import tsx scripts/channels-health.ts",
+    "eval:replay": "node --import tsx scripts/eval/run-eval-replay.ts",
+    "eval:bootstrap": "node --import tsx scripts/eval/freeze.ts",
     "dead-code": "ts-prune --ignore '(index\\.ts|__tests__|fixtures)'",
     "fleet:pause": "ssh root@187.124.77.142 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
     "fleet:resume": "ssh root@187.124.77.142 'rm -f /root/IFleet/.omc/PAUSED && echo \"fleet resumed\"'",
