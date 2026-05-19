@@ -18,7 +18,21 @@ export type ControlCommand =
   | { type: 'run'; repo?: string; source?: DiscordCommandSource; idempotencyKey?: string }
   | { type: 'cancel'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string }
   | { type: 'status'; taskId: string; source?: DiscordCommandSource; idempotencyKey?: string }
-  | { type: 'approve'; taskId: string; source?: DiscordCommandSource; idempotencyKey?: string };
+  | { type: 'approve'; taskId: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  /**
+   * Manual verifier rerun — Discord `/verify <taskId>` or the [Retry] button on
+   * a verifier failure surface. Control plane re-invokes
+   * VerifierController.verifyManual(taskId); attempt is the next available
+   * slot (latest persisted attempt + 1).
+   */
+  | { type: 'verify'; taskId: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  /**
+   * Force-open the PR despite verifier failures. Gated by `allowedUserIds`,
+   * always logged as a deliberate override (verifier_runs.status stays
+   * `failed`, but a `force_pr_at` audit row goes into events). Triggered by
+   * the [Force-PR] button on a failure surface.
+   */
+  | { type: 'force_pr'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string };
 
 export interface DiscordCommandSource {
   kind: 'discord';

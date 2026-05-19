@@ -41,7 +41,15 @@ export interface DiscordOut {
  * | `reject:<taskId>`   | User rejected the plan (rework)      |
  * | `cancel:<taskId>`   | User cancelled the whole task        |
  */
-export const DISCORD_CUSTOM_ID_VERBS = ['approve', 'reject', 'cancel'] as const;
+export const DISCORD_CUSTOM_ID_VERBS = [
+  'approve',
+  'reject',
+  'cancel',
+  // Verifier failure surface buttons (M1.W3 — see docs/elevation/upgrades/01-verifier.md).
+  'verify_retry',
+  'verify_force_pr',
+  'verify_cancel',
+] as const;
 
 export type DiscordCustomIdVerb = (typeof DISCORD_CUSTOM_ID_VERBS)[number];
 
