@@ -27,9 +27,12 @@
 //
 // Run: `pnpm start:daemon` or via PM2.
 
+import { execFile } from 'node:child_process';
 import { resolve as resolvePath } from 'node:path';
+import { promisify } from 'node:util';
 import type { Client } from 'discord.js';
 import { Octokit } from '@octokit/rest';
+import { VerifierController, type TaskRunContext } from '../agents/verifier/controller.js';
 import { loadReposConfig } from '../config/repos.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
@@ -42,12 +45,16 @@ import { DiscordSource } from '../queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
 import { UnifiedQueueAdapter } from '../queue/unified-adapter.js';
 import { FileChannelRouter } from '../repos/router.js';
-import { newTaskId, type OrchestratorEvent, type SprintId, type WorkerConfig } from './types.js';
+import { titleToBranchName } from '../utils/branch-name.js';
+import { newTaskId, type OrchestratorEvent, type SprintId, type TaskId, type WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
-import { encodeBridgeBrief } from './pipeline-bridge.js';
+import { decodeBridgeBrief, encodeBridgeBrief } from './pipeline-bridge.js';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from './pipeline-bridge.js';
+import { StateStore } from './store.js';
 import type { QueuedTask } from '../contracts/task.js';
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_TICK_MS = 5_000;
 const DEFAULT_DAEMON_PORT = 3002;
@@ -119,12 +126,21 @@ async function main(): Promise<void> {
     initialWorkers,
   });
 
+  // Verifier needs taskId → {repoUrl, branch, sha, worktreePath}. The pipeline
+  // factory knows three of those at bootstrap and the SHA in teardown — capture
+  // both before the worktree is torn down (which happens before task.completed).
+  const verifierCtx = new TaskContextRegistry();
+  const orchestratorStore = new StateStore();
   const orchestrator = new Orchestrator({
+    store: orchestratorStore,
     adapter: { spawn: () => Promise.reject(new Error('raw spawn disabled — use pipelineFactory')) },
-    pipelineFactory: wrapFactoryWithApprovalAndEmit(
-      productionFactory.factory,
-      approvalGate,
-      (taskId, plan) => discordOutPlanReady(taskId, plan, store, discordOut),
+    pipelineFactory: wrapFactoryWithVerifierContext(
+      wrapFactoryWithApprovalAndEmit(
+        productionFactory.factory,
+        approvalGate,
+        (taskId, plan) => discordOutPlanReady(taskId, plan, store, discordOut),
+      ),
+      verifierCtx,
     ),
     onWorkersReload: productionFactory.rebuildPool,
     reposConfig: reposMap,
@@ -132,6 +148,16 @@ async function main(): Promise<void> {
     discordOut,
     queuedTaskLoader: (taskId) => store.getById(taskId),
   });
+
+  const verifierController = new VerifierController({
+    store: orchestratorStore,
+    emit: (event) => orchestratorStore.appendEvent(event),
+    resolveTaskContext: (taskId) =>
+      resolveVerifierContext(taskId, verifierCtx, orchestratorStore),
+    repoSlug: 'IFleet',
+    invariantsRoot: repoRoot,
+  });
+  orchestrator.on('event', verifierController.onEvent);
 
   // -------- ControlPlane HTTP listener (daemon-local) --------
   const cp = createControlPlane({
@@ -323,6 +349,71 @@ function wireSprintCompletion(
   orchestrator.on('event', handler);
 }
 
+interface TaskContextRecord {
+  repoUrl: string;
+  branch: string;
+  worktreePath: string;
+  sha?: string;
+}
+
+export class TaskContextRegistry {
+  private readonly map = new Map<string, TaskContextRecord>();
+  record(taskId: string, rec: TaskContextRecord): void { this.map.set(taskId, rec); }
+  setSha(taskId: string, sha: string): void {
+    const r = this.map.get(taskId);
+    if (r) r.sha = sha;
+  }
+  get(taskId: string): TaskContextRecord | undefined { return this.map.get(taskId); }
+}
+
+export function wrapFactoryWithVerifierContext(
+  inner: PipelineRunnerFactory,
+  registry: TaskContextRegistry,
+): PipelineRunnerFactory {
+  return async (taskId, brief, opts): Promise<PipelineRunBootstrap> => {
+    const bootstrap = await inner(taskId, brief, opts);
+    const task = decodeBridgeBrief(brief);
+    if (task) {
+      registry.record(taskId, {
+        repoUrl: `https://github.com/${task.repo}`,
+        branch: titleToBranchName(task.issueNumber, task.title),
+        worktreePath: bootstrap.input.worktreePath,
+      });
+    }
+    const origTeardown = bootstrap.teardown;
+    // Capture HEAD SHA before original teardown removes the worktree.
+    bootstrap.teardown = async (result) => {
+      try {
+        const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+          cwd: bootstrap.input.worktreePath,
+        });
+        registry.setSha(taskId, stdout.trim());
+      } catch { /* missing worktree → resolver returns null, verifier skips */ }
+      if (origTeardown) await origTeardown(result);
+    };
+    return bootstrap;
+  };
+}
+
+async function resolveVerifierContext(
+  taskId: TaskId,
+  registry: TaskContextRegistry,
+  store: StateStore,
+): Promise<TaskRunContext | null> {
+  const rec = registry.get(taskId);
+  const task = store.loadTask(taskId);
+  if (!rec || !task || !rec.sha) return null;
+  return {
+    taskId,
+    sprintId: task.sprintId,
+    repoUrl: rec.repoUrl,
+    branch: rec.branch,
+    sha: rec.sha,
+    worktreePath: rec.worktreePath,
+    attempt: 1,
+  };
+}
+
 /**
  * Wrap a production PipelineRunnerFactory so the architect can route plan +
  * approval through Discord. Mutates `bootstrap.input` to inject the
@@ -416,7 +507,12 @@ if (isEntry) {
   });
 }
 
-export { main as runDaemon, runTickLoop, wrapFactoryWithApprovalAndEmit };
+export {
+  main as runDaemon,
+  runTickLoop,
+  wrapFactoryWithApprovalAndEmit,
+  resolveVerifierContext,
+};
 // Suppress an "unused export" eslint warning for newTaskId — kept exported
 // because the daemon's tick loop hands typed TaskIds to submitSprint in
 // future iterations.
