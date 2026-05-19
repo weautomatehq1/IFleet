@@ -72,12 +72,22 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
 }
 
 async function commitEditorChanges(worktreePath: string): Promise<void> {
-  await execFileAsync('git', ['add', '-A'], { cwd: worktreePath }).catch(() => undefined);
+  try {
+    await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
+  } catch (err) {
+    console.warn('[pipeline] editor: git add failed:', err);
+    return;
+  }
+  // `git diff --cached --quiet` exits 1 when there are staged changes; treat
+  // that as the signal to commit rather than as an error.
   const hasChanges = await execFileAsync('git', ['diff', '--cached', '--quiet'], { cwd: worktreePath })
     .then(() => false)
     .catch(() => true);
-  if (hasChanges) {
-    await execFileAsync('git', ['commit', '-m', 'chore: editor changes'], { cwd: worktreePath }).catch(() => undefined);
+  if (!hasChanges) return;
+  try {
+    await execFileAsync('git', ['commit', '-m', 'chore: editor changes'], { cwd: worktreePath });
+  } catch (err) {
+    console.warn('[pipeline] editor: git commit failed:', err);
   }
 }
 
