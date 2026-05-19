@@ -1,8 +1,15 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
-import type { RoutingDecision, WorkerSpec, Provider, VerifyKind } from '../pipeline/types.ts';
+import type { RoutingDecision, SprintMode, WorkerSpec, Provider, VerifyKind } from '../pipeline/types.ts';
 import { parseLabels } from '../queue/labels.ts';
+import { detectExplicitMode } from './modes.ts';
+import {
+  autoRouteMode,
+  isBelowConfidenceThreshold,
+  type AutoRouterDecision,
+  type AutoRouterOptions,
+} from './auto-router.ts';
 
 type Tier = 'haiku' | 'sonnet' | 'opus';
 
@@ -21,9 +28,20 @@ interface RoutingRule {
   route: RouteSpec;
 }
 
+interface ModeOverride {
+  /** Override architect model when this mode is active. */
+  architect?: string;
+  /** Override editor model when this mode is active. */
+  editor?: string;
+  /** Extra verify kinds appended (deduped) when this mode is active. */
+  verify?: VerifyKind[];
+}
+
 interface RoutingConfig {
   rules: RoutingRule[];
   tiers?: Record<Tier, string>;
+  /** Per-sprint-mode overrides applied after rule + cap logic. Optional. */
+  modes?: Partial<Record<SprintMode, ModeOverride>>;
 }
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
@@ -79,6 +97,11 @@ export interface ClassifyInput {
   title: string;
   body: string;
   labels: string[];
+  /**
+   * Optional pre-decided mode. When supplied, it wins over label/body detection
+   * — operators can pin a mode via Discord slash-command and bypass detection.
+   */
+  mode?: SprintMode | null;
 }
 
 function makeSpec(provider: string, model: string, role: string): WorkerSpec {
@@ -165,6 +188,11 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   const text = `${task.title} ${task.body}`.toLowerCase();
   const hints = parseLabels(task.labels);
   const complexity = parseComplexity(task.labels);
+  // Mode precedence: explicit field on input > `mode:*` label > body header /
+  // slash-prefix. Auto-router is invoked separately by `classifyTaskAsync`
+  // when no synchronous signal is present.
+  const explicitMode =
+    task.mode ?? detectExplicitMode({ labels: task.labels, body: task.body });
 
   const rawScore = scoreKeywords(text);
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
@@ -248,11 +276,71 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     workerId: `${reviewerProvider}-reviewer-gate-1`,
   };
 
-  return {
+  // Apply mode-specific overrides last so they can pin a model on top of the
+  // rule + cap pipeline without re-entering tier math. Mode is null/undefined
+  // when no explicit signal is present; the async classifier may supply one.
+  if (explicitMode && config.modes?.[explicitMode]) {
+    const override = config.modes[explicitMode];
+    if (override?.architect) architectModel = override.architect;
+    if (override?.editor) editorModel = override.editor;
+    if (override?.verify) {
+      for (const v of override.verify) if (!verify.includes(v)) verify.push(v);
+    }
+  }
+
+  const decision: RoutingDecision = {
     architect: makeSpec(architectProvider, architectModel, 'architect'),
     editor: makeSpec(editorProvider, editorModel, 'editor'),
     reviewer: makeSpec(reviewerProvider, reviewerModel, 'reviewer'),
     haikuGate,
     verify,
   };
+  if (explicitMode) decision.mode = explicitMode;
+  return decision;
+}
+
+/**
+ * Async variant: runs {@link classifyTask} synchronously, then — if no explicit
+ * mode was detected — calls the Haiku auto-router and reapplies mode overrides.
+ *
+ * Confidence < 0.6 falls back to `standard` and surfaces a Discord-review note
+ * via the supplied `onLowConfidence` callback so the operator can intervene.
+ */
+export async function classifyTaskAsync(
+  task: ClassifyInput,
+  opts: {
+    autoRouter?: AutoRouterOptions;
+    /** Repo root forwarded to the auto-router for learnings + security lookup. */
+    repoRoot?: string;
+    /**
+     * Called when the auto-router returned a decision below the confidence
+     * threshold. Implementations should post a Discord note flagging the task
+     * for human review. Failures are swallowed — observability must not break
+     * routing.
+     */
+    onLowConfidence?: (decision: AutoRouterDecision) => void | Promise<void>;
+  } = {},
+): Promise<RoutingDecision> {
+  const synchronous = classifyTask(task);
+  if (synchronous.mode) return synchronous;
+
+  const decision = await autoRouteMode(
+    { title: task.title, body: task.body, labels: task.labels, ...(opts.repoRoot ? { repoRoot: opts.repoRoot } : {}) },
+    opts.autoRouter ?? {},
+  );
+
+  if (isBelowConfidenceThreshold(decision)) {
+    if (opts.onLowConfidence) {
+      try {
+        await opts.onLowConfidence(decision);
+      } catch {
+        // observability must not break routing
+      }
+    }
+    // Re-run classifyTask without a mode override so we get the same baseline.
+    return synchronous;
+  }
+
+  // Re-run classifyTask with the model-chosen mode so mode overrides apply.
+  return classifyTask({ ...task, mode: decision.mode });
 }

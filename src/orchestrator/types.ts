@@ -2,7 +2,26 @@ export type SprintId = string & { readonly _brand: 'SprintId' };
 export type TaskId = string & { readonly _brand: 'TaskId' };
 export type WorkerId = string;
 
-export type SprintMode = 'normal' | 'overnight';
+/**
+ * How a sprint is operated by the orchestrator. Distinct from {@link SprintMode}
+ * (which is per-task routing): `overnight` relaxes timeouts and retry caps for
+ * long unattended runs, `normal` is the daytime default.
+ */
+export type SprintOperatingMode = 'normal' | 'overnight';
+
+/**
+ * Per-task routing mode emitted by the classifier (or its auto-router). Picks
+ * the architect/editor prompt template and any mode-specific model overrides in
+ * `config/routing.json`. `standard` is the fall-through default and is also the
+ * value returned when the auto-router is below its confidence threshold.
+ *
+ * The four named modes mirror operator slash-commands the team already uses:
+ *   - `ralph`   — persistence loop: keep retrying until verify is green
+ *   - `ulw`     — ultrawork: parallel multi-file work
+ *   - `tdd`     — tests first, implementation second
+ *   - `deslop`  — clean generic AI-slop code (rewrite to project conventions)
+ */
+export type SprintMode = 'standard' | 'ralph' | 'ulw' | 'tdd' | 'deslop';
 
 export type SprintState =
   | { kind: 'queued' }
@@ -15,7 +34,7 @@ export type SprintState =
 
 export interface SprintRecord {
   id: SprintId;
-  mode: SprintMode;
+  mode: SprintOperatingMode;
   goal: string;
   tasks: TaskId[];
   state: SprintState;
