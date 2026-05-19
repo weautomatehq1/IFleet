@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DefaultPipelineRunner } from '../runner.js';
+import type { PipelineEvent } from '../types.js';
 import { readCostLog } from '../../utils/costs.js';
 import {
   approveJson,
@@ -263,7 +264,7 @@ describe('DefaultPipelineRunner', () => {
   });
 
   it('haiku gate CLEAN: full reviewer skipped, PR still opens', async () => {
-    const logSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const events: PipelineEvent[] = [];
     const { input, pr, workerPool } = buildPipelineInput({
       scripted: [
         { role: 'architect', output: PLAN_OUTPUT },
@@ -277,6 +278,9 @@ describe('DefaultPipelineRunner', () => {
       },
       verify: [{ ok: true, failures: [] }],
     });
+    input.eventSink = (event) => {
+      events.push(event);
+    };
 
     const result = await new DefaultPipelineRunner().run(input);
 
@@ -291,12 +295,16 @@ describe('DefaultPipelineRunner', () => {
     const reviewerAttempt = result.attempts.find((a) => a.role === 'reviewer');
     expect(reviewerAttempt?.gate).toBe('haiku');
     expect(reviewerAttempt?.workerId).toBe('gate-1');
-    expect(
-      logSpy.mock.calls.some(([msg]) =>
-        typeof msg === 'string' && msg.startsWith('reviewer:haiku-gate-passed'),
-      ),
-    ).toBe(true);
-    logSpy.mockRestore();
+    // The runner emits a structured event (issue #109) — assert on it instead
+    // of spying on console.warn.
+    const gateEvents = events.filter((e) => e.kind === 'reviewer.haiku_gate_passed');
+    expect(gateEvents).toHaveLength(1);
+    expect(gateEvents[0]).toEqual({
+      kind: 'reviewer.haiku_gate_passed',
+      taskId: input.task.id,
+      round: 1,
+      gateWorkerId: 'gate-1',
+    });
   });
 
   it('haiku gate REVIEW_NEEDED: full reviewer runs and decides the round', async () => {
