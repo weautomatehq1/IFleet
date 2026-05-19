@@ -176,7 +176,34 @@ export interface PipelineInput {
    * `repoRoot` (above) doubles as the source for `.omc/learnings.md`.
    */
   interviewPoster?: InterviewPoster;
+  /**
+   * Optional structured-event sink. When set, the runner emits
+   * {@link PipelineEvent} values at observability checkpoints (e.g. the haiku
+   * cost-split gate short-circuiting the full reviewer). Absent → events are
+   * silently dropped. The sink must be synchronous and non-throwing; failures
+   * inside the sink must not affect the pipeline result.
+   */
+  eventSink?: PipelineEventSink;
 }
+
+/**
+ * Structured observability events emitted by the pipeline runner during a run.
+ * Consumers wire a sink into {@link PipelineInput.eventSink} to forward these
+ * into the orchestrator event log, Discord, Sentry, etc.
+ *
+ * Today only `reviewer.haiku_gate_passed` is defined (issue #109); other
+ * reviewer/architect events should be added here as they migrate off the
+ * `attempts` array and ad-hoc `console.warn` calls.
+ */
+export type PipelineEvent =
+  | {
+      kind: 'reviewer.haiku_gate_passed';
+      taskId: string;
+      round: number;
+      gateWorkerId: string;
+    };
+
+export type PipelineEventSink = (event: PipelineEvent) => void;
 
 export interface ApprovalGate {
   awaitApproval(opts: {

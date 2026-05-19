@@ -170,9 +170,12 @@ export class DefaultPipelineRunner implements PipelineRunner {
       });
       attempts.push(reviewer.attempt);
       if (reviewer.gate === 'haiku') {
-        console.warn(
-          `reviewer:haiku-gate-passed task=${input.task.id} round=${round} gate=${input.routing.haikuGate?.workerId ?? 'unknown'}`,
-        );
+        input.eventSink?.({
+          kind: 'reviewer.haiku_gate_passed',
+          taskId: input.task.id,
+          round,
+          gateWorkerId: input.routing.haikuGate?.workerId ?? 'unknown',
+        });
       }
       reviewSummary = formatReviewSummary(reviewer.verdict.verdict, reviewer.verdict.concerns);
 
