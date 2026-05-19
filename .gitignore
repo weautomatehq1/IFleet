@@ -33,9 +33,6 @@ state.db-journal
 *.sqlite-journal
 # Prod IFLEET_STATE_DIR (defaults to <repo>/state on the VPS).
 state/
-# Stray pnpm-workspace.yaml created interactively during VPS install:
-# this is not a workspace repo; pnpm config lives in package.json#pnpm.
-pnpm-workspace.yaml
 
 # Secrets
 secrets/
