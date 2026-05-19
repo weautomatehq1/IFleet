@@ -1,5 +1,14 @@
-// Import every adapter module so each one's `registerAdapter(...)` runs at
-// load time. Adding a new backend = drop a file in this folder + add it here.
+// Two adapter registration patterns:
+//
+// 1. Orchestrator-level adapters (e.g. 'claude-cli.ts'):
+//    Explicit side-effect import triggers `registerAdapter(...)` at load time.
+//
+// 2. Pipeline-level adapters (e.g. 'pipeline-registry.ts'):
+//    Self-registers via `registerPipelineAdapter(...)` at module bottom; the
+//    re-export below triggers module load and activates the registration.
+//
+// Adding a new orchestrator adapter = drop a file + add `import './file.ts'` above.
+// Adding a new pipeline adapter = drop a file + add its exports to this index.
 import './claude-cli.ts';
 
 export {

@@ -136,5 +136,41 @@ module.exports = {
       out_file: '/var/log/pm2/doctor-scan-out.log',
       error_file: '/var/log/pm2/doctor-scan-error.log',
     },
+    {
+      // ifleet-standup — 9am daily standup post to #ifleet.
+      // Runs as a one-shot cron (autorestart: false). PM2 cron_restart fires
+      // the process at the scheduled time; it exits after posting.
+      name: 'ifleet-standup',
+      script: 'src/agents/rituals/standup.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      cron_restart: '0 9 * * *',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'standup',
+      },
+      out_file: '/var/log/pm2/ifleet-standup-out.log',
+      error_file: '/var/log/pm2/ifleet-standup-error.log',
+    },
+    {
+      // ifleet-retro — Sunday 8pm weekly retro post to #ifleet-ops.
+      // Stub only until M5+ data is available (see src/agents/rituals/retro.ts).
+      // autorestart is false so it doesn't spam. Enable when M5 ships.
+      name: 'ifleet-retro',
+      script: 'src/agents/rituals/retro.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      cron_restart: '0 20 * * 0',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'retro',
+      },
+      out_file: '/var/log/pm2/ifleet-retro-out.log',
+      error_file: '/var/log/pm2/ifleet-retro-error.log',
+    },
   ],
 };
