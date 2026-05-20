@@ -14,13 +14,13 @@ The 6-month plan has one expensive-to-reverse decision: **single shared trace vs
 
 | ID | Task | Status | Owner |
 |---|---|---|---|
-| T1 | Write ADR-0001: single-trace architecture | pending | seb |
-| T2 | Scaffold VerifierAgent (empty Docker shell, emits `verifier.passed` unconditionally) | pending | seb |
-| T3 | Bootstrap private eval set (50-100 historical tasks, JSONL at `.ifleet/eval/`) | pending | seb |
-| T4 | Create `SECURITY.md` (protected paths) and `NON_GOALS.md` | pending | seb |
-| T5 | Write IFleet AI Operating Standard (one-pager, liability) | pending | seb |
-| T6 | Write ADR-0002: Docker verifier sandbox | pending | seb |
-| T7 | Write ADR-0003: Knowledge graph stack (tree-sitter + Postgres + pgvector) | pending | seb |
+| T1 | Write ADR-0001: single-trace architecture | done | seb |
+| T2 | Scaffold VerifierAgent (empty Docker shell, emits `verifier.passed` unconditionally) | done | seb |
+| T3 | Bootstrap private eval set (50-100 historical tasks, JSONL at `.ifleet/eval/`) | done | seb |
+| T4 | Create `SECURITY.md` (protected paths) and `NON_GOALS.md` | done | seb |
+| T5 | Write IFleet AI Operating Standard (one-pager, liability) | done | seb |
+| T6 | Write ADR-0002: Docker verifier sandbox | done | seb |
+| T7 | Write ADR-0003: Knowledge graph stack (tree-sitter + Postgres + pgvector) | done | seb |
 
 ## Out of scope (this week)
 
@@ -45,6 +45,16 @@ The 6-month plan has one expensive-to-reverse decision: **single shared trace vs
 - `git grep -l "single-trace" docs/adr/` returns ADR-0001
 - `wc -l .ifleet/eval/eval-set.jsonl` ≥ 10 (M0.W1 ship gate; ≥50 is the M3 target)
 
-## Next sprint (M1.W2)
+## M1–M3 shipped (2026-05-20)
 
-Verifier becomes real: parse `pnpm test` / `pnpm build` output into structured `verifier_failures` rows, emit `verifier.failed` with structured payload, re-queue to editor with max-3 retry. See `docs/elevation/upgrades/01-verifier.md`.
+| Milestone | What landed | Key PRs |
+|-----------|-------------|---------|
+| M1 | Closed-loop Docker verifier + retry loop + Discord alerts | #130, #135 |
+| M2 | Plan-Reviewer agent (renamed diff-reviewer, reviewer catches pre-verifier bugs) | #132 |
+| M3 | KG schema + indexer (tree-sitter + Postgres + pgvector core) | #134 |
+
+Canary disagreement alerter also shipped (PR #153).
+
+## Next sprint — Phase 2: 24/7 continuous operation
+
+M1, M2, and M3 are all merged to main. Active work is Phase 2: wiring the fleet for continuous 24/7 operation. See `ROADMAP.md` for M4–M6 dependency chain and `docs/running.md` for single-seat operational policy.
