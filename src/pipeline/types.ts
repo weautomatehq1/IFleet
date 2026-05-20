@@ -51,6 +51,12 @@ export interface RoutingDecision {
   architect: WorkerSpec;
   editor: WorkerSpec;
   reviewer: WorkerSpec;
+  // Optional plan-reviewer. Runs between architect and editor and can veto
+  // the plan with structured reasons (M2 — see
+  // docs/elevation/upgrades/02-plan-reviewer.md). Absent → plan-review is
+  // disabled and the pipeline behaves exactly as in M1 (architect → editor
+  // → diff-reviewer).
+  planReviewer?: WorkerSpec;
   // Optional cheap first-pass reviewer. When present, the pipeline runs this
   // worker before the full reviewer; a CLEAN verdict short-circuits the round
   // and the full reviewer is never spawned. Absent → gate disabled.
@@ -201,6 +207,32 @@ export type PipelineEvent =
       taskId: string;
       round: number;
       gateWorkerId: string;
+    }
+  | {
+      kind: 'plan_reviewer.vetoed';
+      taskId: string;
+      attempt: number;
+      reasons: ReadonlyArray<{
+        kind: 'invariant' | 'failure-mode' | 'scope' | 'feasibility';
+        message: string;
+        suggested_revision: string;
+      }>;
+    }
+  | {
+      kind: 'plan_reviewer.escalated';
+      taskId: string;
+      attempts: number;
+      reasons: ReadonlyArray<{
+        kind: 'invariant' | 'failure-mode' | 'scope' | 'feasibility';
+        message: string;
+        suggested_revision: string;
+      }>;
+    }
+  | {
+      kind: 'plan_reviewer.skipped';
+      taskId: string;
+      attempt: number;
+      reason: 'rate-limit' | 'cost-cap' | 'worker-error';
     };
 
 export type PipelineEventSink = (event: PipelineEvent) => void;

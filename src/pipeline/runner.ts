@@ -1,6 +1,12 @@
 import { runArchitect } from './architect.js';
 import { runEditor } from './editor.js';
-import { runReviewer, assertCrossProviderRule } from './reviewer.js';
+import { runReviewer, assertCrossProviderRule } from './diff-reviewer.js';
+import {
+  runPlanReviewer,
+  PLAN_REVIEWER_MAX_VETOES,
+  formatPlanReviewerEscalation,
+  type PlanReviewVetoReason,
+} from './plan-reviewer.js';
 import { runDoctor, countDoctorAttempts, DOCTOR_MAX_ATTEMPTS } from './doctor.js';
 import { openPipelinePr } from './pr.js';
 import { appendCostRecord } from '../utils/costs.js';
@@ -9,6 +15,7 @@ import type {
   PipelineInput,
   PipelineResult,
   PipelineRunner,
+  QueuedTask,
   VerifyResult,
 } from './types.js';
 
@@ -35,47 +42,144 @@ export class DefaultPipelineRunner implements PipelineRunner {
 
     if (input.abortSignal.aborted) return cancelled(attempts);
 
-    // === Architect ===
-    console.warn('[pipeline] architect starting');
-    const architect = await runArchitect({
-      task: input.task,
-      workerPool: input.workerPool,
-      spec: input.routing.architect,
-      issues: input.issues,
-      abortSignal: input.abortSignal,
-      approver,
-      ...(input.approvalGate ? { approvalGate: input.approvalGate } : {}),
-      ...(input.onArchitectPlan ? { onPlanReady: input.onArchitectPlan } : {}),
-      ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
-      ...(input.interviewPoster ? { interviewPoster: input.interviewPoster } : {}),
-    });
-    attempts.push(architect.attempt);
-    console.warn(`[pipeline] architect done ok=${architect.attempt.ok} approved=${architect.approved} planLen=${architect.plan.length}`);
+    // === Architect → Plan-Reviewer loop ===
+    // Architect runs at least once. If a plan-reviewer is configured and
+    // vetoes the plan, architect re-runs with the veto reasons appended to
+    // its brief. After PLAN_REVIEWER_MAX_VETOES vetoes, escalate.
+    //
+    // When `input.routing.planReviewer` is unset (M1 routing) the loop
+    // breaks after one iteration and the pipeline behaves exactly as before
+    // this upgrade.
+    let plan = '';
+    let planSummary = '';
+    let architectCostUsd: number | undefined;
+    const priorReasons: PlanReviewVetoReason[] = [];
+    for (let planAttempt = 1; planAttempt <= PLAN_REVIEWER_MAX_VETOES; planAttempt++) {
+      const taskForAttempt =
+        planAttempt === 1 ? input.task : augmentTaskWithVetoReasons(input.task, priorReasons);
 
-    if (!architect.attempt.ok) {
-      return failed(attempts, 'architect failed');
-    }
-    if (architect.interview) {
-      // Sprint halts here; control plane resumes once Discord answers land.
-      return {
-        status: 'awaiting_interview',
-        attempts,
-        interviewQuestions: architect.interview.questions,
-      };
-    }
-    // A blank plan would silently corrupt the editor brief (`mode.plan`
-    // becomes an empty section). Bail before that happens.
-    if (architect.plan.trim().length === 0) {
-      return failed(attempts, 'architect returned empty plan');
-    }
-    if (!architect.approved) {
+      console.warn(`[pipeline] architect starting (attempt ${planAttempt})`);
+      const architect = await runArchitect({
+        task: taskForAttempt,
+        workerPool: input.workerPool,
+        spec: input.routing.architect,
+        issues: input.issues,
+        abortSignal: input.abortSignal,
+        approver,
+        ...(input.approvalGate ? { approvalGate: input.approvalGate } : {}),
+        ...(input.onArchitectPlan ? { onPlanReady: input.onArchitectPlan } : {}),
+        ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
+        ...(input.interviewPoster ? { interviewPoster: input.interviewPoster } : {}),
+      });
+      attempts.push(architect.attempt);
+      architectCostUsd = architect.attempt.totalCostUsd;
+      console.warn(
+        `[pipeline] architect done attempt=${planAttempt} ok=${architect.attempt.ok} ` +
+          `approved=${architect.approved} planLen=${architect.plan.length}`,
+      );
+
+      if (!architect.attempt.ok) {
+        return failed(attempts, 'architect failed');
+      }
+      if (architect.interview) {
+        return {
+          status: 'awaiting_interview',
+          attempts,
+          interviewQuestions: architect.interview.questions,
+        };
+      }
+      if (architect.plan.trim().length === 0) {
+        return failed(attempts, 'architect returned empty plan');
+      }
+      if (!architect.approved) {
+        if (input.abortSignal.aborted) return cancelled(attempts);
+        return failed(attempts, 'architect plan not approved');
+      }
       if (input.abortSignal.aborted) return cancelled(attempts);
-      return failed(attempts, 'architect plan not approved');
-    }
-    if (input.abortSignal.aborted) return cancelled(attempts);
 
-    const plan = architect.plan;
-    const planSummary = extractSummary(plan);
+      // No plan-reviewer configured → accept the plan as-is (M1 behavior).
+      if (!input.routing.planReviewer) {
+        plan = architect.plan;
+        planSummary = extractSummary(plan);
+        break;
+      }
+
+      console.warn(`[pipeline] plan-reviewer starting (attempt ${planAttempt})`);
+      const review = await runPlanReviewer({
+        plan: architect.plan,
+        brief: input.task.body,
+        attempt: planAttempt,
+        architectSpec: input.routing.architect,
+        reviewerSpec: input.routing.planReviewer,
+        workerPool: input.workerPool,
+        abortSignal: input.abortSignal,
+        priorReasons,
+        ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
+        ...(input.task.repo
+          ? { repoSlug: input.task.repo.replace(/\//g, '_') }
+          : {}),
+        ...(architectCostUsd !== undefined ? { architectCostUsd } : {}),
+      });
+      attempts.push(review.attempt);
+
+      if (review.skipped) {
+        // Spec: skipped review must not block the editor. Emit an event,
+        // log, and proceed to the editor with the current plan.
+        console.warn(`[pipeline] plan-reviewer skipped (${review.skipped})`);
+        input.eventSink?.({
+          kind: 'plan_reviewer.skipped',
+          taskId: input.task.id,
+          attempt: planAttempt,
+          reason: review.skipped,
+        });
+        plan = architect.plan;
+        planSummary = extractSummary(plan);
+        break;
+      }
+
+      if (review.review.decision === 'approve') {
+        plan = architect.plan;
+        planSummary = extractSummary(plan);
+        break;
+      }
+
+      // Veto path. Record reasons; if this was the last allowed cycle,
+      // escalate. Otherwise loop and re-plan.
+      priorReasons.push(...review.review.reasons);
+      input.eventSink?.({
+        kind: 'plan_reviewer.vetoed',
+        taskId: input.task.id,
+        attempt: planAttempt,
+        reasons: review.review.reasons,
+      });
+      console.warn(
+        `[pipeline] plan-reviewer vetoed (attempt ${planAttempt}/${PLAN_REVIEWER_MAX_VETOES}): ` +
+          review.review.reasons.map((r) => `[${r.kind}] ${r.message}`).join('; '),
+      );
+
+      if (planAttempt >= PLAN_REVIEWER_MAX_VETOES) {
+        const escalation = formatPlanReviewerEscalation(input.task.id, review.review.reasons);
+        input.eventSink?.({
+          kind: 'plan_reviewer.escalated',
+          taskId: input.task.id,
+          attempts: planAttempt,
+          reasons: review.review.reasons,
+        });
+        // Post the escalation to the issue when one exists, so the human
+        // pinged on Discord can see the structured disagreement.
+        if (input.task.issueNumber > 0) {
+          await input.issues.comment(input.task.issueNumber, escalation).catch(() => {});
+        }
+        return failed(attempts, `plan-reviewer escalated after ${planAttempt} vetoes`);
+      }
+      // else fall through, loop iterates with priorReasons fed back to the architect
+    }
+    if (plan.length === 0) {
+      // Defensive — the loop above always sets `plan` or returns. If we get
+      // here it means the loop counter expired without an explicit exit,
+      // which is itself a bug worth reporting rather than silently passing.
+      return failed(attempts, 'architect/plan-reviewer loop exited without a plan');
+    }
 
     // === Editor (initial) + verify loop with doctor ===
     let diff = '';
@@ -294,6 +398,21 @@ function failed(attempts: AttemptRecord[], reason: string): PipelineResult {
 
 function cancelled(attempts: AttemptRecord[]): PipelineResult {
   return { status: 'cancelled', attempts };
+}
+
+function augmentTaskWithVetoReasons(
+  task: QueuedTask,
+  reasons: PlanReviewVetoReason[],
+): QueuedTask {
+  if (reasons.length === 0) return task;
+  const header =
+    '## Plan-Reviewer vetoed the prior plan — address every reason before replanning';
+  const lines = reasons.map(
+    (r, i) =>
+      `${i + 1}. [${r.kind}] ${r.message}\n   suggested revision: ${r.suggested_revision}`,
+  );
+  const appended = `${task.body}\n\n${header}\n${lines.join('\n')}`;
+  return { ...task, body: appended };
 }
 
 function extractSummary(plan: string): string {

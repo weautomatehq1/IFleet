@@ -288,10 +288,30 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     }
   }
 
+  // Plan-Reviewer (M2 — see docs/elevation/upgrades/02-plan-reviewer.md).
+  // Floor: "reviewer not weaker than architect". Default is haiku; bump to
+  // the architect's tier (capped at sonnet — opus plan-review burns the same
+  // rate limit the architect cap exists to protect). Same provider as the
+  // architect — this is in-flight plan critique, not a cross-provider diff
+  // review.
+  const architectTierFinal: Tier = modelToTier(architectModel) ?? architectTier;
+  const planReviewerTier: Tier =
+    architectTierFinal === 'opus'
+      ? 'sonnet'
+      : architectTierFinal === 'sonnet'
+        ? 'haiku'
+        : 'haiku';
+  const planReviewer: WorkerSpec = makeSpec(
+    architectProvider,
+    TIERS[planReviewerTier],
+    'plan-reviewer',
+  );
+
   const decision: RoutingDecision = {
     architect: makeSpec(architectProvider, architectModel, 'architect'),
     editor: makeSpec(editorProvider, editorModel, 'editor'),
     reviewer: makeSpec(reviewerProvider, reviewerModel, 'reviewer'),
+    planReviewer,
     haikuGate,
     verify,
   };
