@@ -32,6 +32,19 @@ CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+
+CREATE TABLE IF NOT EXISTS pr_decisions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  verdict TEXT NOT NULL,
+  reviewer_login TEXT,
+  merged_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
+CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -72,6 +85,28 @@ export interface InsertResult {
   existing?: QueuedTask;
 }
 
+export type PrVerdict = 'merged' | 'rejected' | 'abandoned';
+
+export interface PrDecision {
+  id: string;
+  taskId: string;
+  repo: string;
+  prNumber: number;
+  verdict: PrVerdict;
+  reviewerLogin: string | null;
+  mergedAt: number | null;
+  createdAt: number;
+}
+
+export interface RecordPrDecisionInput {
+  taskId: string;
+  repo: string;
+  prNumber: number;
+  verdict: PrVerdict;
+  reviewerLogin?: string;
+  mergedAt?: number;
+}
+
 export class TaskStore {
   private readonly db: Database.Database;
 
@@ -90,6 +125,22 @@ export class TaskStore {
       const message = err instanceof Error ? err.message : String(err);
       if (!/duplicate column name: priority/i.test(message)) throw err;
     }
+    // pr_decisions table was added later; SCHEMA creates it on fresh DBs, this
+    // migration covers existing DBs that pre-date the table.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pr_decisions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        pr_number INTEGER NOT NULL,
+        verdict TEXT NOT NULL,
+        reviewer_login TEXT,
+        merged_at INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
+      CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
+    `);
   }
 
   insert(task: QueuedTask): InsertResult {
@@ -214,6 +265,46 @@ export class TaskStore {
     return rows.map(rowToTask);
   }
 
+  recordPrDecision(input: RecordPrDecisionInput): PrDecision {
+    const decision: PrDecision = {
+      id: `prd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      taskId: input.taskId,
+      repo: input.repo,
+      prNumber: input.prNumber,
+      verdict: input.verdict,
+      reviewerLogin: input.reviewerLogin ?? null,
+      mergedAt: input.mergedAt ?? null,
+      createdAt: Date.now(),
+    };
+    this.db
+      .prepare(
+        `INSERT INTO pr_decisions
+           (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at)
+         VALUES
+           (@id, @task_id, @repo, @pr_number, @verdict, @reviewer_login, @merged_at, @created_at)`,
+      )
+      .run({
+        id: decision.id,
+        task_id: decision.taskId,
+        repo: decision.repo,
+        pr_number: decision.prNumber,
+        verdict: decision.verdict,
+        reviewer_login: decision.reviewerLogin,
+        merged_at: decision.mergedAt,
+        created_at: decision.createdAt,
+      });
+    return decision;
+  }
+
+  getPrDecisionsByRepo(repo: string, limit = 50): PrDecision[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM pr_decisions WHERE repo = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      )
+      .all(repo, limit) as PrDecisionRow[];
+    return rows.map(rowToPrDecision);
+  }
+
   /** Test/diagnostic helper. */
   count(): number {
     const row = this.db.prepare(`SELECT COUNT(*) AS n FROM tasks`).get() as { n: number };
@@ -223,6 +314,30 @@ export class TaskStore {
   close(): void {
     this.db.close();
   }
+}
+
+interface PrDecisionRow {
+  id: string;
+  task_id: string;
+  repo: string;
+  pr_number: number;
+  verdict: string;
+  reviewer_login: string | null;
+  merged_at: number | null;
+  created_at: number;
+}
+
+function rowToPrDecision(row: PrDecisionRow): PrDecision {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    repo: row.repo,
+    prNumber: row.pr_number,
+    verdict: row.verdict as PrVerdict,
+    reviewerLogin: row.reviewer_login,
+    mergedAt: row.merged_at,
+    createdAt: row.created_at,
+  };
 }
 
 function normalizePriority(value: unknown): 'low' | 'normal' | 'high' {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { TaskStore } from '../store.js';
 import type { QueuedTask } from '../../contracts/task.js';
+import type { RecordPrDecisionInput } from '../store.js';
 import { ulid } from '../../utils/ulid.js';
 
 function tmpDb(): { path: string; cleanup: () => void } {
@@ -203,6 +204,124 @@ describe('TaskStore', () => {
       const recovered = store.recoverStale(60 * 60 * 1000);
       assert.equal(recovered, 0);
       assert.equal(store.pickNext(), null);
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('recordPrDecision stores and returns a PrDecision', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask();
+      store.insert(task);
+      const input: RecordPrDecisionInput = {
+        taskId: task.id,
+        repo: 'weautomatehq1/IFleet',
+        prNumber: 42,
+        verdict: 'merged',
+        reviewerLogin: 'octocat',
+        mergedAt: Date.now(),
+      };
+      const decision = store.recordPrDecision(input);
+      assert.ok(decision.id.startsWith('prd_'));
+      assert.equal(decision.taskId, task.id);
+      assert.equal(decision.repo, 'weautomatehq1/IFleet');
+      assert.equal(decision.prNumber, 42);
+      assert.equal(decision.verdict, 'merged');
+      assert.equal(decision.reviewerLogin, 'octocat');
+      assert.ok(typeof decision.mergedAt === 'number');
+      assert.ok(typeof decision.createdAt === 'number');
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('recordPrDecision accepts optional fields as null', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask({ idempotencyKey: 'opt-null' });
+      store.insert(task);
+      const decision = store.recordPrDecision({
+        taskId: task.id,
+        repo: 'weautomatehq1/IFleet',
+        prNumber: 7,
+        verdict: 'rejected',
+      });
+      assert.equal(decision.reviewerLogin, null);
+      assert.equal(decision.mergedAt, null);
+      assert.equal(decision.verdict, 'rejected');
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('getPrDecisionsByRepo returns decisions newest-first, filtered by repo', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const t1 = fakeGithubTask({ idempotencyKey: 'r1' });
+      const t2 = fakeGithubTask({ idempotencyKey: 'r2', repo: 'org/other' });
+      store.insert(t1);
+      store.insert(t2);
+
+      store.recordPrDecision({
+        taskId: t1.id,
+        repo: 'weautomatehq1/IFleet',
+        prNumber: 1,
+        verdict: 'merged',
+      });
+      store.recordPrDecision({
+        taskId: t1.id,
+        repo: 'weautomatehq1/IFleet',
+        prNumber: 2,
+        verdict: 'abandoned',
+      });
+      store.recordPrDecision({
+        taskId: t2.id,
+        repo: 'org/other',
+        prNumber: 99,
+        verdict: 'merged',
+      });
+
+      const fleet = store.getPrDecisionsByRepo('weautomatehq1/IFleet');
+      assert.equal(fleet.length, 2);
+      // newest first
+      assert.equal(fleet[0]!.prNumber, 2);
+      assert.equal(fleet[1]!.prNumber, 1);
+
+      const other = store.getPrDecisionsByRepo('org/other');
+      assert.equal(other.length, 1);
+      assert.equal(other[0]!.prNumber, 99);
+
+      const none = store.getPrDecisionsByRepo('org/missing');
+      assert.equal(none.length, 0);
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('getPrDecisionsByRepo respects limit', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask({ idempotencyKey: 'lim-1' });
+      store.insert(task);
+      for (let i = 0; i < 5; i++) {
+        store.recordPrDecision({
+          taskId: task.id,
+          repo: 'weautomatehq1/IFleet',
+          prNumber: i + 1,
+          verdict: 'merged',
+        });
+      }
+      const results = store.getPrDecisionsByRepo('weautomatehq1/IFleet', 3);
+      assert.equal(results.length, 3);
       store.close();
     } finally {
       cleanup();
