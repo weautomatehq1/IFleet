@@ -30,3 +30,43 @@ jobs:
 
       - name: Test
         run: npm test
+
+  shellcheck:
+    name: Shellcheck + Bash-portability
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      # General bash safety: error-severity gives a clean baseline on existing files.
+      # shellcheck --shell=bash does not flag bash 4+ builtins (readarray, mapfile) as
+      # portability issues because they are valid bash — that gap is closed by the next step.
+      - name: Shellcheck (bash, error-severity)
+        run: |
+          find . -type f -name "*.sh" \
+            -not -path "./node_modules/*" \
+            -not -path "./.git/*" \
+            -not -path "./.husky/_/*" \
+            | xargs shellcheck --shell=bash --severity=error
+
+      # Portability gate: ban Bash 4+ builtins that crash on macOS Bash 3.2.
+      # Added after PR #145 introduced `readarray` (Bash 4+); CI passed green because
+      # GitHub Actions Ubuntu runners use Bash 5+. The reviewer-subagent caught it manually.
+      # Predecessor split: ~/.omc/splits/20260520-0558-cleanup-adr-smoke (HEAD 5f321f5).
+      # Audit finding #9 from the brutal review of that split.
+      - name: Reject Bash 4+ builtins (portability gate)
+        run: |
+          if grep -rnE 'readarray[[:space:]]|mapfile[[:space:]]|wait -n|coproc ' \
+              --include="*.sh" \
+              --exclude-dir=node_modules \
+              --exclude-dir=.git \
+              --exclude-dir=.husky \
+              .; then
+            echo "ERROR: Bash 4+ builtin detected."
+            echo "These shell scripts must remain compatible with macOS Bash 3.2."
+            echo "Replace readarray/mapfile with IFS+read loops."
+            exit 1
+          fi
