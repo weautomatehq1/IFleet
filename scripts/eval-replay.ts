@@ -1,20 +1,49 @@
 #!/usr/bin/env node
 /**
  * M1 DoD eval replay — runs 10 historical IFleet PRs through the verifier
- * (in-worktree mode, no Docker) and records the first real disagreementRate().
+ * and records the real disagreementRate().
  *
- * Usage: node --import tsx scripts/eval-replay.ts
+ * Sandbox modes:
+ *   default              — in-worktree (pnpm runs on host, no Docker)
+ *   IFLEET_REAL_SANDBOX=1 — Docker mode: runs ifleet-verifier:base container
+ *                           per task. Docker daemon must be running and the
+ *                           image must be built first:
+ *                             docker build -f scripts/verifier-image/Dockerfile.base \
+ *                               -t ifleet-verifier:base scripts/verifier-image/
  *
- * The script clones IFleet once into /tmp, creates a git worktree per SHA,
- * runs pnpm install + typecheck + lint + test, then persists results via
- * VerifierStoreBridge and queries disagreementRate().
+ * Results are written to:
+ *   default mode:  .ifleet/eval/replay-results.json         (in-worktree baseline)
+ *   docker mode:   .ifleet/eval/replay-results-docker.json  (Docker isolation check)
+ *
+ * Usage:
+ *   node --import tsx scripts/eval-replay.ts
+ *   IFLEET_REAL_SANDBOX=1 node --import tsx scripts/eval-replay.ts
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+
+// ---- Sandbox mode selection ----
+const USE_DOCKER = process.env['IFLEET_REAL_SANDBOX'] === '1';
+const DOCKER_IMAGE = process.env['IFLEET_DOCKER_IMAGE'] ?? 'ifleet-verifier:base';
+
+/**
+ * Returns a temp base path that is bind-mountable inside the Docker container.
+ * On macOS with Colima (virtiofs), only /Users is auto-mounted — /tmp and
+ * /var/folders are not. When Docker mode is active, we use a subdirectory of
+ * the user's home rather than the OS tmpdir so mounts work correctly.
+ */
+function evalTmpBase(dockerMode: boolean): string {
+  if (dockerMode) {
+    const base = join(homedir(), '.ifleet-eval-tmp');
+    mkdirSync(base, { recursive: true });
+    return base;
+  }
+  return tmpdir();
+}
 import { StateStore } from '../src/orchestrator/store.js';
 import { VerifierStoreBridge } from '../src/agents/verifier/store-bridge.js';
 import { newVerifierRunId } from '../src/agents/verifier/types.js';
@@ -46,6 +75,122 @@ const EVAL_TASKS: EvalTask[] = [
   { id: 'ifleet-IF-020', prNumber:  24, sha: '56ba3a0d10fe55a3a72dc7262fd2522a1abbc9e7', title: 'feat(classifier): build brief → routing decision module' },
   { id: 'ifleet-IF-016', prNumber:  18, sha: '7bd6c17a089cd1ec5bbc3afe2dc2012b1d9450e9', title: 'fix(scripts): derive branch name from issue title in run-smoke' },
 ];
+
+// ---- Docker probe ----
+
+function probeDocker(): boolean {
+  const r = spawnSync('docker', ['info'], { timeout: 5_000, encoding: 'utf8' });
+  return r.status === 0;
+}
+
+// ---- Docker full-suite runner (one container per task) ----
+
+interface DockerRunResult {
+  ok: boolean;
+  exitCode: number | null;
+  output: string;
+  durationMs: number;
+  phases: PhaseResult[];
+}
+
+/**
+ * Runs ifleet-verifier:base's entrypoint against a worktree.
+ * The entrypoint prints structured "=== PHASE: <name> ===" headers so we can
+ * split the output into per-phase chunks for reporting.
+ */
+function runDockerVerifier(worktreePath: string): DockerRunResult {
+  const start = Date.now();
+
+  // Patch pnpm-workspace.yaml only when it already exists (older SHAs).
+  // Do NOT create the file from scratch — pnpm@9 errors with "packages field
+  // missing or empty" when pnpm-workspace.yaml is present but has no `packages`
+  // key. Historical SHAs without the file use package.json#pnpm for native
+  // build config, which pnpm@9 reads without issue.
+  const wsYamlPath = join(worktreePath, 'pnpm-workspace.yaml');
+  if (existsSync(wsYamlPath)) {
+    const wsContent = readFileSync(wsYamlPath, 'utf8');
+    if (!wsContent.includes('better-sqlite3')) {
+      writeFileSync(wsYamlPath, wsContent.trimEnd() + '\nonlyBuiltDependencies:\n  - better-sqlite3\n');
+    }
+  }
+
+  const dockerArgs = [
+    'run',
+    '--rm',
+    '--memory', '4096m',
+    '--network', 'bridge',
+    '-v', `${worktreePath}:/work`,
+    '-w', '/work',
+    '-e', 'VERIFIER_FROZEN=0', // older SHAs lack a current lockfile
+    DOCKER_IMAGE,
+  ];
+
+  const r = spawnSync('docker', dockerArgs, {
+    timeout: PHASE_TIMEOUT_MS * 5, // full suite timeout (5 phases × 2 min each)
+    encoding: 'utf8',
+  });
+  const durationMs = Date.now() - start;
+  const rawOutput = ((r.stdout ?? '') + (r.stderr ?? '')).slice(0, 20_000);
+  const phases = parseDockerOutput(rawOutput, r.status);
+
+  return {
+    ok: r.status === 0,
+    exitCode: r.status,
+    output: rawOutput,
+    durationMs,
+    phases,
+  };
+}
+
+/**
+ * Splits entrypoint stdout by "=== PHASE: <name> ===" headers and derives
+ * per-phase ok/skip/exitCode information from the phase content.
+ */
+function parseDockerOutput(output: string, containerExitCode: number | null): PhaseResult[] {
+  const PHASE_ORDER = ['install', 'build', 'typecheck', 'lint', 'test'];
+  const results: PhaseResult[] = [];
+
+  // Split by phase headers
+  const segments = output.split(/=== PHASE: (\w+) ===/);
+  // segments: ['preamble', 'install', 'install output', 'build', 'build output', ...]
+
+  const phaseOutputs = new Map<string, string>();
+  for (let i = 1; i < segments.length; i += 2) {
+    const phaseName = segments[i]!.toLowerCase();
+    const phaseContent = segments[i + 1] ?? '';
+    phaseOutputs.set(phaseName, phaseContent);
+  }
+
+  // Determine which phase caused a non-zero exit (last phase in output is the failing one)
+  const seenPhases = [...phaseOutputs.keys()];
+  const failingPhase = containerExitCode !== 0 ? seenPhases[seenPhases.length - 1] : null;
+
+  for (const phase of PHASE_ORDER) {
+    const content = phaseOutputs.get(phase);
+    if (!content) {
+      // Phase not reached (earlier phase failed fatally)
+      continue;
+    }
+
+    const skipped = /^SKIP:/.test(content.trim());
+    const ok = skipped
+      ? true
+      : phase !== failingPhase
+        ? true
+        : containerExitCode === 0;
+
+    results.push({
+      phase,
+      ok,
+      durationMs: 0, // not tracked per-phase in single-container mode
+      skipped,
+      exitCode: skipped ? 0 : phase === failingPhase ? containerExitCode : 0,
+      output: content.slice(0, 2000),
+    });
+  }
+
+  return results;
+}
 
 // ---- In-worktree phase runner ----
 
@@ -137,6 +282,33 @@ interface TaskResult {
 async function main(): Promise<void> {
   console.log('=== M1 DoD Eval Replay ===\n');
 
+  // Sandbox mode selection — explicit log line for unambiguous output
+  let sandboxMode: 'docker' | 'in-worktree fallback';
+  if (USE_DOCKER) {
+    const dockerOk = probeDocker();
+    if (!dockerOk) {
+      console.error('ERROR: IFLEET_REAL_SANDBOX=1 but Docker daemon is unreachable.');
+      console.error('       Start Docker and ensure ifleet-verifier:base is built:');
+      console.error(`         docker build -f scripts/verifier-image/Dockerfile.base \\`);
+      console.error(`           -t ifleet-verifier:base scripts/verifier-image/`);
+      process.exit(1);
+    }
+    sandboxMode = 'docker';
+  } else {
+    sandboxMode = 'in-worktree fallback';
+  }
+  console.log(`using sandbox: ${sandboxMode}`);
+  if (sandboxMode === 'docker') {
+    console.log(`docker image:  ${DOCKER_IMAGE}`);
+  }
+  console.log('');
+
+  // Results file — Docker mode gets its own file to preserve in-worktree baseline
+  const resultsFileName = sandboxMode === 'docker'
+    ? 'replay-results-docker.json'
+    : 'replay-results.json';
+  const resultsPath = join(process.cwd(), '.ifleet/eval', resultsFileName);
+
   // Create a temp StateStore for this eval session
   const dbPath = join(tmpdir(), `eval-replay-${Date.now()}.db`);
   const store = new StateStore(dbPath);
@@ -155,8 +327,11 @@ async function main(): Promise<void> {
   };
   store.saveSprint(seedSprint);
 
-  // Clone IFleet into a temp base dir
-  const baseCloneDir = mkdtempSync(join(tmpdir(), 'ifleet-eval-base-'));
+  // Clone IFleet into a temp base dir.
+  // In Docker mode we use ~/.ifleet-eval-tmp/ so paths are under /Users
+  // (Colima virtiofs only auto-mounts /Users, not /tmp or /var/folders).
+  const tmpBase = evalTmpBase(sandboxMode === 'docker');
+  const baseCloneDir = mkdtempSync(join(tmpBase, 'ifleet-eval-base-'));
   console.log(`Cloning ${REPO_URL} → ${baseCloneDir} ...`);
   const cloneResult = spawnSync('git', ['clone', '--quiet', REPO_URL, baseCloneDir], {
     timeout: 300_000,
@@ -175,7 +350,7 @@ async function main(): Promise<void> {
     const idx = `[${i + 1}/10]`;
     console.log(`${idx} ${task.id} — PR #${task.prNumber} — ${task.title.slice(0, 55)}`);
 
-    const worktreeDir = join(tmpdir(), `ifleet-eval-${task.id}`);
+    const worktreeDir = join(tmpBase, `ifleet-eval-${task.id}`);
     if (existsSync(worktreeDir)) rmSync(worktreeDir, { recursive: true });
 
     // Add worktree at the merge SHA
@@ -192,33 +367,58 @@ async function main(): Promise<void> {
     }
 
     const taskStart = Date.now();
-    const phaseResults: PhaseResult[] = [];
+    let phaseResults: PhaseResult[] = [];
     const failures: VerifierFailure[] = [];
     let finalStatus: VerifierStatus = 'passed';
 
-    const PHASES = ['install', 'build', 'typecheck', 'lint', 'test'];
+    if (sandboxMode === 'docker') {
+      // ---- Docker mode: single container run via entrypoint ----
+      process.stdout.write(`  [docker] running ifleet-verifier:base ...\n`);
+      const dockerResult = runDockerVerifier(worktreeDir);
+      phaseResults = dockerResult.phases;
 
-    for (const phase of PHASES) {
-      const pr = runPhase(phase, worktreeDir);
-      phaseResults.push(pr);
-
-      if (pr.skipped) {
-        process.stdout.write(`  ${phase}: skipped\n`);
-        continue;
+      if (!dockerResult.ok) {
+        finalStatus = 'failed';
+        // Find the first non-ok, non-skipped phase as the failure source
+        const failPhase = phaseResults.find((p) => !p.ok && !p.skipped);
+        const failKind = (failPhase?.phase ?? 'install') as VerifierFailure['kind'];
+        failures.push({
+          kind: failKind,
+          message: `${failKind} failed (exit ${dockerResult.exitCode ?? 'timeout'})`,
+          rawOutput: dockerResult.output.slice(-2000),
+        });
       }
 
-      const statusChar = pr.ok ? '✓' : '✗';
-      process.stdout.write(`  ${phase}: ${statusChar} ${pr.durationMs}ms\n`);
+      for (const p of phaseResults) {
+        const statusChar = p.skipped ? '-' : p.ok ? '✓' : '✗';
+        process.stdout.write(`  ${p.phase}: ${statusChar}${p.skipped ? ' skipped' : ''}\n`);
+      }
+    } else {
+      // ---- In-worktree mode: per-phase pnpm runs on host ----
+      const PHASES = ['install', 'build', 'typecheck', 'lint', 'test'];
 
-      if (!pr.ok) {
-        finalStatus = 'failed';
-        failures.push({
-          kind: phase as VerifierFailure['kind'],
-          message: `${phase} failed (exit ${pr.exitCode ?? 'timeout'})`,
-          rawOutput: pr.output,
-        });
-        // Stop at first hard failure (install blocks everything)
-        if (phase === 'install' || phase === 'build') break;
+      for (const phase of PHASES) {
+        const pr = runPhase(phase, worktreeDir);
+        phaseResults.push(pr);
+
+        if (pr.skipped) {
+          process.stdout.write(`  ${phase}: skipped\n`);
+          continue;
+        }
+
+        const statusChar = pr.ok ? '✓' : '✗';
+        process.stdout.write(`  ${phase}: ${statusChar} ${pr.durationMs}ms\n`);
+
+        if (!pr.ok) {
+          finalStatus = 'failed';
+          failures.push({
+            kind: phase as VerifierFailure['kind'],
+            message: `${phase} failed (exit ${pr.exitCode ?? 'timeout'})`,
+            rawOutput: pr.output,
+          });
+          // Stop at first hard failure (install blocks everything)
+          if (phase === 'install' || phase === 'build') break;
+        }
       }
     }
 
@@ -284,6 +484,7 @@ async function main(): Promise<void> {
   const disagreement = bridge.disagreementRate();
 
   console.log('=== Results ===');
+  console.log(`Sandbox: ${sandboxMode}`);
   console.log(`Pass: ${passed}  Fail: ${failed}  Error: ${errored}`);
   console.log(`Pass rate: ${passRate}`);
   console.log(`disagreementRate(): ${disagreement === null ? 'null (< 5 passed/failed samples)' : disagreement.toFixed(3)}`);
@@ -308,15 +509,16 @@ async function main(): Promise<void> {
   // M1 DoD gate
   const m1Pass = passed >= 8;
   console.log('');
-  console.log(`M1 DoD gate (≥8/10): ${m1Pass ? 'PASS ✓' : 'FAIL ✗'}`);
+  console.log(`M1 DoD gate (>=8/10): ${m1Pass ? 'PASS' : 'FAIL'}`);
 
   // Write results file
-  const resultsPath = join(process.cwd(), '.ifleet/eval/replay-results.json');
   writeFileSync(
     resultsPath,
     JSON.stringify(
       {
         runAt: new Date().toISOString(),
+        sandboxMode,
+        dockerImage: sandboxMode === 'docker' ? DOCKER_IMAGE : undefined,
         passRate: `${passed}/10`,
         disagreementRate: disagreement,
         m1DoDGate: m1Pass ? 'pass' : 'fail',
@@ -339,7 +541,7 @@ async function main(): Promise<void> {
   rmSync(baseCloneDir, { recursive: true, force: true });
 
   if (!m1Pass) {
-    console.error(`\n⛔ M1 DoD not met (${passed}/10 < 8). Stopping — triage required.`);
+    console.error(`\n Docker M1 DoD not met (${passed}/10 < 8). Triage required.`);
     process.exit(1);
   }
 }

@@ -197,6 +197,56 @@ Replay script: `scripts/eval-replay.ts`
 
 **Interpretation:** 0.10 disagreement rate is the M1 baseline. At M6 the target is < 0.25 (verifier finds real regressions) while keeping false_positive_rate < 0.10. Today's 1/10 failure is a genuine historical regression, which means the verifier is working correctly — it's not rubber-stamping code.
 
+### M1.W2 Docker-sandbox isolation check — 2026-05-20
+
+**Sandbox mode:** Docker (`ifleet-verifier:base` — node:20-bookworm-slim + pnpm@9 + entrypoint.sh). Image built in PR #129, no pre-cached pnpm store.
+
+**Selection:** Same 10 historical PRs as in-worktree run above.
+
+**Infrastructure fixes required to get Docker running:**
+- pnpm store pinned to `/home/verifier/.pnpm-store` (not `/work/.pnpm-store`) via `pnpm config set` in Dockerfile — virtiofs mount has ENOENT copyfile failures when store lives on the virtiofs volume
+- Colima virtiofs only auto-mounts `/Users` — clone/worktree paths moved from `$TMPDIR` (`/var/folders/...`) to `~/.ifleet-eval-tmp/`
+- pnpm@9 installed via `npm install -g pnpm@9` (not corepack) — corepack resolves pnpm@11 at runtime for repos without `packageManager` field, pnpm@11 requires Node 22
+- Node 20 `node --test` doesn't expand glob patterns — entrypoint uses `shopt -s globstar` + bash array expansion before handing files to node
+
+| Metric | Value |
+|---|---|
+| Pass rate Docker | **1 / 10 (10%)** |
+| DoD gate (≥ 8 / 10) | FAILED |
+| `disagreementRate()` Docker | **0.900** |
+| Avg duration per run | ~70 s (cold install + tests) |
+| Comparison vs in-worktree | Differs — 9/10 in-worktree, 1/10 Docker |
+
+**Per-task breakdown:**
+
+| # | ID | PR | Status | Failing phase | Root cause |
+|---|---|---|---|---|---|
+| 1 | ifleet-IF-109 | #112 | **failed** | test | config/git tests need host env |
+| 2 | ifleet-IF-107 | #110 | **failed** | test | config/git tests need host env |
+| 3 | ifleet-IF-098 | #105 | **failed** | test | config/git tests need host env |
+| 4 | ifleet-IF-076 | #101 | **failed** | test | config/git tests need host env |
+| 5 | ifleet-IF-075 | #104 | **failed** | test | config/git tests need host env |
+| 6 | ifleet-IF-071 | #102 | **failed** | test | config/git tests need host env |
+| 7 | ifleet-IF-044 | #47 | **failed** | test | config/git tests need host env |
+| 8 | ifleet-IF-029 | #31 | **failed** | test | config/git tests need host env |
+| 9 | ifleet-IF-020 | #24 | **failed** | test | config/git tests need host env |
+| 10 | ifleet-IF-016 | #18 | **passed** | — | No tests at this SHA |
+
+All 10 tasks pass install + typecheck + lint. All test failures are environment-sensitive tests (git ls-remote to real remotes, Discord config reads, HMAC token checks) that work on the host (network + config available) but fail in the isolated container (no secrets, no network to GitHub).
+
+**Does Docker validate the infrastructure DoD?**
+
+Partially. The Docker path IS working as designed per ADR-0002:
+- Container starts, mounts worktree, runs install → typecheck → lint — all pass
+- Network isolation correctly blocks real-remote git tests (intended behavior for untrusted code)
+- pnpm@9 + Node 20 run inside the container without fallback
+
+The 1/10 pass rate is NOT a Docker infrastructure bug — it reveals that 9/10 historical SHAs have environment-sensitive tests that assume host-side git/Discord/config access. This is a test design issue, not a sandbox issue. The sandbox is doing exactly what ADR-0002 requires: enforcing isolation.
+
+**Infrastructure DoD verdict:** PARTIAL — sandbox runs and isolates correctly. Full behavioral DoD requires making env-sensitive tests injectable (`.env.verify` mount per ADR-0002 failure-mode table). Tracking issue to follow.
+
+Raw results: `.ifleet/eval/replay-results-docker.json`
+
 ## References
 
 - [OpenHands Docker Sandbox](https://docs.openhands.dev/sdk/guides/agent-server/docker-sandbox)

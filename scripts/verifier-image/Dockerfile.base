@@ -23,17 +23,36 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # pnpm is the IFleet standard package manager.
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# We install pnpm@9 directly via npm (bypassing corepack's runtime
+# version-sniffing, which would download pnpm@11+ for repos without a
+# `packageManager` field — pnpm@11 requires Node 22, incompatible here).
+# COREPACK_DEFAULT_TO_LATEST=0 prevents corepack shims from auto-upgrading.
+ENV COREPACK_DEFAULT_TO_LATEST=0
+RUN npm install -g pnpm@9
 
 # Working directory the verifier mounts the worktree into.
 WORKDIR /work
 
 # Non-root user prevents accidental host filesystem writes when bind-mounting
-# the worktree read-write. M1.W2 will switch to read-only mounts for the source
-# and a separate tmpfs for build artifacts.
+# the worktree read-write.
 RUN useradd --create-home --shell /bin/bash verifier
+
+# Real entrypoint: install → build → typecheck → lint → test.
+# COPY before USER so the file is owned by root but world-executable.
+COPY entrypoint.sh /usr/local/bin/ifleet-verify
+RUN chmod +x /usr/local/bin/ifleet-verify
+
 USER verifier
 
-# Default entrypoint is a no-op for M0.W1 — VerifierAgent will pass the real
-# verification script via `docker run --entrypoint` once M1.W2 lands.
-CMD ["bash", "-lc", "echo 'IFleet verifier base image — provide --entrypoint to run real verification' && exit 0"]
+# Pin the pnpm store to the verifier home dir so it stays inside the container
+# (not inside the virtiofs-mounted /work). pnpm's concurrent copyfile
+# operations fail on virtiofs when store and node_modules share the same mount.
+# Using `pnpm config set` writes to ~/.config/pnpm/rc — the most reliable way
+# to pin store-dir in pnpm@9 (the PNPM_STORE_DIR env var is not honoured by v9).
+RUN pnpm config set store-dir /home/verifier/.pnpm-store
+
+# Default: run the full verification suite against /work.
+# DockerSandboxRunner can still override by passing pnpm args directly
+# (docker run ... image pnpm install ...) — CMD is only used when no
+# command is provided.
+CMD ["/usr/local/bin/ifleet-verify"]

@@ -1,0 +1,90 @@
+{
+  "runAt": "2026-05-20T01:11:12.134Z",
+  "sandboxMode": "docker",
+  "dockerImage": "ifleet-verifier:base",
+  "passRate": "1/10",
+  "disagreementRate": 0.9,
+  "m1DoDGate": "fail",
+  "tasks": [
+    {
+      "id": "ifleet-IF-109",
+      "prNumber": 112,
+      "sha": "d1c7460e",
+      "status": "failed",
+      "durationMs": 90862,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-107",
+      "prNumber": 110,
+      "sha": "4b16737a",
+      "status": "failed",
+      "durationMs": 86935,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-098",
+      "prNumber": 105,
+      "sha": "fa4038d5",
+      "status": "failed",
+      "durationMs": 91281,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-076",
+      "prNumber": 101,
+      "sha": "a398a286",
+      "status": "failed",
+      "durationMs": 66073,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-075",
+      "prNumber": 104,
+      "sha": "7ad66f20",
+      "status": "failed",
+      "durationMs": 69089,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-071",
+      "prNumber": 102,
+      "sha": "b49ac73f",
+      "status": "failed",
+      "durationMs": 59406,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-044",
+      "prNumber": 47,
+      "sha": "e8f64b2e",
+      "status": "failed",
+      "durationMs": 52038,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-029",
+      "prNumber": 31,
+      "sha": "aa1008b2",
+      "status": "failed",
+      "durationMs": 49973,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-020",
+      "prNumber": 24,
+      "sha": "56ba3a0d",
+      "status": "failed",
+      "durationMs": 54014,
+      "failuresCount": 1
+    },
+    {
+      "id": "ifleet-IF-016",
+      "prNumber": 18,
+      "sha": "7bd6c17a",
+      "status": "passed",
+      "durationMs": 249,
+      "failuresCount": 0
+    }
+  ]
+}
