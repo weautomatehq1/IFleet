@@ -14,13 +14,13 @@ import { PLAN_REVIEWER_SYSTEM_PROMPT } from './prompts.js';
 const PLAN_REVIEWER_MAX_VETOES_FALLBACK = 2;
 const PLAN_REVIEW_COST_CAP_MULTIPLIER_FALLBACK = 0.1;
 
-function loadPlanReviewerDefaults(): {
+export function loadPlanReviewerDefaults(routingJsonPath?: string): {
   maxVetoes: number;
   costCapMultiplier: number;
 } {
   try {
-    const repoRoot = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
-    const raw = readFileSync(resolve(repoRoot, 'config', 'routing.json'), 'utf-8');
+    const defaultPath = resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'config', 'routing.json');
+    const raw = readFileSync(routingJsonPath ?? defaultPath, 'utf-8');
     const parsed = JSON.parse(raw) as {
       pipeline?: {
         planReviewer?: {
@@ -36,10 +36,13 @@ function loadPlanReviewerDefaults(): {
         : PLAN_REVIEWER_MAX_VETOES_FALLBACK;
     // routing.json carries percent (e.g. 10), the runtime uses multiplier
     // (e.g. 0.1). Convert at the boundary so the JSON stays human-readable.
+    // 0 falls back to the default (0.1) because a 0% cap silently disables
+    // plan review entirely; if you actually want to disable plan review,
+    // remove the planReviewer block from routing.json.
     const costCapMultiplier =
       typeof pr?.costCapPctOfArchitect === 'number' &&
       Number.isFinite(pr.costCapPctOfArchitect) &&
-      pr.costCapPctOfArchitect >= 0
+      pr.costCapPctOfArchitect > 0
         ? pr.costCapPctOfArchitect / 100
         : PLAN_REVIEW_COST_CAP_MULTIPLIER_FALLBACK;
     return { maxVetoes, costCapMultiplier };
