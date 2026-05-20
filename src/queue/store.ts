@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { QueuedTask, TaskState } from '../contracts/task.js';
 
 export function defaultStateDir(): string {
@@ -32,6 +33,19 @@ CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+
+CREATE TABLE IF NOT EXISTS pr_decisions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  verdict TEXT NOT NULL,
+  reviewer_login TEXT,
+  merged_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
+CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -70,6 +84,30 @@ export interface PickFilter {
 export interface InsertResult {
   inserted: boolean;
   existing?: QueuedTask;
+}
+
+export type PrVerdict = 'merged' | 'rejected' | 'abandoned';
+
+export interface RecordPrDecisionInput {
+  taskId: string;
+  repo: string;
+  prNumber: number;
+  verdict: PrVerdict;
+  /** GitHub login of the reviewer; null when no review data is available. */
+  reviewerLogin?: string | null;
+  /** Unix timestamp (ms) when the PR was merged; omit for non-merged verdicts. */
+  mergedAt?: number;
+}
+
+export interface PrDecision {
+  id: string;
+  taskId: string;
+  repo: string;
+  prNumber: number;
+  verdict: PrVerdict;
+  reviewerLogin: string | null;
+  mergedAt: number | null;
+  createdAt: number;
 }
 
 export class TaskStore {
@@ -224,6 +262,74 @@ export class TaskStore {
   count(): number {
     const row = this.db.prepare(`SELECT COUNT(*) AS n FROM tasks`).get() as { n: number };
     return row.n;
+  }
+
+  /**
+   * Record the final disposition of a PR that was opened during a sprint.
+   * Idempotent on (task_id, pr_number) — a second call for the same pair
+   * will throw a UNIQUE constraint if the table ever gains that constraint;
+   * for now callers are responsible for not double-writing.
+   */
+  recordPrDecision(input: RecordPrDecisionInput): PrDecision {
+    const id = randomUUID();
+    const createdAt = Date.now();
+    const reviewerLogin = input.reviewerLogin ?? null;
+    const mergedAt = input.mergedAt ?? null;
+
+    this.db
+      .prepare(
+        `INSERT INTO pr_decisions (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at)
+         VALUES (@id, @task_id, @repo, @pr_number, @verdict, @reviewer_login, @merged_at, @created_at)`,
+      )
+      .run({
+        id,
+        task_id: input.taskId,
+        repo: input.repo,
+        pr_number: input.prNumber,
+        verdict: input.verdict,
+        reviewer_login: reviewerLogin,
+        merged_at: mergedAt,
+        created_at: createdAt,
+      });
+
+    return {
+      id,
+      taskId: input.taskId,
+      repo: input.repo,
+      prNumber: input.prNumber,
+      verdict: input.verdict,
+      reviewerLogin,
+      mergedAt,
+      createdAt,
+    };
+  }
+
+  /** Fetch all PR decisions for a repo, newest first. */
+  getPrDecisionsByRepo(repo: string, limit = 100): PrDecision[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM pr_decisions WHERE repo = @repo ORDER BY created_at DESC LIMIT @limit`,
+      )
+      .all({ repo, limit }) as Array<{
+        id: string;
+        task_id: string;
+        repo: string;
+        pr_number: number;
+        verdict: string;
+        reviewer_login: string | null;
+        merged_at: number | null;
+        created_at: number;
+      }>;
+    return rows.map((r) => ({
+      id: r.id,
+      taskId: r.task_id,
+      repo: r.repo,
+      prNumber: r.pr_number,
+      verdict: r.verdict as PrVerdict,
+      reviewerLogin: r.reviewer_login,
+      mergedAt: r.merged_at,
+      createdAt: r.created_at,
+    }));
   }
 
   close(): void {
