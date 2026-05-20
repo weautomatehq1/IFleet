@@ -470,7 +470,7 @@ function planPhases(pkg: PackageJsonScripts): PhasePlan {
 function buildPhaseArgv(kind: VerifierFailureKind): string[] {
   switch (kind) {
     case 'install':
-      return ['install', '--frozen-lockfile', '--prefer-offline'];
+      return ['install', '--frozen-lockfile', '--prefer-offline', '--store-dir', '/root/.pnpm-store'];
     case 'build':
     case 'typecheck':
     case 'lint':
@@ -494,6 +494,8 @@ function buildDockerArgs(
     `${memoryMb}m`,
     '--network',
     'bridge',
+    '--user',
+    'root',
     '-v',
     `${worktreePath}:/work`,
     '-w',
