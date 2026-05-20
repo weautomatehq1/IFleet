@@ -386,9 +386,11 @@ describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-
   // PR #132 fixed F-002 (haiku-floor classifier bug); these tests pin the
   // contract so a future refactor cannot silently regress it.
 
-  it('plan-reviewer floor — architect Opus → Sonnet', () => {
+  it('plan-reviewer floor — complexity:high (label) forces architect Opus → planReviewer Sonnet', () => {
+    // complexity:high alone is sufficient to promote architect to opus — no
+    // HIGH_KEYWORDS in the title. Pins the label-driven promotion path.
     const result = classifyTask({
-      title: 'wire up stripe payment intents',
+      title: 'do a thing',
       body: '',
       labels: ['auto:ship', 'complexity:high'],
     });
@@ -396,6 +398,20 @@ describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-
     assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
     assert.equal(result.planReviewer?.model, 'claude-sonnet-4-6');
     assert.equal(result.planReviewer?.provider, 'claude');
+  });
+
+  it('architect opus-cap holds: HIGH_KEYWORDS alone (without complexity:high) → architect Sonnet, planReviewer Haiku', () => {
+    // HIGH_KEYWORDS hit ("stripe" + "payment" → score 6 → opus tier) but no
+    // complexity:high label, so the architect opus cap demotes to sonnet. Pins
+    // the regression the original combined test silently failed to catch.
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
+    assert.equal(result.planReviewer?.model, 'claude-haiku-4-5-20251001');
   });
 
   it('plan-reviewer floor — architect Sonnet → Haiku', () => {

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   DEFAULT_PLAN_REVIEW_COST_CAP_MULTIPLIER,
   formatPlanReviewerEscalation,
+  loadPlanReviewerDefaults,
   parsePlanReview,
   PLAN_REVIEWER_MAX_VETOES,
   runPlanReviewer,
@@ -272,6 +273,25 @@ describe('runPlanReviewer', () => {
     // Pinned by spec — changing this requires updating
     // docs/elevation/upgrades/02-plan-reviewer.md.
     expect(DEFAULT_PLAN_REVIEW_COST_CAP_MULTIPLIER).toBe(0.1);
+  });
+
+  it('loadPlanReviewerDefaults: costCapPctOfArchitect: 0 falls back to 0.1', async () => {
+    // 0 would silently disable plan review; the loader must treat it as
+    // invalid and return the hardcoded fallback (0.1 = 10% of architect cost).
+    const dir = await mkdtemp(join(tmpdir(), 'plan-rev-costcap-'));
+    try {
+      const fixturePath = join(dir, 'routing.json');
+      await writeFile(
+        fixturePath,
+        JSON.stringify({ pipeline: { planReviewer: { maxVetoes: 2, costCapPctOfArchitect: 0 } } }),
+        'utf8',
+      );
+      const result = loadPlanReviewerDefaults(fixturePath);
+      expect(result.costCapMultiplier).toBe(0.1);
+      expect(result.maxVetoes).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('reads invariants from .ifleet/invariants/<repoSlug>/ when repoRoot+repoSlug are set', async () => {
