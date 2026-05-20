@@ -1,3 +1,13 @@
+---
+Status: Accepted
+Date: 2026-05-19
+Decider: Sebastian Puig
+Supersedes: None
+Superseded-by: None
+Affects: M3 (cross-repo knowledge graph) onward
+Extends: None
+---
+
 # ADR-0003 — Knowledge graph stack: tree-sitter + Postgres + pgvector
 
 **Status:** Accepted (2026-05-19)

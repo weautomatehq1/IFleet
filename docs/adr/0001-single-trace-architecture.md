@@ -1,8 +1,26 @@
+---
+Status: Accepted (Amended 2026-05-20)
+Date: 2026-05-19
+Decider: Sebastian Puig
+Supersedes: None
+Superseded-by: None
+Affects: Every subsequent agent added to IFleet
+Extends: None
+---
+
 # ADR-0001 — Single shared trace, specialist roles, NOT multi-agent
 
-**Status:** Accepted (2026-05-19)
+**Status:** Accepted (2026-05-19, Amended 2026-05-20)
 **Decider:** Sebastian Puig
 **Affects:** Every subsequent agent added to IFleet
+
+## Amendment — 2026-05-20 (PR #146 strict-diff)
+
+Terminology normalization. Audit-fixes split `20260520-1145` T1 reviewer advisory (MEDIUM finding): the M0.U8 → Upgrade 10 rename in the Consequences section was applied in place, which the README immutability rule disallows. Path-A applied: original token struck through, new token preserved inline.
+
+- Milestone label: `M0.U8` superseded by `Upgrade 10`. No decision change; label rename only.
+
+The Consequences line below preserves the original token (struck through) immediately before the new label.
 
 ## Context
 
@@ -55,7 +73,7 @@ Persistence:
 - Any role can be replayed for debugging by feeding the trace prefix
 - `learnings.md` becomes a derived artifact — automatic, never drifts from reality
 - Client-facing audit trail is one artifact per PR (Operating Standard requirement)
-- Self-modification (M0.U8) shadow-eval can replay trace prefixes against candidate code
+- Self-modification (~~M0.U8~~ Upgrade 10) shadow-eval can replay trace prefixes against candidate code
 
 **Negative:**
 - Every role must accept large context windows (the full trace). Mitigated by trace summarization at >100k tokens.
