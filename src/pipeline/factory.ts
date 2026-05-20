@@ -122,12 +122,25 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 // Internal collaborator builders
 // ---------------------------------------------------------------------------
 
-function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
+export function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
   const adapter = getActivePipelineAdapter();
 
   return {
     spawn(spec: WorkerSpec, brief: string, opts: PipelineSpawnOpts): PipelineSpawnHandle {
-      const workingDir = opts.worktreePath ?? resolve('.');
+      // Refuse to fall back to the daemon's cwd (the host repo). Every pipeline
+      // stage MUST opt into a worktree explicitly — the original worktree-cwd
+      // bug was caused by stages not threading this through. Throwing here
+      // catches any future regression at the seam instead of silently writing
+      // commits into the host IFleet checkout.
+      if (!opts.worktreePath) {
+        throw new Error(
+          `buildWorkerPool.spawn refused: role="${opts.role}" called without worktreePath. ` +
+            `Pipeline stages must pass input.worktreePath to keep work sandboxed. ` +
+            `Falling back to process.cwd() ("${resolve('.')}") would risk committing ` +
+            `into the host repo (see PR #161).`,
+        );
+      }
+      const workingDir = opts.worktreePath;
       const model = mapModel(spec.model);
       let rateLimitHits = 0;
 
