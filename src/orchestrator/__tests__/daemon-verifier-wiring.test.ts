@@ -39,6 +39,18 @@ import type { InvariantRunner } from '../../agents/verifier/invariants';
 
 const execFileAsync = promisify(execFile);
 
+// Strip git hook env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, …) before
+// invoking git. The pre-push hook inherits these from `git push`, and they
+// override the `-C <path>` flag's repo discovery — so `git config` writes land
+// in the host repo's .git/config instead of the tmpdir.
+const cleanGitEnv: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
+);
+
+function git(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return execFileAsync('git', args, { env: cleanGitEnv });
+}
+
 interface Fixture {
   store: StateStore;
   workdir: string;
@@ -51,10 +63,10 @@ interface Fixture {
 async function makeFixture(): Promise<Fixture> {
   const workdir = mkdtempSync(join(tmpdir(), 'daemon-wiring-'));
   const worktree = join(workdir, 'wt');
-  await execFileAsync('git', ['init', '-q', '-b', 'main', worktree]);
-  await execFileAsync('git', ['-C', worktree, 'config', 'user.email', 'test@test']);
-  await execFileAsync('git', ['-C', worktree, 'config', 'user.name', 'test']);
-  await execFileAsync('git', ['-C', worktree, 'commit', '--allow-empty', '-m', 'init']);
+  await git(['init', '-q', '-b', 'main', worktree]);
+  await git(['-C', worktree, 'config', 'user.email', 'test@test']);
+  await git(['-C', worktree, 'config', 'user.name', 'test']);
+  await git(['-C', worktree, 'commit', '--allow-empty', '-m', 'init']);
   const store = new StateStore(join(workdir, 'state.db'));
   const sprintId = newSprintId('sprint-1');
   const taskId = newTaskId('task-1');
