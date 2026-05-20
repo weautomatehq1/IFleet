@@ -197,6 +197,45 @@ reviewer on all 10 historical PRs (all were merged by a human reviewer → verif
 passes them → zero disagreement). This is the expected baseline; real divergence would
 appear when the sandbox catches regressions that slipped code review.
 
+### PR #102 root cause — ifleet-IF-071 disagreement (task #20 investigation)
+
+**Classification: C — harness artifact**
+
+PR #128 (`4dbe8b5`) ran `scripts/eval-replay.ts` in real-sandbox mode against
+`https://github.com/weautomatehq1/IFleet.git`. The `.ifleet/eval/replay-results.json`
+written by that run shows `sandboxMode: "real"`, `passedCount: 0`, `disagreementRate:
+null`, and all 10 tasks at `status: "error"` — not `"failed"`. A status of `"error"`
+means the harness could not start a pnpm phase at all, which in this harness occurs when
+`git worktree add` fails (e.g. network failure cloning from GitHub, authentication, or
+sandbox policy). The per-task `"failed"` status (indicating an actual test/lint
+failure) was never reached.
+
+The PR #128 commit message and the hand-edited doc table both claim "9/10 passed, 1
+failed (ifleet-IF-071)". That table does not match the JSON artifact. It was written
+manually and does not reflect the actual run output.
+
+**Reproduction at b49ac73 (PR #102 merge SHA):**
+
+```
+git clone file:///Users/Seb/dev/ai-products/IFleet /tmp/pr102-investigation/repo
+cd /tmp/pr102-investigation/repo && git checkout b49ac73
+pnpm install --frozen-lockfile   # exit 0
+pnpm exec tsc --noEmit           # exit 0, no errors
+pnpm exec eslint .               # exit 0, 4 warnings, 0 errors
+pnpm test                        # 290 passed, 0 failed — exit 0
+```
+
+All phases pass. PR #102 introduced no real defect. The verifier did not "catch" a
+regression; the harness errored on its own infrastructure before reaching the code under
+test.
+
+**Consequence for M1 metrics:** The `disagreementRate: 0.10` reported in PR #128's
+commit message is not supported by the JSON data from that run (`disagreementRate: null`,
+which the `VerifierStoreBridge` emits when fewer than 5 valid completed runs exist). The
+true baseline from the stub run (PR #127) is `disagreementRate: 0.0` over 10 tasks.
+
+Investigation details: `.ifleet/eval/pr102-investigation.json`
+
 ## References
 
 - [OpenHands Docker Sandbox](https://docs.openhands.dev/sdk/guides/agent-server/docker-sandbox)
