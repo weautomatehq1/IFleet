@@ -22,12 +22,19 @@ For every PR IFleet opens, the following artifacts exist and are exportable:
 |---|---|---|
 | Full task trace (every role's input/output) | SQLite + S3 blob | `gh pr view <N> --json body` includes a `Trace:` link |
 | Verifier run report (pass/fail, structured failures) | `verifier_runs` + `verifier_failures` tables | Attached to PR description |
-| Behavioral fingerprint diff (M4+: OpenAPI / schema / UI / trace shape) | JSON blob | Attached to PR description |
 | Cost breakdown per role (USD spent) | Trace events with `cost_usd` field | `/status <taskId>` in Discord |
 | Model versions used per role | Trace events with `model` field | Same |
 | Source brief / issue that triggered the task | GitHub issue link | PR description, top line |
 
 These artifacts are immutable once the PR opens.
+
+## Planned guarantees (post-M4)
+
+The following artifact is **not** guaranteed today. It ships with Upgrade M4 (behavioural fingerprinting) and will move into the table above once that milestone lands. Listing it here makes the pre-M4 framing honest: a PR opened before M4 will not carry this artifact.
+
+| Artifact | Storage (planned) | How to access (planned) | Lands with |
+|---|---|---|---|
+| Behavioral fingerprint diff (OpenAPI / schema / UI / trace shape) | JSON blob | Attached to PR description | M4 |
 
 ## What a human reviewer commits to when they hit Approve
 
@@ -35,7 +42,7 @@ By approving a PR with label `ifleet:autogen`, the human reviewer is asserting:
 
 1. They have read the diff in its entirety.
 2. They have read the verifier report and understand any `verified: partial` caveats.
-3. They have read the behavioral fingerprint diff if `breaking: true` is labeled.
+3. They have read the behavioral fingerprint diff if `breaking: true` is labeled (M4+; pre-M4 this artifact is absent — see "Planned guarantees" above).
 4. They take responsibility for the merge.
 
 The reviewer is **not** asserting:
@@ -49,7 +56,7 @@ For any PR IFleet merges (after human approval):
 
 1. **Within 1 hour:** `git revert <merge-sha>` in the affected repo, push to `main`. Standard git revert. No special tooling.
 2. **Within 24 hours:** trigger `/cancel <taskId>` to flag the task in IFleet's learnings.md as `rolled_back: true` with reason.
-3. **For IFleet self-PRs (Upgrade 10):** `pm2 reload ecosystem.config.cjs --update-env` against prior git tag. Documented in `deploy/rollback.sh` (TODO M0.W2).
+3. **For IFleet self-PRs (Upgrade 10):** `pm2 reload ecosystem.config.cjs --update-env` against prior git tag. Documented in `deploy/rollback.sh` (v1 shipped — single-PR revert + optional PM2 reload + healthz verify + audit log; multi-host and time-windowed variants are planned follow-ups).
 
 ## Client repo specifics
 
