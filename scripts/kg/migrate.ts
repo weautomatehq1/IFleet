@@ -6,6 +6,7 @@
  * way to bring a fresh database up to the M3 schema.
  */
 
+import 'dotenv/config';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { getKgPool } from '../../src/agents/indexer/pg-client.ts';

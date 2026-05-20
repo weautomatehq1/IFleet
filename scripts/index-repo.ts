@@ -13,6 +13,7 @@
  * are not git repos so we never index stale snapshots.
  */
 
+import 'dotenv/config';
 import { execFileSync } from 'node:child_process';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve, relative, join } from 'node:path';

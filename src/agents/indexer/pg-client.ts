@@ -31,8 +31,10 @@ export function getKgPool(overrideUrl?: string): Pool {
   const url = overrideUrl ?? process.env.IFLEET_KG_DATABASE_URL;
   if (!url) {
     throw new KgPostgresUnavailableError(
-      'IFLEET_KG_DATABASE_URL is not set. Copy .env.example and fill the Supabase ' +
-        'connection string (ADR-0003 has the project name: ifleet-kg).',
+      'IFLEET_KG_DATABASE_URL is not set. Either copy .env.example to .env and ' +
+        'fill the Supabase connection string (auto-loaded by CLI scripts) OR ' +
+        'export the value in your shell before invoking. ADR-0003 has the ' +
+        'project name: ifleet-kg.',
     );
   }
   const config: PoolConfig = {
