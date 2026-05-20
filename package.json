@@ -22,6 +22,8 @@
     "channels:health": "node --import tsx scripts/channels-health.ts",
     "eval:replay": "node --import tsx scripts/eval/run-eval-replay.ts",
     "eval:bootstrap": "node --import tsx scripts/eval/freeze.ts",
+    "graph:migrate": "node --import tsx scripts/kg/migrate.ts",
+    "graph:index": "node --import tsx scripts/index-repo.ts",
     "validate-claims": "node --import tsx scripts/validate-claims.ts",
     "dead-code": "ts-prune --ignore '(index\\.ts|__tests__|fixtures)'",
     "fleet:pause": "ssh root@187.124.77.142 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
@@ -36,18 +38,24 @@
     "better-sqlite3": "^11.3.0",
     "discord.js": "^14.26.4",
     "nanoid": "^5.0.7",
+    "pg": "^8.13.1",
     "resend": "^6.12.3",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-typescript": "^0.23.2",
     "zod": "^3.25.76"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
-      "esbuild"
+      "esbuild",
+      "tree-sitter",
+      "tree-sitter-typescript"
     ]
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
