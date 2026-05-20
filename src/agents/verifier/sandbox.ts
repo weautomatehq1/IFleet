@@ -46,6 +46,8 @@ export interface SandboxConfig {
   now?: () => number;
   rawLogSink?: (runId: string, log: string) => Promise<string | undefined>;
   spawnFn?: typeof spawn;
+  /** Directory containing per-repo env files. Defaults to `.ifleet/verify-env` in cwd. */
+  envDir?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 600_000;
@@ -111,6 +113,7 @@ export class DockerSandboxRunner implements SandboxRunner {
   private readonly now: () => number;
   private readonly rawLogSink: SandboxConfig['rawLogSink'];
   private readonly spawnFn: typeof spawn;
+  private readonly envDir: string;
 
   constructor(cfg: SandboxConfig = {}) {
     this.image = cfg.image ?? DEFAULT_IMAGE;
@@ -121,6 +124,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     this.now = cfg.now ?? Date.now;
     this.rawLogSink = cfg.rawLogSink;
     this.spawnFn = cfg.spawnFn ?? spawn;
+    this.envDir = cfg.envDir ?? join(process.cwd(), '.ifleet', 'verify-env');
   }
 
   async run(input: VerifierRunInput): Promise<VerifierRunResult> {
@@ -223,6 +227,11 @@ export class DockerSandboxRunner implements SandboxRunner {
     const banner = useFallback
       ? 'sandbox: unavailable (Docker daemon unreachable, ran in-worktree)'
       : undefined;
+
+    const repoId = repoIdFromUrl(input.repoUrl);
+    const envFilePath = join(this.envDir, `${repoId}.env`);
+    const hasEnvFile = existsSync(envFilePath);
+
     const pkg = readPackageJson(worktreePath);
     const plan = planPhases(pkg);
 
@@ -247,7 +256,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         continue;
       }
 
-      let outcome = await this.runPhase(kind, worktreePath, useFallback);
+      let outcome = await this.runPhase(kind, worktreePath, useFallback, hasEnvFile ? envFilePath : undefined);
       phaseReports.push(outcome.report);
       rawLogChunks.push(
         `=== ${kind} (exit=${outcome.report.exitCode}, ${outcome.report.durationMs}ms) ===\n${outcome.rawOutput}\n`,
@@ -259,7 +268,7 @@ export class DockerSandboxRunner implements SandboxRunner {
           /network|ENOTFOUND|ECONNRESET|ERR_PNPM_FETCH/i.test(outcome.rawOutput)
         ) {
           await sleep(2000);
-          outcome = await this.runPhase('install', worktreePath, useFallback);
+          outcome = await this.runPhase('install', worktreePath, useFallback, hasEnvFile ? envFilePath : undefined);
           phaseReports.pop();
           phaseReports.push(outcome.report);
           rawLogChunks.push(
@@ -305,6 +314,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     const bannerParts: string[] = [];
     if (banner) bannerParts.push(banner);
     if (plan.partial) bannerParts.push('verified: partial (no test script)');
+    if (!hasEnvFile && !useFallback) bannerParts.push('verify-env: not configured');
     if (bannerParts.length > 0) result.banner = bannerParts.join(' | ');
     return result;
   }
@@ -322,11 +332,12 @@ export class DockerSandboxRunner implements SandboxRunner {
     kind: VerifierFailureKind,
     worktreePath: string,
     useFallback: boolean,
+    envFilePath?: string,
   ): Promise<PhaseRunOutcome> {
     const startedAt = this.now();
     const argv = buildPhaseArgv(kind);
     const command = useFallback ? this.pnpmBin : this.dockerBin;
-    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv);
+    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath);
     const result = await this.runCommand(command, args, {
       ...(useFallback ? { cwd: worktreePath } : {}),
       timeoutMs: this.timeoutMs,
@@ -486,8 +497,9 @@ function buildDockerArgs(
   worktreePath: string,
   memoryMb: number,
   innerArgv: string[],
+  envFilePath?: string,
 ): string[] {
-  return [
+  const args = [
     'run',
     '--rm',
     '--memory',
@@ -496,6 +508,11 @@ function buildDockerArgs(
     'bridge',
     '--user',
     'root',
+  ];
+  if (envFilePath) {
+    args.push('--env-file', envFilePath);
+  }
+  args.push(
     '-v',
     `${worktreePath}:/work`,
     '-w',
@@ -503,7 +520,17 @@ function buildDockerArgs(
     image,
     'pnpm',
     ...innerArgv,
-  ];
+  );
+  return args;
+}
+
+/** Derive a filesystem-safe repo identifier from a GitHub URL.
+ * e.g. https://github.com/weautomatehq1/IFleet → weautomatehq1_IFleet */
+function repoIdFromUrl(repoUrl: string): string {
+  const match = /github\.com\/([^/]+\/[^/]+?)(?:\.git)?(?:\/.*)?$/.exec(repoUrl);
+  const raw = match?.[1] != null ? match[1].replace('/', '_') : repoUrl;
+  // Restrict to safe filename chars to prevent path traversal
+  return raw.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 128);
 }
 
 function isPhaseFatal(kind: VerifierFailureKind): boolean {
