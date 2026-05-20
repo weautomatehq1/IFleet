@@ -1,8 +1,28 @@
+---
+Status: Accepted (Amended 2026-05-20)
+Date: 2026-05-19
+Decider: Sebastian Puig
+Supersedes: None
+Superseded-by: None
+Affects: VerifierAgent and downstream PR gate
+Extends: src/verify/
+---
+
 # ADR-0002 — Docker sandbox for verifier
 
-**Status:** Accepted (2026-05-19)
+**Status:** Accepted (2026-05-19, Amended 2026-05-20)
 **Decider:** Sebastian Puig
-**Supersedes:** None (extends `src/verify/`)
+**Supersedes:** None
+**Extends:** `src/verify/`
+
+## Amendment — 2026-05-20 (PR #130)
+
+The shipped sandbox image diverged from the originally-specced one. Audit findings F-004 and F-007 in `docs/elevation/audit-2026-05-20.md` flagged this; the divergence is in production already, so this amendment records the corrected baseline rather than revising the underlying decision.
+
+- Base image: was `node:20-bookworm`, now `node:24-bookworm-slim`
+- Package manager pin: was `pnpm@9`, now `pnpm@11`
+
+The Image strategy section below has been updated in place to reflect the shipped state. No other decision content is affected.
 
 ## Context
 
@@ -11,7 +31,7 @@ IFleet's existing `src/verify/` (ci.ts, playwright.ts, runner.ts, screenshot.ts)
 - No isolation from host state (filesystem, env vars, network)
 - No clean reset between runs (flaky test caused by prior artifact)
 - Cannot run untrusted code from external contributors safely
-- Cannot be replayed deterministically for the shadow eval (M0.U8)
+- Cannot be replayed deterministically for the shadow eval (Upgrade 10)
 
 The top of the SWE-Bench Verified leaderboard (87.6% Opus 4.7, 88.7% GPT-5.5) is dominated by systems that run agent actions inside Docker (OpenHands, SWE-agent). Epoch AI ran the entire SWE-Bench Verified set in 1 hour on 1 machine using Docker.
 
@@ -40,7 +60,7 @@ editor.completed (branch SHA)
 
 ## Image strategy
 
-- Base image: `node:20-bookworm` + `pnpm@9` + `git` + `curl` + `python3` (for Python repos)
+- Base image: `node:24-bookworm-slim` + `pnpm@11` + `git` + `curl` + `python3` (for Python repos)
 - Per-repo image: `ifleet-verifier:<repo-id>-<lockfile-hash>` — cached, rebuilt on lockfile change
 - Build context: `scripts/verifier-image/` (Dockerfile.base + per-repo overlays)
 - Cache mount: `~/.pnpm-store` mounted as Docker volume for fast installs
@@ -60,7 +80,7 @@ editor.completed (branch SHA)
 
 **Positive:**
 - Closed loop: agent sees deterministic exit codes and reruns
-- Replayable for shadow eval (M0.U8)
+- Replayable for shadow eval (Upgrade 10)
 - Untrusted-code-safe (preview env requirement for client repos)
 
 **Negative:**

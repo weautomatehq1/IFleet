@@ -1,3 +1,13 @@
+---
+Status: Accepted
+Date: 2026-05-19
+Decider: Sebastian Puig
+Supersedes: None
+Superseded-by: None
+Affects: Every subsequent agent added to IFleet
+Extends: None
+---
+
 # ADR-0001 — Single shared trace, specialist roles, NOT multi-agent
 
 **Status:** Accepted (2026-05-19)
@@ -55,7 +65,7 @@ Persistence:
 - Any role can be replayed for debugging by feeding the trace prefix
 - `learnings.md` becomes a derived artifact — automatic, never drifts from reality
 - Client-facing audit trail is one artifact per PR (Operating Standard requirement)
-- Self-modification (M0.U8) shadow-eval can replay trace prefixes against candidate code
+- Self-modification (Upgrade 10) shadow-eval can replay trace prefixes against candidate code
 
 **Negative:**
 - Every role must accept large context windows (the full trace). Mitigated by trace summarization at >100k tokens.
