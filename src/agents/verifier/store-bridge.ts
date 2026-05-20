@@ -152,19 +152,63 @@ export class VerifierStoreBridge {
    * contradicts the in-worktree pre-flight (recorded by the pipeline as
    * `task.verify_passed`). High disagreement = the new sandbox is finding
    * things the old verify missed; low disagreement = redundant work.
-   * Returns null when there are too few samples (<5) to be meaningful.
+   *
+   * When `windowDays` is provided, restrict the calculation to runs that
+   * started within the last `windowDays * 86_400_000` ms. Returns null when
+   * there are too few samples (<5) to be meaningful.
    */
-  disagreementRate(): number | null {
+  disagreementRate(windowDays?: number): number | null {
+    const snap = this.getDisagreementSnapshot(windowDays);
+    return snap.rate;
+  }
+
+  /**
+   * Stable view of the disagreement metric. Used by the canary alerter so
+   * "what we evaluated against the threshold" and "what we report in the
+   * Discord post" come from the same snapshot. Returns rate=null when
+   * sample count is below the minimum (<5).
+   */
+  getDisagreementSnapshot(windowDays?: number): DisagreementSnapshot {
+    const nowMs = Date.now();
+    const sinceMs =
+      typeof windowDays === 'number' && windowDays > 0
+        ? nowMs - windowDays * 86_400_000
+        : 0;
     const row = this.db
       .prepare(
         `SELECT
           COUNT(*) AS total,
           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
          FROM verifier_runs
-         WHERE status IN ('failed','passed')`,
+         WHERE status IN ('failed','passed')
+           AND started_at >= ?`,
       )
-      .get() as { total: number; failed: number };
-    if (!row || row.total < 5) return null;
-    return row.failed / row.total;
+      .get(sinceMs) as { total: number | null; failed: number | null };
+    const total = row?.total ?? 0;
+    const failed = row?.failed ?? 0;
+    const rate = total >= 5 ? failed / total : null;
+    return {
+      rate,
+      total,
+      failed,
+      windowDays: windowDays ?? null,
+      sinceMs,
+      computedAtMs: nowMs,
+    };
   }
+}
+
+export interface DisagreementSnapshot {
+  /** failed/total within the window, or null when total < 5 (insufficient samples). */
+  rate: number | null;
+  /** total `passed` + `failed` runs in the window. */
+  total: number;
+  /** `failed` runs in the window. */
+  failed: number;
+  /** window in days, or null if unwindowed (all-time). */
+  windowDays: number | null;
+  /** start of the window as ms-since-epoch (0 means "no lower bound"). */
+  sinceMs: number;
+  /** when the snapshot was taken. */
+  computedAtMs: number;
 }

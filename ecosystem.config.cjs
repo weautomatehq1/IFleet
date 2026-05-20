@@ -155,6 +155,28 @@ module.exports = {
       error_file: '/var/log/pm2/ifleet-standup-error.log',
     },
     {
+      // ifleet-canary — hourly verifier↔reviewer disagreement-rate canary.
+      // Reads verifier_runs over the last 7d, compares to 0.25 threshold,
+      // posts to #ifleet-ops only on transitions (dedup via
+      // .ifleet/canary/alert-state.json). Off by default — flip on per VPS
+      // with `pm2 set ifleet-canary:IFLEET_CANARY_ALERTING_ENABLED 1 &&
+      //       pm2 restart ifleet-canary`.
+      name: 'ifleet-canary',
+      script: 'scripts/canary-alert.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      cron_restart: '0 * * * *',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'canary',
+        IFLEET_CANARY_ALERTING_ENABLED: process.env.IFLEET_CANARY_ALERTING_ENABLED ?? '0',
+      },
+      out_file: '/var/log/pm2/ifleet-canary-out.log',
+      error_file: '/var/log/pm2/ifleet-canary-error.log',
+    },
+    {
       // ifleet-retro — Sunday 8pm weekly retro post to #ifleet-ops.
       // Stub only until M5+ data is available (see src/agents/rituals/retro.ts).
       // autorestart is false so it doesn't spam. Enable when M5 ships.
