@@ -60,15 +60,20 @@ jobs:
       # Pattern uses \b word boundaries (GNU grep -E, safe on Ubuntu) so that bare
       # `readarray` at EOL and `$(readarray ...)` in command substitutions are also caught
       # (the original [[:space:]] anchors required a whitespace character after the keyword).
+      # The second grep drops lines whose file content starts with `#` (comment-only lines)
+      # so that commented mentions of the banned builtin (e.g., `# don't use readarray`)
+      # don't false-positive — only real invocations trigger the gate.
       - name: Reject Bash 4+ builtins (portability gate)
         run: |
-          if grep -rnE '\breadarray\b|\bmapfile\b|\bwait -n\b|\bcoproc\b' \
+          MATCHES=$(grep -rnE '\breadarray\b|\bmapfile\b|\bwait -n\b|\bcoproc\b' \
               --include="*.sh" \
               --exclude-dir=node_modules \
               --exclude-dir=.git \
               --exclude-dir=.husky \
-              .; then
-            echo "ERROR: Bash 4+ builtin detected."
+              . | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "ERROR: Bash 4+ builtin detected (not in a comment):"
+            echo "$MATCHES"
             echo "These shell scripts must remain compatible with macOS Bash 3.2."
             echo "Replace readarray/mapfile with IFS+read loops."
             exit 1
