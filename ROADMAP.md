@@ -15,9 +15,9 @@ Before any month-1 code: **commit to "single shared trace, specialist roles insi
 | Month | Ship | KPI |
 |---|---|---|
 | **M0 (shipped 2026-05-19, PR #118)** | Eval set, ADR-0001/0002/0003, VerifierAgent scaffold, SECURITY.md, NON_GOALS.md, Operating Standard | Foundation locked, all four canonical spec files exist |
-| **M1** | Closed-loop verifier (Docker sandbox + retry loop + Discord). Standing-team daily standup (parallel) | >80% of IFleet PRs pass external CI on first try; daily Discord post live |
-| **M2** | Plan-Reviewer agent (NOT diff-reviewer — that exists). Renames existing reviewer→diff-reviewer | 20% of plans get reviewer feedback; bugs caught pre-verifier |
-| **M3** | Cross-repo knowledge graph (tree-sitter + Postgres + pgvector). Architect `query_code_graph` tool | Architect `cost_usd` per task on eval-set replays -30-50% vs M1 baseline |
+| **M1 ✅ Done (2026-05-20, PRs #130 #135)** | Closed-loop verifier (Docker sandbox + retry loop + Discord). Standing-team daily standup (parallel) | >80% of IFleet PRs pass external CI on first try; daily Discord post live |
+| **M2 ✅ Done (2026-05-20, PR #132)** | Plan-Reviewer agent (NOT diff-reviewer — that exists). Renames existing reviewer→diff-reviewer | 20% of plans get reviewer feedback; bugs caught pre-verifier |
+| **M3 ✅ Done (2026-05-20, PR #134)** | Cross-repo knowledge graph (tree-sitter + Postgres + pgvector). Architect `query_code_graph` tool | Architect `cost_usd` per task on eval-set replays -30-50% vs M1 baseline |
 | **M4** | Behavioral fingerprinting + PR rejection learning (shared `pr_decisions` + `verifier_runs` tables) | 50% of merged PRs have fingerprint diff; reviewer preference cards for top 3 reviewers |
 | **M5** | Goal-driven mode (Proposer + budget gate + #ifleet-proposals channel) | ≥1 approved+merged proposal/week, 0 noise complaints |
 | **M6** | Cross-repo coherence (drift detector) + economic routing (Thompson sampling bandit) | Drift PRs >70% merge rate; cost per task -25% |
