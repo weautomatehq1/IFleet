@@ -112,7 +112,7 @@ CREATE INDEX idx_verifier_failures_run ON verifier_failures(run_id);
 | No `test` script in package.json | Run build+lint+typecheck only, label PR `verified: partial` |
 | Test flaky (>20% historical flake) | Track in `verifier_runs.flake_rate`, ignore with banner |
 | Sandbox >10 min | SIGKILL, mark `timeout`, surface cost |
-| Repo needs secrets | Mount `.env.verify` from control plane, ACL'd per channel |
+| Repo needs secrets | Mount `.ifleet/verify-env/<repoId>.env` via `--env-file` (banner: `verify-env: not configured` when missing). ACL gate is future work. See [docs/runbooks/secrets.md](../runbooks/secrets.md) |
 | Docker daemon down | Fall back to in-worktree `src/verify/` with banner `sandbox: unavailable`, alert |
 | OOM | Cap container 4GB RAM; if hit, label `verified: partial` |
 | `pnpm install` fails (network / registry) | Retry once with backoff, then mark `error` (not `failed`) |
