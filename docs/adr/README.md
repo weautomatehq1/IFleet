@@ -28,7 +28,7 @@ Field notes:
 
 Frontmatter is in addition to (not a replacement for) the existing `**Status:** … **Decider:** …` lines in the body — those stay for human readers; the YAML is for tooling.
 
-## Existing load-bearing decisions to capture as ADRs
+Existing load-bearing decisions to capture as ADRs:
 
 - SprintManager emits events; queue bridge owns all GitHub I/O
 - Single-seat Max-plan policy (no parallel sessions)

@@ -19,10 +19,10 @@ Extends: src/verify/
 
 The shipped sandbox image diverged from the originally-specced one. Audit findings F-004 and F-007 in `docs/elevation/audit-2026-05-20.md` flagged this; the divergence is in production already, so this amendment records the corrected baseline rather than revising the underlying decision.
 
-- Base image: was `node:20-bookworm`, now `node:24-bookworm-slim`
-- Package manager pin: was `pnpm@9`, now `pnpm@11`
+- Base image: `node:20-bookworm` superseded by `node:24-bookworm-slim`
+- Package manager pin: `pnpm@9` superseded by `pnpm@11`
 
-The Image strategy section below has been updated in place to reflect the shipped state. No other decision content is affected.
+The Image strategy line below preserves the original decision (struck through) and points to this Amendment for the shipped state. The Amendment block is the canonical reference for "what runs in production". No other decision content is affected.
 
 ## Context
 
@@ -60,7 +60,7 @@ editor.completed (branch SHA)
 
 ## Image strategy
 
-- Base image: `node:24-bookworm-slim` + `pnpm@11` + `git` + `curl` + `python3` (for Python repos)
+- ~~Base image: `node:20-bookworm` + `pnpm@9` + `git` + `curl` + `python3` (for Python repos)~~ → see Amendment 2026-05-20
 - Per-repo image: `ifleet-verifier:<repo-id>-<lockfile-hash>` — cached, rebuilt on lockfile change
 - Build context: `scripts/verifier-image/` (Dockerfile.base + per-repo overlays)
 - Cache mount: `~/.pnpm-store` mounted as Docker volume for fast installs
