@@ -53,7 +53,7 @@ The 6-month plan has one expensive-to-reverse decision: **single shared trace vs
 | M2 | Plan-Reviewer agent (renamed diff-reviewer, reviewer catches pre-verifier bugs) | #132 |
 | M3 | KG schema + indexer (tree-sitter + Postgres + pgvector core) | #134 |
 
-Canary disagreement alerter also shipped (PR #153).
+Canary disagreement alerter shipping via `feat/canary-disagreement-alerting` (07b5781).
 
 ## Next sprint — Phase 2: 24/7 continuous operation
 
