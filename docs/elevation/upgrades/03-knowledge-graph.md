@@ -12,7 +12,7 @@ Cross-repo: `cross_repo_links` table flags candidates ("`User` in repo A == `Use
 
 - Architect currently re-derives context via grep every sprint → linear token cost growth.
 - RepoGraph (ICLR 2025) shows +32.8% performance from graph-based retrieval across agent frameworks.
-- Codebase-Memory shows 10× fewer tokens for equivalent answer quality.
+- Codebase-Memory (arxiv 2603.27277) shows tree-sitter + MCP KG hits 83% answer quality at 10× fewer tokens and 2.1× fewer tool calls vs. brute-force file exploration.
 - Foundation for: cross-repo coherence watcher (M6), PR rejection learning (M4), self-improving IFleet (deferred).
 
 ## Integration into IFleet

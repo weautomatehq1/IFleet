@@ -16,7 +16,7 @@ The elevation plan **threads into** existing IFleet code, it does not replace it
 - No code changes in M0/M1 — `src/verify/` keeps doing what it does.
 - M1.W1 adds `src/agents/verifier/` as a new sibling directory.
 - M1.W2 wires `editor.completed` → `VerifierAgent` (existing `verify/` still runs inside editor session).
-- M4: `verify/screenshot.ts` extends to write `fingerprint_before` / `fingerprint_after` JSON (additive, no removal).
+- M4: `verify/screenshot.ts` is consumed by `src/agents/verifier/fingerprint/ui.ts` to produce `fingerprint_before` / `fingerprint_after` JSON (additive, no removal).
 
 **Affected files in M1:** `src/orchestrator/sprint.ts` (subscribe new event), `src/orchestrator/types.ts` (new event type), `src/orchestrator/store.ts` (new migration).
 
@@ -40,7 +40,7 @@ The elevation plan **threads into** existing IFleet code, it does not replace it
 
 **New role (M1+, per ADR-0001):** Becomes a **derived artifact**. Trace events → nightly summarizer → `learnings.md`. No more direct writes from inside sprint execution.
 
-**Why:** The single-trace invariant. If `learnings.md` is written outside the trace, the trace is no longer the source of truth, and shadow eval (M0.U8) can't replay reliably.
+**Why:** The single-trace invariant. If `learnings.md` is written outside the trace, the trace is no longer the source of truth, and shadow eval (Upgrade 10) can't replay reliably.
 
 **Migration path:**
 - M1.W1: Keep current behavior, add `learnings.md.derived` written from trace nightly. Compare for drift.

@@ -73,11 +73,11 @@ The architecture choices in this plan are grounded in:
 - **OpenHands** (docs.openhands.dev) — Docker sandbox event-stream pattern, agent-environment interface
 - **AutoCodeRover** (github.com/AutoCodeRoverSG) — AST-aware search beats string match, 46.2% on Verified at <$0.7/task
 - **RepoGraph** (arxiv 2410.14684, ICLR 2025) — graph-based retrieval +32.8% across frameworks
-- **Codebase-Memory** (arxiv 2603.27277) — tree-sitter + KG: 83% answer quality at 10× fewer tokens
+- **Codebase-Memory** (arxiv 2603.27277) — tree-sitter + MCP KG hits 83% answer quality at 10× fewer tokens and 2.1× fewer tool calls vs. brute-force file exploration
 - **MARS** (arxiv 2509.20502) — Author→Reviewer→Meta matches multi-agent debate at ~50% fewer tokens
 - **Voyager** (arxiv 2305.16291) — automatic curriculum + skill library pattern (ports directly to repos)
 - **Spotify Honk Part 3** (engineering.atspotify.com, Dec 2025) — strong feedback loops differentiate background agents that work from ones that spam
-- **SICA** (arxiv 2504.15228, ICLR 2025) — self-improving agent pattern (with weak guardrails; our M0.U8 adds AGrail-style constraints)
+- **SICA** (arxiv 2504.15228, ICLR 2025) — self-improving agent pattern (with weak guardrails; our Upgrade 10 adds AGrail-style constraints)
 - **AgentAssay** (arxiv 2603.02601) — behavioral fingerprinting catches 86% regressions where binary pass/fail catches 0%
 - **Cognition Devin 2025 Review** (cognition.ai/blog) — 67% PR merge rate, 10-14× speedup on file-level legacy migrations
 - **Don't Build Multi-Agents** (news.smol.ai/issues/25-06-13) — Walden Yan / Cognition; canonical context-engineering position

@@ -35,7 +35,7 @@ The 6-month plan has one expensive-to-reverse decision: **single shared trace vs
 - `src/agents/verifier/` exists with empty TypeScript shell, types defined, migration file added (verifier_runs + verifier_failures tables), Dockerfile.base scaffolded
 - `SECURITY.md` lists protected paths (at minimum: `src/orchestrator/sprint.ts`, `src/queue/`, `src/server.ts`, `.env*`, `deploy/`, `nginx/`, `ecosystem.config.cjs`)
 - `NON_GOALS.md` lists the 7+ items from CLAUDE.md and ARCHITECTURE.md out-of-scope sections
-- `.ifleet/eval/eval-set.jsonl` exists with ≥50 rows
+- `.ifleet/eval/eval-set.jsonl` exists with ≥10 rows (current realistic ceiling); reach 50 by M3 as sibling repos ship more PRs
 - `docs/elevation/operating-standard.md` reviewed and merged
 
 ## Verification
@@ -43,7 +43,7 @@ The 6-month plan has one expensive-to-reverse decision: **single shared trace vs
 - Run `pnpm build` — green
 - Run `pnpm test` — green
 - `git grep -l "single-trace" docs/adr/` returns ADR-0001
-- `wc -l .ifleet/eval/eval-set.jsonl` ≥ 50
+- `wc -l .ifleet/eval/eval-set.jsonl` ≥ 10 (M0.W1 ship gate; ≥50 is the M3 target)
 
 ## Next sprint (M1.W2)
 
