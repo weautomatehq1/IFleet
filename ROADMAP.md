@@ -14,7 +14,7 @@ Before any month-1 code: **commit to "single shared trace, specialist roles insi
 
 | Month | Ship | KPI |
 |---|---|---|
-| **M0 (this week)** | Eval set, ADR-0001/0002/0003, VerifierAgent scaffold, SECURITY.md, NON_GOALS.md, Operating Standard | Foundation locked, all four canonical spec files exist |
+| **M0 (shipped 2026-05-19, PR #118)** | Eval set, ADR-0001/0002/0003, VerifierAgent scaffold, SECURITY.md, NON_GOALS.md, Operating Standard | Foundation locked, all four canonical spec files exist |
 | **M1** | Closed-loop verifier (Docker sandbox + retry loop + Discord). Standing-team daily standup (parallel) | >80% of IFleet PRs pass external CI on first try; daily Discord post live |
 | **M2** | Plan-Reviewer agent (NOT diff-reviewer — that exists). Renames existing reviewer→diff-reviewer | 20% of plans get reviewer feedback; bugs caught pre-verifier |
 | **M3** | Cross-repo knowledge graph (tree-sitter + Postgres + pgvector). Architect `query_code_graph` tool | Architect token cost per task -30-50% |
@@ -24,7 +24,7 @@ Before any month-1 code: **commit to "single shared trace, specialist roles insi
 
 ## Deferred (gated on eval set + safety constraints)
 
-- **Self-improving IFleet** (M0.U8) — IFleet ships PRs to IFleet. Locked until eval set ≥50 historical tasks AND SECURITY.md-protected paths exist. Earliest M4.
+- **Self-improving IFleet** (Upgrade 10) — IFleet ships PRs to IFleet. Locked until ALL of: (1) `.ifleet/eval/eval-set.jsonl` ≥50 rows, (2) `SECURITY.md` protected paths exist, (3) `docs/elevation/operating-standard.md` signed off, (4) shadow-eval harness exists, (5) `deploy/rollback.sh` documented. See `docs/elevation/upgrades/10-self-improvement.md:9` for current state. Earliest M4.
 
 ## Dependency chain
 

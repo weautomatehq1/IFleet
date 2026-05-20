@@ -6,7 +6,7 @@
 
 **Hard prerequisites — verify all before starting:**
 
-- [ ] `.ifleet/eval/eval-set.jsonl` has ≥50 rows
+- [ ] `.ifleet/eval/eval-set.jsonl` has ≥50 rows (per `eval-set.md` sizing schedule; SPRINT.md targets ≥50 by M3, with further growth to ≥100 by M5)
 - [ ] `SECURITY.md` lists protected paths
 - [ ] `docs/elevation/operating-standard.md` signed off (Sebastian + legal if applicable)
 - [ ] Shadow eval harness exists (replays eval-set tasks against candidate code, reports metrics)
