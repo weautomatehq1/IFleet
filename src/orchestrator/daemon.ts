@@ -73,6 +73,8 @@ async function main(): Promise<void> {
 
   // -------- Persistent state --------
   const store = new TaskStore(process.env['IFLEET_STATE_DIR'] ? undefined : defaultTasksDbPath());
+  const staleCount = store.recoverStale();
+  if (staleCount > 0) console.warn(`[daemon] recovered ${staleCount} stale in_flight task(s) → pending`);
 
   // -------- Routing / repos --------
   const router = FileChannelRouter.fromFile(channelsPath);
@@ -131,6 +133,19 @@ async function main(): Promise<void> {
   // both before the worktree is torn down (which happens before task.completed).
   const verifierCtx = new TaskContextRegistry();
   const orchestratorStore = new StateStore();
+
+  // Cancel any sprints still marked 'running' from a previous crash so
+  // resumeAbandoned() has nothing to recover — preventing double-dispatch when
+  // recoverStale() just reset their tasks back to pending.
+  const staleSprintNow = Date.now();
+  for (const sprint of orchestratorStore.listSprintsByStateKind('running')) {
+    orchestratorStore.saveSprint({
+      ...sprint,
+      state: { kind: 'failed', at: staleSprintNow, error: 'cancelled: stale on daemon boot' },
+      updatedAt: staleSprintNow,
+    });
+  }
+
   const orchestrator = new Orchestrator({
     store: orchestratorStore,
     adapter: { spawn: () => Promise.reject(new Error('raw spawn disabled — use pipelineFactory')) },
