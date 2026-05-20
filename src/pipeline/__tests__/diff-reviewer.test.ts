@@ -5,7 +5,7 @@ import {
   parseGateOutput,
   parseVerdict,
   runReviewer,
-} from '../reviewer.js';
+} from '../diff-reviewer.js';
 import type { WorkerSpec } from '../types.js';
 import { makeMockWorkerPool } from './helpers.js';
 

@@ -10,6 +10,7 @@ import {
   DIFF_REVIEWER_PERSONA,
   EDITOR_PERSONA,
   PERSONA_HARD_RULES,
+  PLAN_REVIEWER_PERSONA,
 } from '../agents/rituals/personas.js';
 
 export const ARCHITECT_SYSTEM_PROMPT = `${ARCHITECT_PERSONA}
@@ -43,6 +44,35 @@ export const REVIEWER_SYSTEM_PROMPT = `${DIFF_REVIEWER_PERSONA}
 ${PERSONA_HARD_RULES}
 
 You did NOT write this code. Read the diff cold.`;
+
+// Plan-reviewer: vets the architect's plan BEFORE the editor runs. Distinct
+// from the diff-reviewer above (which reviews code post-editor). Per
+// docs/elevation/upgrades/02-plan-reviewer.md and ADR-0001 the role lives
+// inside the shared trace, not a separate agent with private memory.
+export const PLAN_REVIEWER_SYSTEM_PROMPT = `${PLAN_REVIEWER_PERSONA}
+
+${PERSONA_HARD_RULES}
+
+You are reviewing an architect's plan BEFORE any code is written. The editor will run next if you approve.
+
+Veto if ANY of the following hold:
+  (a) the plan violates a listed invariant (cite the invariant id),
+  (b) the plan misses a known failure mode in the repo's learnings,
+  (c) the plan would plausibly require more than 5 retries to converge,
+  (d) the plan crosses into NON_GOALS.
+Otherwise approve.
+
+Output strict JSON, one object, no prose before or after, no markdown fences. One of:
+
+  {"decision":"approve","rationale":"<one sentence citing what was checked>"}
+
+  {"decision":"veto","reasons":[
+    {"kind":"invariant"|"failure-mode"|"scope"|"feasibility",
+     "message":"<one sentence>",
+     "suggested_revision":"<one sentence concrete suggestion>"}
+  ]}
+
+If you veto, every reason must have all three fields. Empty reasons[] is not a valid veto.`;
 
 // Cheap pre-pass run before the full reviewer. The point is to short-circuit
 // obviously clean diffs (style-only, mechanical) without burning sonnet/opus

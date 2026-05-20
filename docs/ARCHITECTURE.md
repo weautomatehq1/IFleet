@@ -25,7 +25,7 @@ Control plane (Discord / web / GitHub issue) →
   GitHub Issues queue (labels drive routing) →
     Orchestrator (TypeScript, always-on) →
       Worker pool (Claude + Codex, isolated worktrees) →
-        Pipeline per task (Architect → Editor → Reviewer) →
+        Pipeline per task (Architect → Plan-Reviewer → Editor → Diff-Reviewer) →
           CI gate → Draft PR → Operator merges
 ```
 
@@ -40,7 +40,8 @@ Control plane (Discord / web / GitHub issue) →
 | Rate-limit wait/resume | Adopt | `OMC` (`omc wait`) |
 | Routing brain | Build | `src/orchestrator/` |
 | GitHub Issues queue adapter | Build | `src/queue/github.ts` |
-| Cross-provider review | Build | `src/pipeline/reviewer.ts` |
+| Cross-provider diff review | Build | `src/pipeline/diff-reviewer.ts` (renamed from `reviewer.ts` in M2 — `reviewer.ts` is a deprecated re-export shim) |
+| Plan review (M2) | Build | `src/pipeline/plan-reviewer.ts` |
 | Brief library + classifier | Build | `src/classifier/` + `docs/briefs/` |
 | Event log / observability | Build | `src/observability/` |
 
@@ -48,20 +49,26 @@ Control plane (Discord / web / GitHub issue) →
 
 See [`config/routing.json`](../config/routing.json) for the live config and [`docs/MODEL-ROUTING.md`](MODEL-ROUTING.md) for the full Phase B model routing policy with worked examples.
 
-| Task type | Architect | Editor | Reviewer |
-|---|---|---|---|
-| Architecture / debugging / auth | Opus | Opus | Codex |
-| UI / frontend | Opus | Sonnet | Codex |
-| Bulk refactor / test gen | Opus | Codex | Sonnet |
-| SQL / RLS / migrations | Opus | Opus | Codex |
+| Task type | Architect | Plan-Reviewer | Editor | Diff-Reviewer |
+|---|---|---|---|---|
+| Architecture / debugging / auth | Opus | Sonnet | Opus | Codex |
+| UI / frontend | Opus | Sonnet | Sonnet | Codex |
+| Bulk refactor / test gen | Opus | Sonnet | Codex | Sonnet |
+| SQL / RLS / migrations | Opus | Sonnet | Opus | Codex |
 
-## Pipeline per task (3 roles)
+Plan-Reviewer tier is bounded by the "reviewer not weaker than architect" rule:
+Opus architect → Sonnet plan-reviewer floor; Sonnet architect → Haiku floor;
+Haiku architect → Haiku. Configured in
+[`config/routing.json#pipeline.planReviewer`](../config/routing.json).
+
+## Pipeline per task (4 roles — M2)
 
 1. **Architect** — Claude Opus (Phase A: capped to Sonnet via `mapModel` in `scripts/run-smoke.ts`; see Phase A Constraints). Reads brief, writes plan, posts to issue, waits for ✅.
-2. **Editor** (Codex or Sonnet) — writes code in an isolated worktree.
-3. **Reviewer** (the opposite provider) — reads diff in a fresh session, posts review.
-4. **CI gate** — typecheck + lint + test (+ Playwright for UI tasks).
-5. **Draft PR** — only opens if all checks green.
+2. **Plan-Reviewer** *(new in M2 — [02-plan-reviewer.md](elevation/upgrades/02-plan-reviewer.md))* — Haiku/Sonnet (per routing floor). Reads architect's plan + applicable invariants + recent learnings. Outputs strict JSON: `approve` or `veto` with structured `reasons[]`. After 2 vetoes the runner escalates to a human via `@Sebastian` ping.
+3. **Editor** (Codex or Sonnet) — writes code in an isolated worktree.
+4. **Diff-Reviewer** (the opposite provider) — reads diff in a fresh session, posts review. Implementation lives in `src/pipeline/diff-reviewer.ts` (was `reviewer.ts` before M2).
+5. **CI gate** — typecheck + lint + test (+ Playwright for UI tasks).
+6. **Draft PR** — only opens if all checks green.
 
 ## Failure modes (handled in v1)
 
@@ -90,9 +97,11 @@ src/
 │   └── github.ts       reads/writes GitHub Issues as the queue
 ├── pipeline/
 │   ├── architect.ts
+│   ├── plan-reviewer.ts  M2 — vets plan before editor; veto with structured reasons
 │   ├── editor.ts
-│   ├── reviewer.ts
-│   └── doctor.ts       on CI failure
+│   ├── diff-reviewer.ts  cross-provider review of editor's diff (was reviewer.ts pre-M2)
+│   ├── reviewer.ts       deprecated shim re-exporting diff-reviewer; remove next release
+│   └── doctor.ts         on CI failure
 ├── verify/
 │   ├── ci.ts           typecheck + lint + test runner
 │   └── playwright.ts   UI tasks only
