@@ -1,17 +1,67 @@
+import { readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { AttemptRecord, WorkerPool, WorkerSpec } from './types.js';
 import { PLAN_REVIEWER_SYSTEM_PROMPT } from './prompts.js';
+
+// Defensive fallbacks used when config/routing.json is missing or omits the
+// pipeline.planReviewer fields. Spec source of truth is
+// docs/elevation/upgrades/02-plan-reviewer.md ("Max 2 veto cycles" /
+// "Cap plan-review cost at 10% of architect cost"); config/routing.json
+// mirrors those values and is the single source of truth at runtime.
+const PLAN_REVIEWER_MAX_VETOES_FALLBACK = 2;
+const PLAN_REVIEW_COST_CAP_MULTIPLIER_FALLBACK = 0.1;
+
+function loadPlanReviewerDefaults(): {
+  maxVetoes: number;
+  costCapMultiplier: number;
+} {
+  try {
+    const repoRoot = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
+    const raw = readFileSync(resolve(repoRoot, 'config', 'routing.json'), 'utf-8');
+    const parsed = JSON.parse(raw) as {
+      pipeline?: {
+        planReviewer?: {
+          maxVetoes?: number;
+          costCapPctOfArchitect?: number;
+        };
+      };
+    };
+    const pr = parsed.pipeline?.planReviewer;
+    const maxVetoes =
+      typeof pr?.maxVetoes === 'number' && Number.isFinite(pr.maxVetoes) && pr.maxVetoes > 0
+        ? Math.floor(pr.maxVetoes)
+        : PLAN_REVIEWER_MAX_VETOES_FALLBACK;
+    // routing.json carries percent (e.g. 10), the runtime uses multiplier
+    // (e.g. 0.1). Convert at the boundary so the JSON stays human-readable.
+    const costCapMultiplier =
+      typeof pr?.costCapPctOfArchitect === 'number' &&
+      Number.isFinite(pr.costCapPctOfArchitect) &&
+      pr.costCapPctOfArchitect >= 0
+        ? pr.costCapPctOfArchitect / 100
+        : PLAN_REVIEW_COST_CAP_MULTIPLIER_FALLBACK;
+    return { maxVetoes, costCapMultiplier };
+  } catch {
+    return {
+      maxVetoes: PLAN_REVIEWER_MAX_VETOES_FALLBACK,
+      costCapMultiplier: PLAN_REVIEW_COST_CAP_MULTIPLIER_FALLBACK,
+    };
+  }
+}
+
+const PLAN_REVIEWER_DEFAULTS = loadPlanReviewerDefaults();
 
 /**
  * Maximum number of veto cycles before the runner escalates to a human.
  * After this many consecutive vetoes the sprint halts and Sebastian is
  * pinged with the structured disagreement (see runner.ts).
  *
- * Spec: docs/elevation/upgrades/02-plan-reviewer.md — "Max 2 veto cycles".
+ * Sourced from `config/routing.json` → `pipeline.planReviewer.maxVetoes`,
+ * with a defensive fallback when the field is missing.
  */
-export const PLAN_REVIEWER_MAX_VETOES = 2;
+export const PLAN_REVIEWER_MAX_VETOES = PLAN_REVIEWER_DEFAULTS.maxVetoes;
 
 export type PlanReviewReasonKind =
   | 'invariant'
@@ -116,7 +166,12 @@ export interface PlanReviewerOutput {
   skipped?: PlanReviewSkipReason;
 }
 
-export const DEFAULT_PLAN_REVIEW_COST_CAP_MULTIPLIER = 0.1;
+/**
+ * Plan-review cost ceiling expressed as a multiplier of the architect's cost.
+ * Sourced from `config/routing.json` → `pipeline.planReviewer.costCapPctOfArchitect`
+ * (percent, e.g. `10`); converted to a multiplier (`0.1`) at the boundary.
+ */
+export const DEFAULT_PLAN_REVIEW_COST_CAP_MULTIPLIER = PLAN_REVIEWER_DEFAULTS.costCapMultiplier;
 
 export async function runPlanReviewer(
   input: RunPlanReviewerInput,

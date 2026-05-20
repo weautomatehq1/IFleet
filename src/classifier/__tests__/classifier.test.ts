@@ -377,3 +377,48 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
     assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
   });
 });
+
+describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-reviewer.md)', () => {
+  // Floor table from docs/elevation/upgrades/02-plan-reviewer.md:
+  //   architect=opus   → planReviewer=sonnet (opus cap protects rate limit)
+  //   architect=sonnet → planReviewer=haiku  (default cheap tier)
+  //   architect=haiku  → planReviewer=haiku  (already at floor)
+  // PR #132 fixed F-002 (haiku-floor classifier bug); these tests pin the
+  // contract so a future refactor cannot silently regress it.
+
+  it('plan-reviewer floor — architect Opus → Sonnet', () => {
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship', 'complexity:high'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
+    assert.equal(result.planReviewer?.model, 'claude-sonnet-4-6');
+    assert.equal(result.planReviewer?.provider, 'claude');
+  });
+
+  it('plan-reviewer floor — architect Sonnet → Haiku', () => {
+    const result = classifyTask({
+      title: 'add a new feature toggle',
+      body: '',
+      labels: ['auto:ship'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
+    assert.equal(result.planReviewer?.model, 'claude-haiku-4-5-20251001');
+    assert.equal(result.planReviewer?.provider, 'claude');
+  });
+
+  it('plan-reviewer floor — architect Haiku → Haiku', () => {
+    const result = classifyTask({
+      title: 'fix typo in readme',
+      body: 'one character',
+      labels: ['auto:ship'],
+    });
+    assert.equal(result.architect.model, 'claude-haiku-4-5-20251001');
+    assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
+    assert.equal(result.planReviewer?.model, 'claude-haiku-4-5-20251001');
+    assert.equal(result.planReviewer?.provider, 'claude');
+  });
+});
