@@ -124,13 +124,13 @@ plan.context_used = context.nodes.map(n => ({ path: n.path, name: n.name, lines:
 
 ## Implementation order
 
-| Week | Deliverable |
-|---|---|
-| W1 | Postgres setup (Supabase decision per ADR-0003). Schema migration. tree-sitter for TypeScript only, no embeddings. Indexer triggered manually via `pnpm graph:index <repo>`. |
-| W2 | pgvector + embeddings (Voyage code-3 OR OpenAI text-embedding-3-small). Architect `query_code_graph` tool. |
-| W3 | GitHub webhook integration. Incremental updates. Architect uses graph for top 3 routine task types in production. |
-| W4 | Cross-repo link generation. Discord `/graph` commands. Human confirmation workflow. |
-| W5-6 | Python + Go tree-sitter parsers. Reconciliation cron. |
+| Week | Deliverable | Status |
+|---|---|---|
+| W1 | Postgres setup (Supabase decision per ADR-0003). Schema migration. tree-sitter for TypeScript only. Indexer triggered manually via `pnpm graph:index <repoId> <pathToCheckout>`. Voyage embedding pipeline scaffolded (best-effort, gracefully off when key missing). Architect `query_code_graph` tool **stub** behind `IFLEET_KG_ENABLED`. | **shipped — feat/m3-knowledge-graph-core** |
+| W2 | pgvector live embeddings on every index pass. Architect `query_code_graph` real traversal (ego-graph + semantic fallback). | pending |
+| W3 | GitHub webhook integration. Incremental updates. Architect uses graph for top 3 routine task types in production. | pending |
+| W4 | Cross-repo link generation. Discord `/graph` commands. Human confirmation workflow. | pending |
+| W5-6 | Python + Go tree-sitter parsers. Reconciliation cron. | pending |
 
 ## Embedding choice — decide M3.W2
 
