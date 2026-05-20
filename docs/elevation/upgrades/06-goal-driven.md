@@ -130,7 +130,7 @@ The `resulting_pr_outcome` column is what closes the loop — Voyager's iterativ
 | Same goal proposed every night | Semantic dedup against last 30d |
 | Approved goal fails verifier 3× | Auto-reject + write to learnings.md with failure mode |
 | Noise complaints from Sebastian | Tighten scoring threshold; reduce default budget; require ROADMAP.md cross-reference |
-| Proposer LLM cost spike | Hard cap proposer cost at $0.50/repo/day; abort otherwise |
+| Proposer LLM cost spike | Proposer `cost_usd` accumulates into the sprint's existing `BUDGET_USD` guard; if the sprint guard trips, the Proposer aborts with the rest of the sprint (no new per-task scarcity cap — reuse the per-sprint guardrail) |
 
 ## Implementation order
 
@@ -147,7 +147,7 @@ The `resulting_pr_outcome` column is what closes the loop — Voyager's iterativ
 - ≥1 proposal approved and merged in week 1 of operation.
 - 0 proposals violate NON_GOALS (verified by Sebastian over the week).
 - Dedup catches at least 1 duplicate (verified by inspecting `goal_proposals` for cos_sim ≥0.85 cases).
-- Proposer cost <$5 total across all repos over 7 days.
+- Proposer `cost_usd` over the 7-day DoD window stays within the sprint `BUDGET_USD` guardrail (no separate proposer-only cap; share-of-sprint-budget reported in week-end rollup against `verifier_runs.cost_usd`).
 
 ## References
 

@@ -71,7 +71,7 @@ Each upgrade benchmarks against the eval set with these metrics:
 |---|---|---|---|
 | `verifier_pass_rate` | % of eval tasks where verifier passes after pipeline runs | unknown | >80% |
 | `merge_first_review_rate` | % where reviewer would approve without changes | unknown | >60% |
-| `architect_tokens_per_task` | avg input tokens to architect role | unknown | -30-50% (M3+) |
+| `architect_cost_per_task` | avg `cost_usd` attributed to architect role on eval-set replays | unknown | -30-50% (M3+) |
 | `cost_per_task` | avg USD spent per task (cost_usd in trace) | unknown | -25% (M6+) |
 | `disagreement_rate` | % where verifier-pass but human-reviewer-reject | unknown | <25% |
 | `false_positive_rate` | % where verifier-fail but task is actually correct | unknown | <10% |
