@@ -11,13 +11,19 @@ These files/directories are load-bearing for IFleet's operation or contain secre
 | `.env`, `.env.*` (except `.env.example`) | Secrets — Discord bot token, Claude API key, HMAC secret, GitHub token, Sentry DSN |
 | `ecosystem.config.cjs` | PM2 process config — controls VPS daemon lifecycle |
 | `nginx/**` | Reverse proxy config — wrong rule = control plane unreachable |
-| `deploy/**` | VPS deployment scripts — direct path to production |
+| `deploy/deploy.sh`, `deploy/install-vps.sh`, `deploy/env.example`, `deploy/README.md` | VPS deployment scripts — direct path to production |
 | `src/server.ts` | HMAC verification, Discord webhook entry — auth boundary |
 | `src/orchestrator/sprint.ts` | SprintManager — the trace owner; corruption breaks everything |
 | `src/orchestrator/store.ts` | SQLite state — task state + idempotency dedup |
 | `src/queue/**` | GitHub bridge — the ONLY layer allowed to call GitHub API |
 | `config/routing.json` | Live model routing — wrong edit costs money or breaks pipeline |
 | `docs/adr/**` | Architecture Decision Records — immutable, only superseded |
+
+### Carve-outs (agent-writable under stricter rules)
+
+| Path | Rule |
+|---|---|
+| `deploy/postgres/**` | Knowledge-graph schema migrations. Agents MAY add new `NNNN-*.sql` files. **Additive only** — never `DROP`, `TRUNCATE`, `DELETE`, `ALTER ... DROP`, or any destructive statement. Renames must use `ALTER TABLE ... RENAME` (still additive). One migration per PR. Forward-only — to revert, write a new additive migration. |
 
 ## Self-modification constraints (for IFleet→IFleet PRs, M4+)
 
