@@ -21,6 +21,7 @@ The shipped sandbox image diverged from the originally-specced one. Audit findin
 
 - Base image: `node:20-bookworm` superseded by `node:24-bookworm-slim`
 - Package manager pin: `pnpm@9` superseded by `pnpm@11`
+- Terminology normalized: `M0.U8` superseded by `Upgrade 10` (Context and Consequences sections). No decision change; label rename only. Original token struck through per immutability rule (audit-fixes split 20260520-1145, MEDIUM finding).
 
 The Image strategy line below preserves the original decision (struck through) and points to this Amendment for the shipped state. The Amendment block is the canonical reference for "what runs in production". No other decision content is affected.
 
@@ -31,7 +32,7 @@ IFleet's existing `src/verify/` (ci.ts, playwright.ts, runner.ts, screenshot.ts)
 - No isolation from host state (filesystem, env vars, network)
 - No clean reset between runs (flaky test caused by prior artifact)
 - Cannot run untrusted code from external contributors safely
-- Cannot be replayed deterministically for the shadow eval (Upgrade 10)
+- Cannot be replayed deterministically for the shadow eval (~~M0.U8~~ Upgrade 10)
 
 The top of the SWE-Bench Verified leaderboard (87.6% Opus 4.7, 88.7% GPT-5.5) is dominated by systems that run agent actions inside Docker (OpenHands, SWE-agent). Epoch AI ran the entire SWE-Bench Verified set in 1 hour on 1 machine using Docker.
 
@@ -80,7 +81,7 @@ editor.completed (branch SHA)
 
 **Positive:**
 - Closed loop: agent sees deterministic exit codes and reruns
-- Replayable for shadow eval (Upgrade 10)
+- Replayable for shadow eval (~~M0.U8~~ Upgrade 10)
 - Untrusted-code-safe (preview env requirement for client repos)
 
 **Negative:**
