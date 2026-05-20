@@ -57,9 +57,12 @@ jobs:
       # GitHub Actions Ubuntu runners use Bash 5+. The reviewer-subagent caught it manually.
       # Predecessor split: ~/.omc/splits/20260520-0558-cleanup-adr-smoke (HEAD 5f321f5).
       # Audit finding #9 from the brutal review of that split.
+      # Pattern uses \b word boundaries (GNU grep -E, safe on Ubuntu) so that bare
+      # `readarray` at EOL and `$(readarray ...)` in command substitutions are also caught
+      # (the original [[:space:]] anchors required a whitespace character after the keyword).
       - name: Reject Bash 4+ builtins (portability gate)
         run: |
-          if grep -rnE 'readarray[[:space:]]|mapfile[[:space:]]|wait -n|coproc ' \
+          if grep -rnE '\breadarray\b|\bmapfile\b|\bwait -n\b|\bcoproc\b' \
               --include="*.sh" \
               --exclude-dir=node_modules \
               --exclude-dir=.git \
