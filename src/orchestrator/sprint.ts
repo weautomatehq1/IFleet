@@ -391,6 +391,7 @@ export class SprintManager {
     } catch (err) {
       this.registry.release(workerId);
       const message = err instanceof Error ? err.message : String(err);
+      console.error('[sprint] dispatch threw for task', task.id, ':', message, err instanceof Error ? err.stack : '');
       this.store.saveTask({
         ...task,
         brief,
