@@ -63,10 +63,19 @@ type PlanReview =
 
 ## Model choice
 
-- Plan-reviewer: **Haiku** initially (cheap, high volume). Upgrade to Sonnet for high-risk repos via routing config.
+- Plan-reviewer follows the `reviewer ≥ architect-tier` rule — its tier is **derived from the architect's tier**, not statically configured.
+- Default: **Sonnet** (the IFleet default architect = Opus → Sonnet plan-reviewer floor). Downgrade to Haiku only on repos where the architect routes to Sonnet for that repo. Opus plan-review is intentionally capped at Sonnet — it burns the same rate limit the architect cap exists to protect.
 - The diff-reviewer stays cross-provider (Codex if Claude wrote, Claude if Codex wrote) per current architecture.
 
-Critical rule from CLAUDE.md: "Reviewer not weaker than architect" — currently enforced for diff-reviewer. **Extended to plan-reviewer in this upgrade.** If architect = Opus, plan-reviewer ≥ Sonnet. If architect = Sonnet, plan-reviewer ≥ Haiku.
+Critical rule from CLAUDE.md: "Reviewer not weaker than architect" — currently enforced for diff-reviewer. **Extended to plan-reviewer in this upgrade.** Floor table (enforced in `src/classifier/index.ts` and `config/routing.json` `pipeline.planReviewer.floors`):
+
+| Architect tier | Plan-reviewer tier |
+|---|---|
+| Opus | Sonnet |
+| Sonnet | Haiku |
+| Haiku | Haiku |
+
+Haiku plan-review is therefore only reachable when the architect itself routes to Sonnet or Haiku for that repo — never under the default Opus architect.
 
 ## Discord interface
 
