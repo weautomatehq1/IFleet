@@ -28,7 +28,7 @@
 |---|---|---|---|
 | 1 | [Closed-loop verifier](upgrades/01-verifier.md) | M1 | >80% PRs pass external CI first try |
 | 2 | [Plan-Reviewer agent](upgrades/02-plan-reviewer.md) | M2 | 20% of plans get reviewer feedback |
-| 3 | [Cross-repo knowledge graph](upgrades/03-knowledge-graph.md) | M3 | Architect tokens -30-50% |
+| 3 | [Cross-repo knowledge graph](upgrades/03-knowledge-graph.md) | M3 | Architect `cost_usd` per task -30-50% vs M1 baseline |
 | 4 | [Behavioral fingerprinting](upgrades/04-fingerprinting.md) | M4 | 50% of merged PRs labeled `breaking: true/false` |
 | 5 | [PR rejection learning](upgrades/05-pr-learning.md) | M4 | Reviewer preference cards for top 3 reviewers |
 | 6 | [Goal-driven mode](upgrades/06-goal-driven.md) | M5 | ≥1 approved+merged proposal/week |
