@@ -31,6 +31,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const logDir = path.join(process.env.HOME || require('os').homedir(), '.pm2', 'logs');
+
 const envFile = path.join(__dirname, '.env');
 const dotEnv = {};
 if (fs.existsSync(envFile)) {
@@ -59,8 +61,8 @@ module.exports = {
     {
       name: 'control-plane',
       script: 'src/server.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx',
+      interpreter: './node_modules/.bin/tsx',
+      interpreter_args: '',
       autorestart: true,
       max_restarts: 10,
       min_uptime: 10_000,
@@ -72,14 +74,16 @@ module.exports = {
         CONTROL_PLANE_PORT: process.env.CONTROL_PLANE_PORT ?? '3001',
         IFLEET_ROLE: 'control-plane',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/control-plane-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/control-plane-error.log`,
+      out_file: `${logDir}/control-plane-out.log`,
+      error_file: `${logDir}/control-plane-error.log`,
+      out_file: `${logDir}/control-plane-out.log`,
+      error_file: `${logDir}/control-plane-error.log`,
     },
     {
       name: 'ifleet',
       script: 'src/orchestrator/daemon.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx',
+      interpreter: './node_modules/.bin/tsx',
+      interpreter_args: '',
       autorestart: true,
       max_restarts: 10,
       min_uptime: 10_000,
@@ -93,8 +97,10 @@ module.exports = {
         CONTROL_PLANE_PORT: process.env.IFLEET_DAEMON_PORT ?? '3002',
         IFLEET_ROLE: 'daemon',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/ifleet-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/ifleet-error.log`,
+      out_file: `${logDir}/ifleet-out.log`,
+      error_file: `${logDir}/ifleet-error.log`,
+      out_file: `${logDir}/ifleet-out.log`,
+      error_file: `${logDir}/ifleet-error.log`,
     },
     {
       // ifleet-mcp — stdio MCP server. Disabled by default because MCP
@@ -113,8 +119,10 @@ module.exports = {
         IFLEET_ROLE: 'mcp',
         MCP_DEFAULT_REPO: process.env.MCP_DEFAULT_REPO ?? 'weautomatehq1/IFleet',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/ifleet-mcp-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/ifleet-mcp-error.log`,
+      out_file: `${logDir}/ifleet-mcp-out.log`,
+      error_file: `${logDir}/ifleet-mcp-error.log`,
+      out_file: `${logDir}/ifleet-mcp-out.log`,
+      error_file: `${logDir}/ifleet-mcp-error.log`,
     },
     {
       // Doctor self-heal cadence (periodic Haiku scan + morning learnings
@@ -133,8 +141,10 @@ module.exports = {
         DOCTOR_SCAN_DISABLED: '1',
         IFLEET_ROLE: 'doctor-scan',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/doctor-scan-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/doctor-scan-error.log`,
+      out_file: `${logDir}/doctor-scan-out.log`,
+      error_file: `${logDir}/doctor-scan-error.log`,
+      out_file: `${logDir}/doctor-scan-out.log`,
+      error_file: `${logDir}/doctor-scan-error.log`,
     },
     {
       // ifleet-standup — 9am daily standup post to #ifleet.
@@ -151,8 +161,10 @@ module.exports = {
         ...baseEnv,
         IFLEET_ROLE: 'standup',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/ifleet-standup-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/ifleet-standup-error.log`,
+      out_file: `${logDir}/ifleet-standup-out.log`,
+      error_file: `${logDir}/ifleet-standup-error.log`,
+      out_file: `${logDir}/ifleet-standup-out.log`,
+      error_file: `${logDir}/ifleet-standup-error.log`,
     },
     {
       // ifleet-canary — hourly verifier↔reviewer disagreement-rate canary.
@@ -173,8 +185,10 @@ module.exports = {
         IFLEET_ROLE: 'canary',
         IFLEET_CANARY_ALERTING_ENABLED: process.env.IFLEET_CANARY_ALERTING_ENABLED ?? '0',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/ifleet-canary-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/ifleet-canary-error.log`,
+      out_file: `${logDir}/ifleet-canary-out.log`,
+      error_file: `${logDir}/ifleet-canary-error.log`,
+      out_file: `${logDir}/ifleet-canary-out.log`,
+      error_file: `${logDir}/ifleet-canary-error.log`,
     },
     {
       // ifleet-retro — Sunday 8pm weekly retro post to #ifleet-ops.
@@ -191,8 +205,10 @@ module.exports = {
         ...baseEnv,
         IFLEET_ROLE: 'retro',
       },
-      out_file: `${process.env.HOME}/.pm2/logs/ifleet-retro-out.log`,
-      error_file: `${process.env.HOME}/.pm2/logs/ifleet-retro-error.log`,
+      out_file: `${logDir}/ifleet-retro-out.log`,
+      error_file: `${logDir}/ifleet-retro-error.log`,
+      out_file: `${logDir}/ifleet-retro-out.log`,
+      error_file: `${logDir}/ifleet-retro-error.log`,
     },
   ],
 };
