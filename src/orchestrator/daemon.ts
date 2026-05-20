@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     repos: Object.values(reposMap),
   });
   const githubSource = new GitHubIssuesSource(githubQueue);
-  const discordSource = new DiscordSource({ router, out: discordOut });
+  const discordSource = new DiscordSource({ router, out: discordOut, store });
   const unified = new UnifiedQueueAdapter(store, {
     github: githubSource,
     discord: discordSource,

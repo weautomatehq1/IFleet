@@ -40,8 +40,9 @@ function slugify(text: string, maxLen: number): string {
   return slug || 'task';
 }
 
-export function titleToBranchName(issueNumber: number, title: string): string {
+export function titleToBranchName(taskRef: number | string, title: string): string {
   const { type, rest } = extractConventionalPrefix(title);
   const slug = slugify(rest, MAX_SLUG_LEN);
-  return `${type}/smoke-${issueNumber}-${slug}`;
+  const ref = typeof taskRef === 'number' ? String(taskRef) : taskRef.slice(0, 8).toLowerCase();
+  return `${type}/smoke-${ref}-${slug}`;
 }

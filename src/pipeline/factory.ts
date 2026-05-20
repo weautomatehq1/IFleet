@@ -76,8 +76,9 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     if (!task) throw new Error('brief is not a structured QueuedTask payload');
 
     const worker = pool.nextWorker();
-    const branchName = titleToBranchName(task.issueNumber, task.title);
-    const worktreePath = await setupWorktree(task.issueNumber, branchName, worktreesDir, opts.repoRoot);
+    const worktreeKey = task.issueNumber > 0 ? String(task.issueNumber) : task.id;
+    const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
+    const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
 
     const workerPool = buildWorkerPool(worker);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels });
@@ -109,7 +110,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       abortController,
       workerId: worker.id,
       teardown: async (_result: PipelineResult | Error) => {
-        await teardownWorktree(task.issueNumber, branchName, worktreesDir, opts.repoRoot);
+        await teardownWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
       },
     };
   };
@@ -234,12 +235,12 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
 // ---------------------------------------------------------------------------
 
 async function setupWorktree(
-  issueNumber: number,
+  worktreeKey: string,
   branchName: string,
   worktreesDir: string,
   repoRoot: string,
 ): Promise<string> {
-  const worktreePath = join(worktreesDir, `task-${issueNumber}`);
+  const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
   mkdirSync(worktreesDir, { recursive: true });
 
   if (existsSync(worktreePath)) {
@@ -272,12 +273,12 @@ async function setupWorktree(
 }
 
 async function teardownWorktree(
-  issueNumber: number,
+  worktreeKey: string,
   branchName: string,
   worktreesDir: string,
   repoRoot: string,
 ): Promise<void> {
-  const worktreePath = join(worktreesDir, `task-${issueNumber}`);
+  const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
   await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot }).catch(() => undefined);
   await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
   await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);

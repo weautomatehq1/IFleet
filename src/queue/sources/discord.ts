@@ -27,6 +27,13 @@ export interface DiscordSourceOptions {
   defaults?: Partial<RoutingHints>;
   /** Allow ingestion when no ChannelRoute matches. Default: false. */
   allowUnknownChannel?: boolean;
+  /**
+   * Store reference used to persist a late-created threadId back to the row.
+   * Required for tasks submitted via the HTTP control-plane (deferring path)
+   * so that plan-ready and completion handlers that re-fetch the task from the
+   * store see the correct threadId.
+   */
+  store?: TaskStore;
 }
 
 export class DiscordSource implements TaskSource {
@@ -111,7 +118,7 @@ export class DiscordSource implements TaskSource {
   }
 
   async markPicked(task: QueuedTask): Promise<void> {
-    const tid = threadIdOrThrow(task);
+    const tid = await this.resolveThread(task);
     await this.opts.out.postProgress(tid, '🤖 Picked up — worker starting.');
   }
 
@@ -128,6 +135,25 @@ export class DiscordSource implements TaskSource {
   async markBlocked(task: QueuedTask, capability: string): Promise<void> {
     const tid = threadIdOrThrow(task);
     await this.opts.out.postFailed(tid, `Blocked — missing capability: ${capability}`);
+  }
+
+  /**
+   * Returns the Discord thread ID for a task, creating it on-demand when the
+   * task was submitted via the HTTP control-plane (deferring path) and
+   * therefore has no threadId yet. Updates the in-memory task and, when a
+   * store was provided, persists the threadId so plan-ready / completion
+   * handlers that re-fetch the task see it.
+   */
+  private async resolveThread(task: QueuedTask): Promise<string> {
+    if (task.source.kind !== 'discord') {
+      throw new Error(`DiscordSource cannot mark a ${task.source.kind} task`);
+    }
+    if (task.source.threadId) return task.source.threadId;
+    const { threadId } = await this.opts.out.postTaskCreated(task);
+    if (!threadId) throw new Error(`task ${task.id}: postTaskCreated returned no threadId`);
+    task.source.threadId = threadId;
+    this.opts.store?.patchSource(task.id, task.source);
+    return threadId;
   }
 
   private deriveHints(model?: 'opus' | 'sonnet' | 'haiku'): RoutingHints {
