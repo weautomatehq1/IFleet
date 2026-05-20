@@ -4,7 +4,7 @@
 
 ## What it is
 
-A frozen JSONL file at `.ifleet/eval/eval-set.jsonl` containing 50-100 real historical tasks from your active repos. Each row:
+A frozen JSONL file at `.ifleet/eval/eval-set.jsonl` containing real historical tasks from your active repos. Current size: **13 rows** (bootstrapped 2026-05-19 from the available pool of merged PRs that passed the "what NOT to include" filters). The set grows as new PRs land and survive the 7-day revert window. Each row:
 
 ```json
 {
@@ -61,7 +61,7 @@ git add .ifleet/eval/eval-set.jsonl
 git commit -m "chore(eval): freeze v1 eval set (N=$(wc -l < .ifleet/eval/eval-set.jsonl))"
 ```
 
-Target: ≥50 rows for M0.W1 ship, ≥100 by M4 (when self-improving IFleet unlocks).
+**Sizing goal:** ≥50 rows by month 4, which is when Upgrade 10 (self-improvement) gates on the eval set. The set grows organically as PRs land — never lower the "what NOT to include" filter bars to inflate the count. Quality beats quantity: 13 well-filtered rows are more useful than 50 noisy ones.
 
 ## Metrics to track per upgrade
 
