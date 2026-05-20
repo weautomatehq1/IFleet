@@ -44,7 +44,7 @@ log()  { printf '\n\033[1;33m[rollback]\033[0m %s\n' "$*"; }
 fail() { printf '\n\033[1;31m[rollback]\033[0m %s\n' "$*" >&2; exit 1; }
 run()  {
   if [[ "$DRY_RUN" == "1" ]]; then
-    printf '  DRY-RUN: %s\n' "$*"
+    printf '  DRY-RUN: %q ' "$@"; printf '\n'
   else
     "$@"
   fi
@@ -84,7 +84,9 @@ log "Will revert: $SHORT_SHA  $COMMIT_SUBJECT"
 
 # ---- detect scope -----------------------------------------------------------
 CHANGED=$(git show --name-only --format= "$FULL_SHA" | sed '/^$/d')
-readarray -t CHANGED_FILES <<<"$CHANGED"
+# Bash 3.2 (macOS default) does not have readarray; build the array manually.
+CHANGED_FILES=()
+while IFS= read -r _f; do CHANGED_FILES+=("$_f"); done <<<"$CHANGED"
 TOUCHES_RUNTIME=0
 if grep -qE '^(src/|ecosystem\.config\.cjs$)' <<<"$CHANGED"; then
   TOUCHES_RUNTIME=1
@@ -168,7 +170,7 @@ LINE="$(date -u +%Y-%m-%dT%H:%M:%SZ) revert sha=$FULL_SHA branch=$BRANCH pr=$PR_
 if [[ "$DRY_RUN" == "1" ]]; then
   printf '  DRY-RUN audit line: %s\n' "$LINE"
 elif ssh -o BatchMode=yes -o ConnectTimeout=5 "$VPS" "test -w \"$(dirname "$AUDIT_LOG_REMOTE")\"" 2>/dev/null; then
-  ssh "$VPS" "printf '%s\n' \"$LINE\" >> $AUDIT_LOG_REMOTE"
+  ssh "$VPS" "printf '%s\n' \"$LINE\" >> \"$AUDIT_LOG_REMOTE\""
   log "Audit logged to $VPS:$AUDIT_LOG_REMOTE"
 else
   printf '%s\n' "$LINE" >> "$AUDIT_LOG_LOCAL"
