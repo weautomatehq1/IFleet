@@ -39,13 +39,13 @@ When IFleet proposes changes to its own codebase (`weautomatehq1/IFleet`):
 
 - No secrets in JSON config files. Always env vars or `.env` (gitignored).
 - No secrets in `learnings.md`, briefs, or traces. Sanitize before persisting.
-- HMAC secret rotation: documented in `docs/runbooks/` (TODO M0.W2).
+- HMAC secret rotation: see `docs/runbooks/hmac-rotation.md`.
 
 ## Threat model (brief)
 
 - **Discord token leak** → adversary posts to mapped channels → `/ship` runs on attacker prompts. Mitigation: `allowedUserIds` per channel + HMAC on bot↔control-plane.
 - **GitHub PAT leak** → adversary opens malicious PRs → bypasses `allowedUserIds`. Mitigation: PAT is fine-grained, scoped to specific repos, no admin.
-- **Compromised dep (npm supply chain)** → arbitrary code in our process. Mitigation: pnpm lockfile + `pnpm audit` in CI (TODO M1).
+- **Compromised dep (npm supply chain)** → arbitrary code in our process. Mitigation: pnpm lockfile committed (root + nested), enforced locally via `pnpm install --frozen-lockfile`. TODO M1 — wire `pnpm audit --audit-level=high` (or equivalent `npm audit` given `.github/workflows/ci.yml` currently installs via `npm ci --no-audit`) as a non-blocking CI step; this PR did not ship the CI step because adding a new audit job warrants Sebastian's sign-off on the failure-blocking policy.
 - **Self-modification gone wrong** → IFleet writes a bug into itself, propagates. Mitigation: SECURITY.md + shadow eval + human approval gate (above).
 
 ## Reporting
