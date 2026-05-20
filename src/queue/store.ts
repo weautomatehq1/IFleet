@@ -180,6 +180,12 @@ export class TaskStore {
     return row ? rowToTask(row) : null;
   }
 
+  patchSource(taskId: string, source: QueuedTask['source']): void {
+    this.db
+      .prepare(`UPDATE tasks SET source_data = @source_data WHERE id = @id`)
+      .run({ id: taskId, source_data: JSON.stringify(source) });
+  }
+
   findByIdempotencyKey(key: string): QueuedTask | null {
     const row = this.db
       .prepare(`SELECT * FROM tasks WHERE idempotency_key = ?`)

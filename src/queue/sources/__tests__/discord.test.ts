@@ -136,3 +136,53 @@ describe('DiscordSource.ingest', () => {
     assert.notEqual(idempotencyForDiscord('c', 'm'), idempotencyForDiscord('c', 'n'));
   });
 });
+
+describe('DiscordSource.markPicked — deferred thread creation', () => {
+  it('creates thread on-demand when ingest used a deferring DiscordOut (HTTP path)', async () => {
+    const { store, cleanup } = tmpStore();
+    try {
+      const threadId = 'thr-late';
+      const calls: string[] = [];
+
+      // Deferring out: postTaskCreated returns empty string (control-plane path)
+      const deferringOut: DiscordOut = {
+        postTaskCreated: async () => ({ threadId: '' }),
+        postProgress: async (tid, msg) => { calls.push(`progress:${tid}:${msg}`); },
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => undefined,
+      };
+
+      // Real out used by daemon (returns a real threadId)
+      const daemonOut: DiscordOut = {
+        postTaskCreated: async () => { calls.push('created'); return { threadId }; },
+        postProgress: async (tid, msg) => { calls.push(`progress:${tid}:${msg}`); },
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => undefined,
+      };
+
+      // server.ts path: ingest with deferring out → empty threadId stored
+      const serverSource = new DiscordSource({ router: mockRouter(ROUTE), out: deferringOut });
+      const task = await serverSource.ingest(
+        { goal: 'fix bug', channelId: ROUTE.channelId, messageId: 'm-defer', userId: 'u', userLabel: 'Seb' },
+        store,
+      );
+      assert.equal(task.source.kind === 'discord' ? task.source.threadId : 'x', '');
+
+      // daemon path: markPicked with real out + store → creates thread, persists it
+      const daemonSource = new DiscordSource({ router: mockRouter(ROUTE), out: daemonOut, store });
+      await daemonSource.markPicked(task);
+
+      assert.ok(calls.includes('created'), 'postTaskCreated called to create deferred thread');
+      assert.ok(calls.some((c) => c.startsWith(`progress:${threadId}:`)), 'progress posted to real threadId');
+      // in-memory task updated
+      assert.equal(task.source.kind === 'discord' ? task.source.threadId : '', threadId);
+      // store persisted
+      const reloaded = store.getById(task.id);
+      assert.equal(reloaded?.source.kind === 'discord' ? reloaded.source.threadId : '', threadId);
+    } finally {
+      cleanup();
+    }
+  });
+});
