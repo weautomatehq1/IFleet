@@ -221,7 +221,7 @@ async function main(): Promise<void> {
   // -------- Tick loop: drain pending → submitSprint --------
   let running = true;
   const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
-  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs);
+  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs, store);
 
   orchestrator.start();
   console.warn(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);
@@ -273,6 +273,7 @@ async function runTickLoop(
   orchestrator: Orchestrator,
   isRunning: () => boolean,
   tickMs: number,
+  store: TaskStore,
 ): Promise<void> {
   while (isRunning()) {
     try {
@@ -287,7 +288,7 @@ async function runTickLoop(
         // adapter already flipped the row to in_flight inside pickNext().
         // Wire the sprint's terminal event back to the unified queue so the
         // task row transitions out of in_flight (done / failed).
-        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator);
+        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store);
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
@@ -300,13 +301,16 @@ async function runTickLoop(
  * Registers a one-shot listener on the orchestrator event bus. When the
  * sprint with {@link sprintId} reaches a terminal state (completed/failed/
  * cancelled), the corresponding unified-queue lifecycle method is called so
- * the queue task transitions out of `in_flight`.
+ * the queue task transitions out of `in_flight`. When a PR URL was captured
+ * during the sprint, a {@link PrDecision} row is written to the task store:
+ * verdict `'merged'` on success, `'abandoned'` on failure/cancel.
  */
 function wireSprintCompletion(
   sprintId: string,
   task: import('../contracts/task.js').QueuedTask,
   adapter: UnifiedQueueAdapter,
   orchestrator: Orchestrator,
+  store: TaskStore,
 ): void {
   let lastPrUrl: string | undefined;
 
@@ -320,6 +324,24 @@ function wireSprintCompletion(
 
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
+
+      if (lastPrUrl) {
+        const prNumber = extractPrNumber(lastPrUrl);
+        if (prNumber !== null) {
+          try {
+            store.recordPrDecision({
+              taskId: task.id,
+              repo: task.repo,
+              prNumber,
+              verdict: 'merged',
+              reviewerLogin: null,
+            });
+          } catch (err) {
+            console.warn('[daemon] recordPrDecision(merged) failed:', err);
+          }
+        }
+      }
+
       void adapter.markCompleted(task, lastPrUrl ?? '').catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
@@ -340,6 +362,25 @@ function wireSprintCompletion(
             : event.kind === 'sprint.failed'
               ? 'pipeline failed'
               : 'cancelled';
+
+      // Only record a decision when a PR was opened before the failure/cancel.
+      if (lastPrUrl) {
+        const prNumber = extractPrNumber(lastPrUrl);
+        if (prNumber !== null) {
+          try {
+            store.recordPrDecision({
+              taskId: task.id,
+              repo: task.repo,
+              prNumber,
+              verdict: 'abandoned',
+              reviewerLogin: null,
+            });
+          } catch (err) {
+            console.warn('[daemon] recordPrDecision(abandoned) failed:', err);
+          }
+        }
+      }
+
       void adapter.markFailed(task, reason).catch((err) =>
         console.warn('[daemon] markFailed failed:', err),
       );
@@ -497,6 +538,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function extractPrNumber(prUrl: string): number | null {
+  const m = /\/pull\/(\d+)(?:\/|$)/.exec(prUrl);
+  return m ? parseInt(m[1]!, 10) : null;
+}
+
 // CLI entry: invoked when this module is the node entrypoint.
 const isEntry =
   typeof process.argv[1] === 'string' && /daemon\.(ts|js|mjs)$/.test(process.argv[1]);
@@ -510,6 +556,7 @@ if (isEntry) {
 export {
   main as runDaemon,
   runTickLoop,
+  wireSprintCompletion,
   wrapFactoryWithApprovalAndEmit,
   resolveVerifierContext,
 };
