@@ -33,7 +33,7 @@ src/agents/verifier/
 └── __tests__/
 
 scripts/verifier-image/
-├── Dockerfile.base    # node:20-bookworm + pnpm + git + python3
+├── Dockerfile.base    # node:24-bookworm + pnpm + git + python3
 └── README.md
 
 src/orchestrator/migrations/
@@ -158,6 +158,43 @@ export default async function archTests() {
 - Discord `/verify` works end-to-end against a test repo.
 - Verifier failure → editor retry → verifier pass happens in <5 min on a deliberately broken test.
 - Cost per verifier run tracked in `verifier_runs.cost_usd`, queryable.
+
+### M1 DoD eval replay results — 2026-05-20 (real Docker sandbox)
+
+**Sandbox mode:** real (`DockerSandboxRunner`, `ifleet-verifier:base` on `node:24-bookworm-slim`). Each task: fresh `git clone` of HEAD → Docker container → `pnpm install --frozen-lockfile` → typecheck → lint → test.
+
+**Selection:** same 10 eval rows as in-worktree run (bugfix × 2, feature × 8).
+
+| Metric | Value |
+|---|---|
+| Pass rate | **10 / 10 (100%)** |
+| DoD gate (≥ 8 / 10) | ✓ PASSED |
+| `sandboxMode` | `real` |
+| `VerifierStoreBridge.disagreementRate()` | **0.0000** |
+| Avg duration per run | ~130 s (real Docker) |
+| Total cost | $0.00 (no LLM calls) |
+
+**Per-task breakdown:**
+
+| # | ID | Label | LOC | Status | Duration |
+|---|---|---|---|---|---|
+| 1 | ifleet-IF-109 | bugfix | 58 | **passed** | 129 s |
+| 2 | ifleet-IF-107 | bugfix | 86 | **passed** | 113 s |
+| 3 | ifleet-IF-029 | feature | 28 | **passed** | 111 s |
+| 4 | ifleet-IF-106 | feature | 86 | **passed** | 105 s |
+| 5 | ifleet-IF-016 | feature | 107 | **passed** | 130 s |
+| 6 | ifleet-IF-044 | feature | 158 | **passed** | 120 s |
+| 7 | ifleet-IF-043 | feature | 158 | **passed** | 115 s |
+| 8 | ifleet-IF-020 | feature | 169 | **passed** | 125 s |
+| 9 | ifleet-IF-098 | feature | 446 | **passed** | 168 s |
+| 10 | ifleet-IF-071 | feature | 762 | **passed** | 185 s |
+
+Raw results: `.ifleet/eval/replay-results.json`
+Infrastructure fixes: PR #130 (node:24 image, `--user root`, `--store-dir`, `packages: ["."]` in pnpm-workspace.yaml for Colima virtiofs).
+
+**M1 is done.** The verifier runs real Docker sandboxes end-to-end, 10/10 historical PRs pass, disagreementRate 0.00 on this cohort (all current-HEAD tests pass cleanly).
+
+---
 
 ### M1 DoD eval replay results — 2026-05-19 (real run)
 
