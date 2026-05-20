@@ -58,7 +58,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       const taskForAttempt =
         planAttempt === 1 ? input.task : augmentTaskWithVetoReasons(input.task, priorReasons);
 
-      console.warn(`[pipeline] architect starting (attempt ${planAttempt})`);
+      console.warn(`[pipeline] architect starting (attempt ${planAttempt}) worktree=${input.worktreePath}`);
       const architect = await runArchitect({
         task: taskForAttempt,
         workerPool: input.workerPool,
@@ -70,6 +70,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         ...(input.onArchitectPlan ? { onPlanReady: input.onArchitectPlan } : {}),
         ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
         ...(input.interviewPoster ? { interviewPoster: input.interviewPoster } : {}),
+        worktreePath: input.worktreePath,
       });
       attempts.push(architect.attempt);
       architectCostUsd = architect.attempt.totalCostUsd;
@@ -119,6 +120,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
           ? { repoSlug: input.task.repo.replace(/\//g, '_') }
           : {}),
         ...(architectCostUsd !== undefined ? { architectCostUsd } : {}),
+        worktreePath: input.worktreePath,
       });
       attempts.push(review.attempt);
 
@@ -232,6 +234,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         diff,
         ciLog,
         abortSignal: input.abortSignal,
+        worktreePath: input.worktreePath,
       });
       attempts.push(doctor.attempt);
       if (!doctor.attempt.ok) return failed(attempts, 'doctor invocation failed');
@@ -275,6 +278,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         plan,
         diff,
         abortSignal: input.abortSignal,
+        worktreePath: input.worktreePath,
       });
       attempts.push(reviewer.attempt);
       if (reviewer.gate === 'haiku') {

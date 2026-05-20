@@ -30,6 +30,12 @@ export interface RunDoctorInput {
    * is unchanged from the pre-fingerprint contract.
    */
   fingerprintsPath?: string;
+  /**
+   * Absolute path to the per-task git worktree. The doctor is read-only by
+   * intent, but we still sandbox it so an out-of-scope tool call can't touch
+   * the host repo.
+   */
+  worktreePath?: string;
 }
 
 export interface DoctorFingerprintInfo {
@@ -82,6 +88,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorOutput> {
     role: 'doctor',
     systemPrompt: DOCTOR_SYSTEM_PROMPT,
     abortSignal: input.abortSignal,
+    ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
   });
   const result = await handle.result();
   const endedAt = Date.now();
