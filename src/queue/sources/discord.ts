@@ -119,21 +119,25 @@ export class DiscordSource implements TaskSource {
 
   async markPicked(task: QueuedTask): Promise<void> {
     const tid = await this.resolveThread(task);
+    if (!tid) return;
     await this.opts.out.postProgress(tid, '🤖 Picked up — worker starting.');
   }
 
   async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
-    const tid = threadIdOrThrow(task);
+    const tid = await this.resolveThread(task);
+    if (!tid) return;
     await this.opts.out.postCompleted(tid, prUrl);
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
-    const tid = threadIdOrThrow(task);
+    const tid = await this.resolveThread(task);
+    if (!tid) return;
     await this.opts.out.postFailed(tid, reason);
   }
 
   async markBlocked(task: QueuedTask, capability: string): Promise<void> {
-    const tid = threadIdOrThrow(task);
+    const tid = await this.resolveThread(task);
+    if (!tid) return;
     await this.opts.out.postFailed(tid, `Blocked — missing capability: ${capability}`);
   }
 
@@ -143,6 +147,12 @@ export class DiscordSource implements TaskSource {
    * therefore has no threadId yet. Updates the in-memory task and, when a
    * store was provided, persists the threadId so plan-ready / completion
    * handlers that re-fetch the task see it.
+   *
+   * Returns `''` (and logs a warning) when the deferred postTaskCreated still
+   * cannot materialize a thread — callers no-op rather than throwing, because
+   * Discord posts are best-effort UX while the store state is the
+   * orchestrator's primary signal. Prior behavior threw `no Discord threadId`
+   * from markFailed and shadowed the real failure reason in pm2 logs.
    */
   private async resolveThread(task: QueuedTask): Promise<string> {
     if (task.source.kind !== 'discord') {
@@ -150,7 +160,12 @@ export class DiscordSource implements TaskSource {
     }
     if (task.source.threadId) return task.source.threadId;
     const { threadId } = await this.opts.out.postTaskCreated(task);
-    if (!threadId) throw new Error(`task ${task.id}: postTaskCreated returned no threadId`);
+    if (!threadId) {
+      console.warn(
+        `[discord-source] task ${task.id}: postTaskCreated returned no threadId — skipping Discord side-effect`,
+      );
+      return '';
+    }
     task.source.threadId = threadId;
     this.opts.store?.patchSource(task.id, task.source);
     return threadId;
@@ -173,13 +188,4 @@ export function idempotencyForDiscord(channelId: string, messageId: string): str
 function deriveTitle(goal: string): string {
   const firstLine = goal.split('\n', 1)[0]?.trim() ?? '';
   return firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine || 'Discord task';
-}
-
-function threadIdOrThrow(task: QueuedTask): string {
-  if (task.source.kind !== 'discord') {
-    throw new Error(`DiscordSource cannot mark a ${task.source.kind} task`);
-  }
-  const tid = task.source.threadId;
-  if (!tid) throw new Error(`task ${task.id} has no Discord threadId`);
-  return tid;
 }

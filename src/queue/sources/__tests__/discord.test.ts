@@ -137,6 +137,36 @@ describe('DiscordSource.ingest', () => {
   });
 });
 
+describe('DiscordSource.markFailed — HTTP control-plane regression', () => {
+  it('no-ops instead of throwing when threadId could not be materialized', async () => {
+    // Reproduces today's pm2 log: `markFailed failed: Error: task ... has no
+    // Discord threadId`. Prior threadIdOrThrow shadowed the original failure
+    // reason; the new resolveThread path should log + no-op.
+    const { store, cleanup } = tmpStore();
+    try {
+      const calls: string[] = [];
+      const stillBrokenOut: DiscordOut = {
+        postTaskCreated: async () => { calls.push('created'); return { threadId: '' }; },
+        postProgress: async () => undefined,
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => { calls.push('failed'); },
+      };
+      const src = new DiscordSource({ router: mockRouter(ROUTE), out: stillBrokenOut, store });
+      const task = await src.ingest(
+        { goal: 'X', channelId: ROUTE.channelId, messageId: '01KS4VTEST000000001IFLEET', userId: 'u', userLabel: 'Seb' },
+        store,
+      );
+      // markFailed must NOT throw even though postTaskCreated stays empty.
+      await src.markFailed(task, 'sprint cancelled by operator');
+      // postFailed should be skipped (no thread to write to).
+      assert.ok(!calls.includes('failed'), 'postFailed must be skipped when threadId is empty');
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe('DiscordSource.markPicked — deferred thread creation', () => {
   it('creates thread on-demand when ingest used a deferring DiscordOut (HTTP path)', async () => {
     const { store, cleanup } = tmpStore();
