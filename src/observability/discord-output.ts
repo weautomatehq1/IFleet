@@ -89,6 +89,11 @@ export class DiscordOutAdapter implements DiscordOut {
         const ch = (await this.client.channels.fetch(route.channelId)) as TextChannel | null;
         if (!ch) throw new Error(`channel ${route.channelId} not fetchable`);
         const origin = (await ch.messages.fetch(route.messageId)) as Message;
+        // Reuse an existing thread (e.g., duplicate task delivery on WS reconnect).
+        if (origin.thread) {
+          this.threadTaskIndex.set(origin.thread.id, task.id);
+          return { threadId: origin.thread.id };
+        }
         const thread = await origin.startThread({
           name: shortTitle(task),
           autoArchiveDuration: 1440,

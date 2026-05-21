@@ -38,6 +38,9 @@ async function handleSlashCommand(
   deps: InteractionDeps,
 ): Promise<void> {
   // Discord 3s window — defer first, do work after.
+  // Guard against reconnect replay: Discord.js can deliver the same interaction
+  // twice when the WS reconnects. Skip if already acknowledged.
+  if (interaction.deferred || interaction.replied) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const route = deps.router.resolve(interaction.channelId);
@@ -91,6 +94,7 @@ async function handleButton(
     return;
   }
 
+  if (interaction.deferred || interaction.replied) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // Deny on missing route. The previous form short-circuited when `route` was
