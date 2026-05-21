@@ -210,5 +210,49 @@ module.exports = {
       out_file: `${logDir}/ifleet-retro-out.log`,
       error_file: `${logDir}/ifleet-retro-error.log`,
     },
+    {
+      // ifleet-audit-nightly — 4am UTC (midnight ET) daily audit run.
+      // Autopilot mode: scans IFleet, factory, and audit-elevation repos.
+      // One-shot cron (autorestart: false).
+      name: 'ifleet-audit-nightly',
+      script: 'src/agents/rituals/standup.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      cron_restart: '0 4 * * *',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'audit-nightly',
+        AUDIT_MODE: 'autopilot',
+        AUDIT_REPOS: 'IFleet,factory,audit-elevation',
+      },
+      out_file: `${logDir}/ifleet-audit-nightly-out.log`,
+      error_file: `${logDir}/ifleet-audit-nightly-error.log`,
+      out_file: `${logDir}/ifleet-audit-nightly-out.log`,
+      error_file: `${logDir}/ifleet-audit-nightly-error.log`,
+    },
+    {
+      // ifleet-audit-morning — 11am UTC (7am ET) daily audit morning report.
+      // Morning report mode: summary and incident digest.
+      // One-shot cron (autorestart: false).
+      name: 'ifleet-audit-morning',
+      script: 'src/agents/rituals/standup.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      cron_restart: '0 11 * * *',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'audit-morning',
+        AUDIT_MODE: 'morning-report',
+        AUDIT_REPOS: 'IFleet,factory,audit-elevation',
+      },
+      out_file: `${logDir}/ifleet-audit-morning-out.log`,
+      error_file: `${logDir}/ifleet-audit-morning-error.log`,
+      out_file: `${logDir}/ifleet-audit-morning-out.log`,
+      error_file: `${logDir}/ifleet-audit-morning-error.log`,
+    },
   ],
 };

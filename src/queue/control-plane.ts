@@ -18,7 +18,14 @@ export type ControlCommand =
   | { type: 'run'; repo?: string }
   | { type: 'cancel'; taskId: string; reason?: string }
   | { type: 'status'; taskId: string }
-  | { type: 'approve'; taskId: string };
+  | { type: 'approve'; taskId: string }
+  // Audit commands — repo-wide, routed by channelId via ChannelRouter.
+  // These are fire-and-forget (202) like cancel/approve; the daemon's
+  // audit-handler posts progress directly to the originating channel.
+  | { type: 'audit_scan'; channelId?: string }
+  | { type: 'audit_fix'; channelId?: string }
+  | { type: 'audit_autopilot'; channelId?: string }
+  | { type: 'audit_status'; channelId?: string };
 
 export interface SprintGoalResult {
   taskId?: string;
@@ -48,6 +55,16 @@ export interface ControlPlaneOptions {
   onCancel?: (taskId: string, reason?: string) => Promise<void> | void;
   /** Resolver for taskId → QueuedTask used by `cancel`/`status`. */
   resolveTask?: (taskId: string) => Promise<QueuedTask | null> | QueuedTask | null;
+  /** Hook for /audit-scan slash command — fires audit-handler.handleAuditScan. */
+  onAuditScan?: (cmd: Extract<ControlCommand, { type: 'audit_scan' }>) => Promise<void> | void;
+  /** Hook for /audit-fix slash command — fires audit-handler.handleAuditFix. */
+  onAuditFix?: (cmd: Extract<ControlCommand, { type: 'audit_fix' }>) => Promise<void> | void;
+  /** Hook for /audit-autopilot slash command. */
+  onAuditAutopilot?: (
+    cmd: Extract<ControlCommand, { type: 'audit_autopilot' }>,
+  ) => Promise<void> | void;
+  /** Hook for /audit-status slash command. */
+  onAuditStatus?: (cmd: Extract<ControlCommand, { type: 'audit_status' }>) => Promise<void> | void;
 }
 
 export interface ControlPlane {
@@ -263,6 +280,18 @@ async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Pro
       }
       return;
     }
+    case 'audit_scan':
+      await opts.onAuditScan?.(command);
+      return;
+    case 'audit_fix':
+      await opts.onAuditFix?.(command);
+      return;
+    case 'audit_autopilot':
+      await opts.onAuditAutopilot?.(command);
+      return;
+    case 'audit_status':
+      await opts.onAuditStatus?.(command);
+      return;
   }
 }
 
@@ -316,6 +345,24 @@ export function parseCommand(body: string): ControlCommand {
     case 'approve': {
       if (typeof parsed.taskId !== 'string') throw new Error('approve requires taskId');
       return { type: 'approve', taskId: parsed.taskId };
+    }
+    case 'audit_scan':
+    case 'audit_fix':
+    case 'audit_autopilot':
+    case 'audit_status': {
+      // Audit commands are routed to a repo via the Discord channelId. T3's
+      // client carries it under `source.channelId`; legacy/flat callers may
+      // pass it at the top level. Either is accepted.
+      const source = isRecord(parsed.source) ? parsed.source : undefined;
+      const channelId =
+        (typeof source?.['channelId'] === 'string' ? source['channelId'] : undefined) ??
+        (typeof parsed.channelId === 'string' ? parsed.channelId : undefined);
+      const cmd = { type: parsed.type } as Extract<
+        ControlCommand,
+        { type: 'audit_scan' | 'audit_fix' | 'audit_autopilot' | 'audit_status' }
+      >;
+      if (channelId) cmd.channelId = channelId;
+      return cmd;
     }
     default:
       throw new Error(`unknown command type: ${parsed.type}`);
