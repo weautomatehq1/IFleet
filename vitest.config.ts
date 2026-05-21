@@ -12,6 +12,7 @@ export default defineConfig({
       'src/discord/**/*.test.ts',
       'src/agents/**/*.test.ts',
       'scripts/__tests__/**/*.test.ts',
+      'dashboard/**/*.test.ts',
     ],
     environment: 'node',
     pool: 'forks',
