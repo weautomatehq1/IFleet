@@ -31,7 +31,7 @@ pnpm install
 | Variable | Required | Description |
 |---|---|---|
 | `RESEND_API_KEY` | Yes | Email delivery for notifications. Get from resend.com/api-keys. |
-| `BUDGET_USD` | No | Pause a sprint when cumulative spend reaches this USD threshold. Omit to disable. |
+| `BUDGET_USD` | No | Pause a sprint when cumulative spend reaches this USD threshold. **Only enforced when at least one enabled worker in `config/workers.json` has `authProfile: "api"`** — Max-plan workers report token-priced USD that does not reflect real spend, so the guard short-circuits to skip (see issue #162). Omit to disable entirely. |
 | `DISCORD_IFLEET_WEBHOOK` | No | Discord webhook URL for budget-pause alerts. |
 | `GITHUB_TOKEN` | No | Falls back to `gh auth token` automatically if not set. |
 

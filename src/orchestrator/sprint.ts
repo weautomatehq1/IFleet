@@ -425,6 +425,13 @@ export class SprintManager {
   private async checkBudget(sprintId: SprintId, spentUsd: number): Promise<boolean> {
     const limit = this.budgetUsd;
     if (limit === undefined || spentUsd < limit) return false;
+    // The reported USD comes from the Claude CLI's per-call cost field, which
+    // is computed at API list prices regardless of how the request is billed.
+    // For a Max-plan OAuth subscription (flat monthly fee) that number is not
+    // real spend and the cap fires spuriously after a handful of sprints.
+    // Only enforce when at least one enabled worker uses an API auth profile.
+    const hasApiWorker = this.registry.all().some((w) => w.authProfile === 'api');
+    if (!hasApiWorker) return false;
     const sprint = this.store.loadSprint(sprintId);
     if (!sprint || sprint.state.kind !== 'running') return false;
     this.transition(sprintId, {

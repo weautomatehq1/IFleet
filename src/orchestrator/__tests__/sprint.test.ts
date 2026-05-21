@@ -287,6 +287,36 @@ test('budget: paused sprint does not tick further', async () => {
   }
 });
 
+test('budget: skip enforcement when no API worker is enabled (Max-plan only)', async () => {
+  // Max-plan workers report token-priced USD that doesn't reflect real spend
+  // (the user pays a flat monthly fee). When the registry has no API-keyed
+  // worker, checkBudget must short-circuit — no pause, no Discord alert —
+  // even if the reported cost exceeds the configured cap. See issue #162.
+  const paused: Array<{ sprintId: string; spentUsd: number; limitUsd: number }> = [];
+  const adapter = new MockAdapter({ exitCode: 0, pr: 'PR-1', totalCostUsd: 5.0 });
+  const h = makeManager({
+    adapter,
+    budgetUsd: 1.0,
+    authProfile: 'default',
+    onBudgetPaused: (sprintId, spentUsd, limitUsd) => {
+      paused.push({ sprintId, spentUsd, limitUsd });
+    },
+  });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    const finalRec = h.env.store.loadSprint(rec.id);
+    assert.equal(finalRec?.state.kind, 'completed', 'sprint must not pause when no API worker is registered');
+    assert.equal(paused.length, 0, 'onBudgetPaused must not fire on Max-only registries');
+    const budgetEvt = h.events.find((e) => e.kind === 'sprint.budget_paused');
+    assert.equal(budgetEvt, undefined, 'no sprint.budget_paused event expected on Max-only registries');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
 test('budget: paused → running transition is valid', () => {
   assert.equal(canTransitionSprint('paused', 'running'), true);
   assert.equal(canTransitionSprint('paused', 'cancelled'), true);
