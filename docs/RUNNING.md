@@ -31,7 +31,7 @@ pnpm install
 | Variable | Required | Description |
 |---|---|---|
 | `RESEND_API_KEY` | Yes | Email delivery for notifications. Get from resend.com/api-keys. |
-| `BUDGET_USD` | No | Pause a sprint when cumulative spend reaches this USD threshold. **Only enforced when at least one enabled worker in `config/workers.json` has `authProfile: "api"`** — Max-plan workers report token-priced USD that does not reflect real spend, so the guard short-circuits to skip (see issue #162). Omit to disable entirely. |
+| `BUDGET_USD` | No | Pause a sprint when cumulative spend reaches this USD threshold. **Only enforced when at least one enabled worker in `config/workers.json` has `authProfile: "api"`** (the literal string `"api"` — case-sensitive; matched against the `API_AUTH_PROFILE` constant in `src/orchestrator/workers.ts`). Max-plan workers report token-priced USD that does not reflect real spend, so the guard short-circuits to skip and emits a `sprint.budget_skipped` event (one per sprint) to the `events` table — query with `sqlite3 ~/.omc/ifleet/state.db "SELECT * FROM events WHERE kind='sprint.budget_skipped'"`. Omit `BUDGET_USD` to disable entirely. See issue #162. |
 | `DISCORD_IFLEET_WEBHOOK` | No | Discord webhook URL for budget-pause alerts. |
 | `GITHUB_TOKEN` | No | Falls back to `gh auth token` automatically if not set. |
 
