@@ -4,6 +4,29 @@
 //
 // Persona prompts (voice, tone) live in src/agents/rituals/personas.ts and
 // are prepended here so all role outputs stay consistent.
+//
+// PROMPT CACHE NOTE (SDK migration required):
+// These constants are the stable, bit-identical prefix for each role. When
+// IFleet migrates from `claude` CLI subprocess to the Anthropic SDK directly
+// (see https://github.com/weautomatehq1/IFleet/issues — search "SDK-direct"),
+// each exported constant should be sent as the FIRST content block tagged with:
+//   { type: 'text', text: <constant>, cache_control: { type: 'ephemeral', ttl: '1h' } }
+// The 1h TTL extends the default 5-min Anthropic cache lifetime across the full
+// architect→reviewer→worker chain, yielding ~2× effective throughput on flat-rate Max.
+//
+// CURRENT LIMITATION: The `claude` CLI subprocess accepts `--system-prompt <str>`
+// but does not expose cache_control parameters. The auto-cache (5-min default TTL)
+// still fires when these constants are passed verbatim — it just expires faster.
+// This file keeps all prompts as top-level constants precisely to guarantee the
+// bit-identical stable prefix that the auto-cache (and future explicit cache)
+// depends on. Adding per-task dynamic content (dates, task IDs, random seeds)
+// to any of these constants would silently bust the cache.
+//
+// ARCHITECT EXCEPTION: architect.ts appends a dynamic `## Prior learnings`
+// section to ARCHITECT_SYSTEM_PROMPT at call time. The static constant is still
+// an exact byte-for-byte prefix of the final assembled prompt — place the
+// cache_control marker at the end of this constant (not after the learnings)
+// when migrating to SDK-direct.
 
 import {
   ARCHITECT_PERSONA,
