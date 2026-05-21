@@ -1,126 +1,54 @@
 {
-  "runAt": "2026-05-20T01:35:41.502Z",
-  "sandboxMode": "real",
-  "taskLimit": 10,
-  "passingGate": 8,
-  "passedCount": 10,
-  "totalCount": 10,
-  "passRatePct": 100,
-  "disagreementRate": 0,
-  "avgDurationMs": 129989,
-  "totalCostUsd": 0,
-  "eventsEmitted": 20,
-  "dodGatePassed": true,
-  "tasks": [
-    {
-      "evalId": "ifleet-IF-109",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "bugfix",
-      "locTotal": 58,
-      "status": "passed",
-      "durationMs": 128698,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
+  "ranAt": "2026-05-21T18:42:01.720Z",
+  "currentRef": "5b6c0db70cb01b2ffef1d6538431c79d0dc9cfa8",
+  "baselineRef": "270582409f21569fd524524b7b8871bb47e30a7c",
+  "rowCount": 2,
+  "rows": [
     {
       "evalId": "ifleet-IF-107",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "bugfix",
-      "locTotal": 86,
-      "status": "passed",
-      "durationMs": 112641,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
+      "current": {
+        "evalId": "ifleet-IF-107",
+        "verifierPassed": true,
+        "costMinutes": 0,
+        "prUrl": "https://github.com/weautomatehq1/IFleet/pull/110"
+      },
+      "baseline": {
+        "evalId": "ifleet-IF-107",
+        "verifierPassed": true,
+        "costMinutes": 0,
+        "prUrl": "https://github.com/weautomatehq1/IFleet/pull/110"
+      },
+      "diff": {
+        "costMinutesDelta": 0,
+        "outcomeChanged": false
+      }
     },
     {
-      "evalId": "ifleet-IF-029",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 28,
-      "status": "passed",
-      "durationMs": 110987,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-106",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 86,
-      "status": "passed",
-      "durationMs": 105307,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-016",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 107,
-      "status": "passed",
-      "durationMs": 129686,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-044",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 158,
-      "status": "passed",
-      "durationMs": 120050,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-043",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 158,
-      "status": "passed",
-      "durationMs": 114881,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-020",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 169,
-      "status": "passed",
-      "durationMs": 124768,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-098",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 446,
-      "status": "passed",
-      "durationMs": 167847,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
-    },
-    {
-      "evalId": "ifleet-IF-071",
-      "repo": "weautomatehq1/IFleet",
-      "classifierLabel": "feature",
-      "locTotal": 762,
-      "status": "passed",
-      "durationMs": 185021,
-      "costUsd": null,
-      "failuresCount": 0,
-      "attempt": 1
+      "evalId": "ifleet-IF-109",
+      "current": {
+        "evalId": "ifleet-IF-109",
+        "verifierPassed": true,
+        "costMinutes": 0,
+        "prUrl": "https://github.com/weautomatehq1/IFleet/pull/112"
+      },
+      "baseline": {
+        "evalId": "ifleet-IF-109",
+        "verifierPassed": true,
+        "costMinutes": 0,
+        "prUrl": "https://github.com/weautomatehq1/IFleet/pull/112"
+      },
+      "diff": {
+        "costMinutesDelta": 0,
+        "outcomeChanged": false
+      }
     }
-  ]
+  ],
+  "summary": {
+    "currentPassRate": 1,
+    "baselinePassRate": 1,
+    "currentAvgCostMinutes": 0,
+    "baselineAvgCostMinutes": 0,
+    "passRateDelta": 0,
+    "costDeltaMinutes": 0
+  }
 }
