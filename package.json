@@ -41,6 +41,7 @@
     "better-sqlite3": "^11.3.0",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
+    "langfuse": "^3.38.20",
     "nanoid": "^5.0.7",
     "pg": "^8.13.1",
     "resend": "^6.12.3",
