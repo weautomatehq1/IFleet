@@ -80,6 +80,47 @@ describe('DefaultPipelineRunner', () => {
     expect(result.reviewSummary).toContain('still bad');
   });
 
+  it('reviewer.rejected event emitted before blocked_by_reviewer return (issue #163)', async () => {
+    // Without this event, operators only see `task.capability_blocked` with
+    // exitCode:3 — no concerns, no raw verdict, no idea why the reviewer
+    // rejected. The event must carry { verdict, concerns, raw, roundCount }.
+    const events: PipelineEvent[] = [];
+    const finalConcerns = ['src/foo.ts:1 wrong return type', 'src/foo.ts:2 unhandled null'];
+    const finalRawVerdict = rejectJson(finalConcerns);
+    const { input, pr } = buildPipelineInput({
+      scripted: [
+        { role: 'architect', output: PLAN_OUTPUT },
+        { role: 'editor', output: 'first' },
+        { role: 'reviewer', output: rejectJson(['first round concern']) },
+        { role: 'editor', output: 'second' },
+        { role: 'reviewer', output: finalRawVerdict },
+      ],
+      verify: [
+        { ok: true, failures: [] },
+        { ok: true, failures: [] },
+      ],
+    });
+    input.eventSink = (event) => {
+      events.push(event);
+    };
+
+    const result = await new DefaultPipelineRunner().run(input);
+
+    expect(result.status).toBe('blocked_by_reviewer');
+    expect(pr.opened).toHaveLength(0);
+
+    const rejected = events.filter((e) => e.kind === 'reviewer.rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toEqual({
+      kind: 'reviewer.rejected',
+      taskId: input.task.id,
+      verdict: 'request_changes',
+      concerns: finalConcerns,
+      raw: finalRawVerdict,
+      roundCount: 2,
+    });
+  });
+
   it('doctor retry limit: verify fails → doctor → editor → verify fails → doctor → editor → verify fails → failed', async () => {
     const { input, pr } = buildPipelineInput({
       scripted: [

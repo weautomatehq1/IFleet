@@ -16,6 +16,7 @@ import type {
   PipelineResult,
   PipelineRunner,
   QueuedTask,
+  ReviewerVerdict,
   VerifyResult,
 } from './types.js';
 
@@ -266,6 +267,10 @@ export class DefaultPipelineRunner implements PipelineRunner {
     // === Reviewer (with fix-pass loop) ===
     let reviewSummary = '';
     let approved = false;
+    // Track the reviewer's last verdict so we can emit `reviewer.rejected`
+    // with concerns+raw before returning `blocked_by_reviewer` (issue #163).
+    let lastReviewerVerdict: ReviewerVerdict | null = null;
+    let roundsRun = 0;
     for (let round = 1; round <= reviewerMaxRounds; round++) {
       if (input.abortSignal.aborted) return cancelled(attempts);
       const reviewer = await runReviewer({
@@ -290,6 +295,8 @@ export class DefaultPipelineRunner implements PipelineRunner {
         });
       }
       reviewSummary = formatReviewSummary(reviewer.verdict.verdict, reviewer.verdict.concerns);
+      lastReviewerVerdict = reviewer.verdict;
+      roundsRun = round;
 
       if (reviewer.verdict.verdict === 'approve') {
         approved = true;
@@ -326,6 +333,19 @@ export class DefaultPipelineRunner implements PipelineRunner {
     }
 
     if (!approved) {
+      // Issue #163: emit the reviewer's verdict+concerns before returning so
+      // operators can diagnose the rejection from the events log instead of
+      // seeing only `task.capability_blocked` with exitCode:3.
+      if (lastReviewerVerdict) {
+        input.eventSink?.({
+          kind: 'reviewer.rejected',
+          taskId: input.task.id,
+          verdict: lastReviewerVerdict.verdict,
+          concerns: lastReviewerVerdict.concerns,
+          raw: lastReviewerVerdict.raw,
+          roundCount: roundsRun,
+        });
+      }
       return {
         status: 'blocked_by_reviewer',
         attempts,
