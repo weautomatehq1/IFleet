@@ -1,4 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const _generationEnd = vi.fn();
+const _traceUpdate = vi.fn();
+const _generation = vi.fn(() => ({ end: _generationEnd }));
+const _trace = vi.fn(() => ({ generation: _generation, update: _traceUpdate }));
+const _flushAsync = vi.fn(() => Promise.resolve());
+
+vi.mock('langfuse', () => {
+  class LangfuseMock {
+    trace = _trace;
+    flushAsync = _flushAsync;
+  }
+  return { Langfuse: LangfuseMock };
+});
 import {
   getLangfuseClient,
   resetLangfuseClient,
@@ -79,5 +93,65 @@ describe('startTrace', () => {
         outputText: 'y'.repeat(100_000),
       }),
     ).not.toThrow();
+  });
+});
+
+describe('startTrace — happy path (Langfuse enabled)', () => {
+  beforeEach(() => {
+    resetLangfuseClient();
+    process.env['LANGFUSE_PUBLIC_KEY'] = 'pk-lf-test';
+    process.env['LANGFUSE_SECRET_KEY'] = 'sk-lf-test';
+    process.env['LANGFUSE_BASE_URL'] = 'http://localhost:3010';
+    _trace.mockClear();
+    _generation.mockClear();
+    _generationEnd.mockClear();
+    _traceUpdate.mockClear();
+    _flushAsync.mockClear();
+  });
+  afterEach(() => {
+    resetLangfuseClient();
+    delete process.env['LANGFUSE_PUBLIC_KEY'];
+    delete process.env['LANGFUSE_SECRET_KEY'];
+    delete process.env['LANGFUSE_BASE_URL'];
+  });
+
+  it('calls trace(), generation(), generation.end(), and flushAsync() on happy path', () => {
+    const handle = startTrace({
+      name: 'architect',
+      taskId: 'task-123',
+      workerId: 'claude-max-1',
+      model: 'claude-opus-4-7',
+      brief: 'implement the feature',
+    });
+
+    handle.end({
+      ok: true,
+      exitCode: 0,
+      totalCostUsd: 0.005,
+      durationMs: 1200,
+      outputText: 'hi',
+    });
+
+    // client.trace() called with name + input.
+    expect(_trace).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'architect',
+      input: { brief: 'implement the feature' },
+    }));
+
+    // trace.generation() called with name + model.
+    expect(_generation).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'architect',
+      model: 'claude-opus-4-7',
+    }));
+
+    // generation.end() called with cost — note: `usageDetails` until AUDIT-IFleet-544ccbcb (T2) merges.
+    expect(_generationEnd).toHaveBeenCalledWith(expect.objectContaining({
+      usageDetails: { totalCostUsd: 0.005 },
+      output: 'hi',
+      level: 'DEFAULT',
+    }));
+
+    // flushAsync() called to ship the trace before process exit.
+    expect(_flushAsync).toHaveBeenCalled();
   });
 });
