@@ -102,6 +102,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       baseBranch: 'main',
       approver: opts.approver ?? '@monstersebas1',
       repoRoot: opts.repoRoot,
+      reviewerMaxRounds: 3,
     };
 
     return {
