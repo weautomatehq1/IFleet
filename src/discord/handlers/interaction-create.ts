@@ -169,6 +169,14 @@ export function buildCommandFromSlash(
       const taskId = interaction.options.getString('taskid', true);
       return { type: 'approve', taskId, source };
     }
+    case 'audit':
+      return { type: 'audit_scan', source };
+    case 'audit-fix':
+      return { type: 'audit_fix', source };
+    case 'audit-autopilot':
+      return { type: 'audit_autopilot', source };
+    case 'audit-status':
+      return { type: 'audit_status', source };
     default:
       return null;
   }
