@@ -60,7 +60,7 @@ function discordTask(over: Partial<QueuedTask> = {}): QueuedTask {
     source: {
       kind: 'discord',
       channelId: ALLSTATE_CHANNEL,
-      messageId: 'M123',
+      messageId: '1503769258981589013',
       userId: 'U999',
       userLabel: 'Sebas',
     },
@@ -189,7 +189,7 @@ describe('DiscordOutAdapter.postTaskCreated', () => {
     });
     const { threadId } = await adapter.postTaskCreated(discordTask());
     expect(threadId).toBe('T_NEW');
-    expect(messagesFetch).toHaveBeenCalledWith('M123');
+    expect(messagesFetch).toHaveBeenCalledWith('1503769258981589013');
     expect(startThread).toHaveBeenCalledTimes(1);
   });
 

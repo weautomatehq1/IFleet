@@ -33,8 +33,11 @@ export function resolveTaskChannel(
   if (task.source.kind === 'discord') {
     // Slash commands have no messageId — fall back to channel-only routing
     // so the thread anchors under a fresh embed in the same channel rather
-    // than trying to start a thread under a non-existent message.
-    if (task.source.messageId) {
+    // than trying to start a thread under a non-existent message. Same path
+    // for HTTP control-plane tasks: their messageId is a ULID, not a Discord
+    // snowflake; `messages.fetch(<ulid>)` returns "Invalid Form Body" from
+    // Discord's API.
+    if (task.source.messageId && isDiscordSnowflake(task.source.messageId)) {
       return {
         kind: 'discord-thread-anchor',
         channelId: task.source.channelId,
@@ -52,4 +55,10 @@ export function resolveTaskChannel(
     return { kind: 'channel-only', channelId: fallbackChannelId, route: null };
   }
   return null;
+}
+
+/** Discord snowflakes are 17–20 decimal digits. ULIDs (used by the HTTP
+ * control-plane as task IDs) are 26 base32 chars and fail this check. */
+export function isDiscordSnowflake(id: string): boolean {
+  return /^\d{17,20}$/.test(id);
 }
