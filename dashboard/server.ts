@@ -208,7 +208,10 @@ export function createDashboardServer(options: DashboardServerOptions = {}) {
         return;
       }
       if (path === '/api/health') {
-        sendJson(res, 200, { ok: true, tasksDb: TASKS_DB, stateDb: STATE_DB });
+        // Do NOT leak filesystem paths — even bound to 127.0.0.1, any browser
+        // tab the operator has open can fetch this endpoint and learn the
+        // local username + db layout. (Audit finding, post-merge.)
+        sendJson(res, 200, { ok: true });
         return;
       }
       if (path === '/api/sprints/active') {
@@ -231,8 +234,13 @@ export function createDashboardServer(options: DashboardServerOptions = {}) {
       }
       sendError(res, 404, 'not found');
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendError(res, 500, message);
+      // Log the real error for the operator but return a generic message —
+      // raw `Error.message` can include SQLite internals, file paths, or
+      // stack-trace excerpts that don't belong over the wire.
+      const detail = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.error('[dashboard] handler error:', detail);
+      sendError(res, 500, 'internal server error');
     }
   });
 
@@ -272,9 +280,14 @@ const invokedDirectly = (() => {
 
 if (invokedDirectly) {
   const { server } = createDashboardServer({ port: PORT });
-  server.listen(PORT, () => {
+  // Bind explicitly to 127.0.0.1 — the dashboard is a local single-user
+  // ops view with no auth. The Node default (`0.0.0.0`) would expose the
+  // server to any device on the same LAN. Use `DASHBOARD_HOST=0.0.0.0` to
+  // opt in to LAN exposure (e.g. for a tablet on the same WiFi).
+  const HOST = process.env['DASHBOARD_HOST'] ?? '127.0.0.1';
+  server.listen(PORT, HOST, () => {
     // eslint-disable-next-line no-console
-    console.log(`[dashboard] http://localhost:${PORT}`);
+    console.log(`[dashboard] http://${HOST}:${PORT}`);
     // eslint-disable-next-line no-console
     console.log(`[dashboard] tasksDb=${TASKS_DB}`);
     // eslint-disable-next-line no-console
