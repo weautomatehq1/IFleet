@@ -51,6 +51,7 @@ import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
 import { decodeBridgeBrief, encodeBridgeBrief } from './pipeline-bridge.js';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from './pipeline-bridge.js';
+import type { PipelineEvent } from '../pipeline/types.js';
 import { StateStore } from './store.js';
 import type { QueuedTask } from '../contracts/task.js';
 
@@ -154,6 +155,7 @@ async function main(): Promise<void> {
         productionFactory.factory,
         approvalGate,
         (taskId, plan) => discordOutPlanReady(taskId, plan, store, discordOut),
+        (taskId, event) => persistPipelineEvent(orchestratorStore, taskId, event),
       ),
       verifierCtx,
     ),
@@ -479,6 +481,7 @@ function wrapFactoryWithApprovalAndEmit(
   inner: PipelineRunnerFactory,
   approvalGate: ControlPlaneApprovalGate,
   onPlan: (taskId: string, plan: string) => Promise<void>,
+  emitPipelineEvent?: (taskId: string, event: PipelineEvent) => void,
 ): PipelineRunnerFactory {
   return async (taskId, brief, opts): Promise<PipelineRunBootstrap> => {
     const bootstrap = await inner(taskId, brief, opts);
@@ -486,8 +489,63 @@ function wrapFactoryWithApprovalAndEmit(
     bootstrap.input.onArchitectPlan = async (plan) => {
       await onPlan(taskId, plan);
     };
+    // Wire the pipeline's structured event stream into the orchestrator's
+    // event log. Without this, reviewer.rejected (issue #163),
+    // plan_reviewer.vetoed/escalated/skipped, and reviewer.haiku_gate_passed
+    // are emitted into `undefined?.()` and silently dropped. The translation
+    // to OrchestratorEvent happens in main() where the StateStore lives.
+    if (emitPipelineEvent) {
+      bootstrap.input.eventSink = (event) => {
+        try {
+          emitPipelineEvent(taskId, event);
+        } catch (err) {
+          // Per PipelineInput contract: failures inside the sink must not
+          // affect the pipeline result. Log and continue.
+          console.warn('[daemon] pipeline event sink threw:', err);
+        }
+      };
+    }
     return bootstrap;
   };
+}
+
+/**
+ * Translate a {@link PipelineEvent} into the orchestrator's {@link OrchestratorEvent}
+ * envelope and append to the events table. The sprintId is resolved from the
+ * orchestrator store via `loadTask(taskId).sprintId`; if the task lookup fails
+ * (race during teardown, store closed), the event is dropped with a warn —
+ * the pipeline result is unaffected.
+ *
+ * This is the missing half of issue #163: PR #166 added the `reviewer.rejected`
+ * event but the runner emits it into `input.eventSink?.()` which was `undefined`
+ * in production. This persists it (and three sibling events that were also
+ * being dropped: `plan_reviewer.vetoed/escalated/skipped`, `reviewer.haiku_gate_passed`).
+ */
+export function persistPipelineEvent(
+  store: StateStore,
+  taskId: string,
+  event: PipelineEvent,
+): void {
+  const task = store.loadTask(taskId as TaskId);
+  if (!task) {
+    console.warn(
+      `[daemon] persistPipelineEvent: task ${taskId} not found in state store; dropping event ${event.kind}`,
+    );
+    return;
+  }
+  // Strip kind+taskId from the payload — they live on the envelope. Cast via
+  // `unknown` because the discriminated-union payload shape varies per kind.
+  const { kind: _kind, taskId: _taskId, ...payload } = event as unknown as Record<string, unknown> & {
+    kind: string;
+    taskId: string;
+  };
+  store.appendEvent({
+    ts: Date.now(),
+    sprintId: task.sprintId,
+    taskId: task.id,
+    kind: event.kind,
+    payload,
+  });
 }
 
 /**

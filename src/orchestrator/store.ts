@@ -411,6 +411,51 @@ export class StateStore {
       );
   }
 
+  /**
+   * Load all events for a sprint, oldest first. The events table is append-only
+   * so this is a simple `WHERE sprint_id = ? ORDER BY ts ASC`. Used by tests
+   * and the dashboard. Optional `kind` filter narrows to a specific event kind.
+   */
+  loadEventsBySprint(sprintId: SprintId, kind?: string): ReadonlyArray<OrchestratorEvent> {
+    const sql = kind
+      ? 'SELECT * FROM events WHERE sprint_id = ? AND kind = ? ORDER BY ts ASC'
+      : 'SELECT * FROM events WHERE sprint_id = ? ORDER BY ts ASC';
+    const rows = kind
+      ? (this.db.prepare(sql).all(sprintId, kind) as Array<{
+          ts: number;
+          sprint_id: string;
+          task_id: string | null;
+          worker_id: string | null;
+          kind: string;
+          payload_json: string;
+        }>)
+      : (this.db.prepare(sql).all(sprintId) as Array<{
+          ts: number;
+          sprint_id: string;
+          task_id: string | null;
+          worker_id: string | null;
+          kind: string;
+          payload_json: string;
+        }>);
+    return rows.map((r) => {
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = JSON.parse(r.payload_json) as Record<string, unknown>;
+      } catch {
+        // tolerate corrupt rows — events are best-effort observability data
+      }
+      const event: OrchestratorEvent = {
+        ts: r.ts,
+        sprintId: r.sprint_id as SprintId,
+        kind: r.kind,
+        payload,
+      };
+      if (r.task_id !== null) event.taskId = r.task_id as TaskId;
+      if (r.worker_id !== null) event.workerId = r.worker_id as WorkerId;
+      return event;
+    });
+  }
+
   recordAttempt(input: AttemptRecordInput): number {
     const info = this.db
       .prepare(
