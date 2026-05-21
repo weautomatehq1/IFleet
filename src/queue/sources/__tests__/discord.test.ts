@@ -165,6 +165,46 @@ describe('DiscordSource.markFailed — HTTP control-plane regression', () => {
       cleanup();
     }
   });
+
+  it('fires onPostFailed callback when the Discord side-effect is skipped (audit follow-up)', async () => {
+    // The console.warn alone gets rotated out of PM2 logs and is invisible
+    // to operators. The callback hook lets the daemon persist a
+    // discord.post_failed event so the failure is queryable.
+    const { store, cleanup } = tmpStore();
+    try {
+      const captured: Array<{ taskId: string; method: string; reason: string }> = [];
+      const stillBrokenOut: DiscordOut = {
+        postTaskCreated: async () => ({ threadId: '' }),
+        postProgress: async () => undefined,
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => undefined,
+      };
+      const src = new DiscordSource({
+        router: mockRouter(ROUTE),
+        out: stillBrokenOut,
+        store,
+        onPostFailed: (taskId, method, reason) => captured.push({ taskId, method, reason }),
+      });
+      const task = await src.ingest(
+        { goal: 'X', channelId: ROUTE.channelId, messageId: '01KS4VCALLBACKTEST00IFLEET', userId: 'u', userLabel: 'Seb' },
+        store,
+      );
+
+      await src.markPicked(task);
+      await src.markCompleted(task, 'https://github.com/x/y/pull/1');
+      await src.markFailed(task, 'oom');
+      await src.markBlocked(task, 'docker');
+
+      assert.equal(captured.length, 4, 'all four mark* methods must fire the callback when threadId stays empty');
+      assert.deepEqual(captured.map((c) => c.method), ['markPicked', 'markCompleted', 'markFailed', 'markBlocked']);
+      assert.equal(captured[0]?.taskId, task.id);
+      assert.match(captured[2]?.reason ?? '', /oom/);
+      assert.match(captured[3]?.reason ?? '', /docker/);
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 describe('DiscordSource.markPicked — deferred thread creation', () => {

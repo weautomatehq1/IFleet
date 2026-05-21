@@ -108,12 +108,40 @@ async function main(): Promise<void> {
     fallbackChannelId: process.env['DISCORD_FALLBACK_CHANNEL_ID'] ?? undefined,
   });
 
+  // Open the orchestrator's StateStore early so we can wire the
+  // discord.post_failed observability callback into DiscordSource below
+  // (the callback lands events in the orchestrator's events table).
+  const orchestratorStore = new StateStore();
+
   // -------- Sources + unified adapter --------
   const githubQueue = new GitHubQueue(new Octokit({ auth: githubToken }), {
     repos: Object.values(reposMap),
   });
   const githubSource = new GitHubIssuesSource(githubQueue);
-  const discordSource = new DiscordSource({ router, out: discordOut, store });
+  const discordSource = new DiscordSource({
+    router,
+    out: discordOut,
+    store,
+    onPostFailed: (taskId, method, reason) => {
+      // Persist as a structured event so operators can query why a Discord
+      // thread suddenly stopped updating (resolves the silent-no-op gap
+      // flagged in the #165 audit). Tolerant — best effort.
+      try {
+        const task = store.getById(taskId);
+        const sprintId = (task as { sprintId?: string } | null)?.sprintId
+          ?? ('' as SprintId);
+        orchestratorStore.appendEvent({
+          ts: Date.now(),
+          sprintId: sprintId as SprintId,
+          taskId: taskId as TaskId,
+          kind: 'discord.post_failed',
+          payload: { method, reason },
+        });
+      } catch (err) {
+        console.warn('[daemon] discord.post_failed event append threw:', err);
+      }
+    },
+  });
   const unified = new UnifiedQueueAdapter(store, {
     github: githubSource,
     discord: discordSource,
@@ -132,7 +160,6 @@ async function main(): Promise<void> {
   // factory knows three of those at bootstrap and the SHA in teardown — capture
   // both before the worktree is torn down (which happens before task.completed).
   const verifierCtx = new TaskContextRegistry();
-  const orchestratorStore = new StateStore();
 
   // Cancel any sprints still marked 'running' from a previous crash so
   // resumeAbandoned() has nothing to recover — preventing double-dispatch when
