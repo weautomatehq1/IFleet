@@ -34,6 +34,15 @@ export interface DiscordSourceOptions {
    * store see the correct threadId.
    */
   store?: TaskStore;
+  /**
+   * Optional observability callback fired when `postTaskCreated` returns no
+   * threadId — i.e. the Discord side-effect for a `mark*` call had to be
+   * skipped. Without this, the failure surfaces only as a `console.warn` line
+   * which PM2 log rotation may discard. Daemon wires this to
+   * `StateStore.appendEvent({kind: 'discord.post_failed', ...})` so operators
+   * can query why a thread suddenly stopped updating. See #165 audit.
+   */
+  onPostFailed?: (taskId: string, method: 'markPicked' | 'markCompleted' | 'markFailed' | 'markBlocked' | 'resolveThread', reason: string) => void;
 }
 
 export class DiscordSource implements TaskSource {
@@ -119,25 +128,37 @@ export class DiscordSource implements TaskSource {
 
   async markPicked(task: QueuedTask): Promise<void> {
     const tid = await this.resolveThread(task);
-    if (!tid) return;
+    if (!tid) {
+      this.opts.onPostFailed?.(task.id, 'markPicked', 'no threadId');
+      return;
+    }
     await this.opts.out.postProgress(tid, '🤖 Picked up — worker starting.');
   }
 
   async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
     const tid = await this.resolveThread(task);
-    if (!tid) return;
+    if (!tid) {
+      this.opts.onPostFailed?.(task.id, 'markCompleted', 'no threadId');
+      return;
+    }
     await this.opts.out.postCompleted(tid, prUrl);
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
     const tid = await this.resolveThread(task);
-    if (!tid) return;
+    if (!tid) {
+      this.opts.onPostFailed?.(task.id, 'markFailed', `no threadId (original reason: ${reason})`);
+      return;
+    }
     await this.opts.out.postFailed(tid, reason);
   }
 
   async markBlocked(task: QueuedTask, capability: string): Promise<void> {
     const tid = await this.resolveThread(task);
-    if (!tid) return;
+    if (!tid) {
+      this.opts.onPostFailed?.(task.id, 'markBlocked', `no threadId (missing capability: ${capability})`);
+      return;
+    }
     await this.opts.out.postFailed(tid, `Blocked — missing capability: ${capability}`);
   }
 
