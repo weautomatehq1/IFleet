@@ -2,6 +2,7 @@
   "name": "ifleet",
   "version": "0.0.1",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -27,9 +28,9 @@
     "graph:index": "node --import tsx scripts/index-repo.ts",
     "validate-claims": "node --import tsx scripts/validate-claims.ts",
     "dead-code": "ts-prune --ignore '(index\\.ts|__tests__|fixtures)'",
-    "fleet:pause": "ssh root@187.124.77.142 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
-    "fleet:resume": "ssh root@187.124.77.142 'rm -f /root/IFleet/.omc/PAUSED && echo \"fleet resumed\"'",
-    "fleet:status": "ssh root@187.124.77.142 'pm2 list --no-color && echo && (test -f /root/IFleet/.omc/PAUSED && echo \"[PAUSED]\" || echo \"[RUNNING]\")'",
+    "fleet:pause": "ssh root@${VPS_HOST:-187.124.77.142} 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
+    "fleet:resume": "ssh root@${VPS_HOST:-187.124.77.142} 'rm -f /root/IFleet/.omc/PAUSED && echo \"fleet resumed\"'",
+    "fleet:status": "ssh root@${VPS_HOST:-187.124.77.142} 'pm2 list --no-color && echo && (test -f /root/IFleet/.omc/PAUSED && echo \"[PAUSED]\" || echo \"[RUNNING]\")'",
     "prepare": "husky"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "better-sqlite3": "^11.3.0",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
+    "langfuse": "^3.38.20",
     "nanoid": "^5.0.7",
     "pg": "^8.13.1",
     "resend": "^6.12.3",
