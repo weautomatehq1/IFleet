@@ -99,6 +99,7 @@ export interface RecordPrDecisionInput {
   mergedAt?: number;
 }
 
+
 export interface PrDecision {
   id: string;
   taskId: string;
@@ -128,6 +129,22 @@ export class TaskStore {
       const message = err instanceof Error ? err.message : String(err);
       if (!/duplicate column name: priority/i.test(message)) throw err;
     }
+    // pr_decisions table was added later; SCHEMA creates it on fresh DBs, this
+    // migration covers existing DBs that pre-date the table.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pr_decisions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        pr_number INTEGER NOT NULL,
+        verdict TEXT NOT NULL,
+        reviewer_login TEXT,
+        merged_at INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
+      CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
+    `);
   }
 
   insert(task: QueuedTask): InsertResult {
@@ -271,7 +288,7 @@ export class TaskStore {
    * for now callers are responsible for not double-writing.
    */
   recordPrDecision(input: RecordPrDecisionInput): PrDecision {
-    const id = randomUUID();
+    const id = `prd_${randomUUID()}`;
     const createdAt = Date.now();
     const reviewerLogin = input.reviewerLogin ?? null;
     const mergedAt = input.mergedAt ?? null;
@@ -308,7 +325,7 @@ export class TaskStore {
   getPrDecisionsByRepo(repo: string, limit = 100): PrDecision[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM pr_decisions WHERE repo = @repo ORDER BY created_at DESC LIMIT @limit`,
+        `SELECT * FROM pr_decisions WHERE repo = @repo ORDER BY created_at DESC, rowid DESC LIMIT @limit`,
       )
       .all({ repo, limit }) as Array<{
         id: string;
@@ -336,6 +353,7 @@ export class TaskStore {
     this.db.close();
   }
 }
+
 
 function normalizePriority(value: unknown): 'low' | 'normal' | 'high' {
   if (value === 'high' || value === 'low' || value === 'normal') return value;

@@ -463,6 +463,10 @@ test('auto-loop: task completion schedules another tick without waiting for the 
     // Only ONE explicit tick. If the auto-loop works, both tasks dispatch.
     await waitFor(() => adapter.spawned.length >= 2, 1000);
     assert.equal(adapter.spawned.length, 2, 'second task dispatched via auto-loop, not manual tick');
+    // Wait for all async DB writes (state transitions, event persistence) from
+    // the second task's completion to settle before closing the store, otherwise
+    // Node's test runner sees "activity after test ended" and marks the file ✖.
+    await waitFor(() => events.filter((e) => e.kind === 'task.completed').length >= 2, 1000);
     registry.stop();
     store.close();
   } finally {
