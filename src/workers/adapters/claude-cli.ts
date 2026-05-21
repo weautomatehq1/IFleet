@@ -10,6 +10,7 @@ import type {
   WorkerAdapter,
   WorkerConfig,
 } from '../../orchestrator/types.ts';
+import { startTrace } from '../../observability/langfuse.ts';
 import { registerAdapter } from './registry.ts';
 
 /**
@@ -62,6 +63,15 @@ export function createClaudeCliAdapter(opts: ClaudeCliAdapterOptions = {}): Work
         workerOpts.authProfile = profile;
       }
 
+      const trace = startTrace({
+        name: spawnOpts.agentName ?? 'claude-cli',
+        taskId,
+        workerId,
+        model,
+        brief,
+      });
+      const traceStartedAt = Date.now();
+
       const handle = inner.spawn(workerOpts);
 
       // Drain events so the in-memory queue does not grow unbounded for long
@@ -78,14 +88,30 @@ export function createClaudeCliAdapter(opts: ClaudeCliAdapterOptions = {}): Work
           if (typeof result.totalCostUsd === 'number') {
             spawnResult.totalCostUsd = result.totalCostUsd;
           }
+          trace.end({
+            ok: result.ok,
+            exitCode: spawnResult.exitCode,
+            totalCostUsd: result.totalCostUsd,
+            durationMs: Date.now() - traceStartedAt,
+            outputText: result.text,
+          });
           return spawnResult;
         },
-        (err: unknown): SpawnResult => ({
-          taskId,
-          workerId,
-          exitCode: 1,
-          error: err instanceof Error ? err.message : String(err),
-        }),
+        (err: unknown): SpawnResult => {
+          const error = err instanceof Error ? err.message : String(err);
+          trace.end({
+            ok: false,
+            exitCode: 1,
+            durationMs: Date.now() - traceStartedAt,
+            error,
+          });
+          return {
+            taskId,
+            workerId,
+            exitCode: 1,
+            error,
+          };
+        },
       );
 
       // The pid is exposed synchronously by the inner spawn; never await
