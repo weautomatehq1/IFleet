@@ -14,7 +14,7 @@
     "brew": "4.x",
     "pwsh": "7.4.6"
   },
-  "mcps": ["chatcode", "n8n", "discord", "context7", "puppeteer", "lightpanda", "github", "searxng", "resend"],
+  "mcps": ["n8n", "discord", "context7", "puppeteer", "lightpanda", "github", "searxng", "resend"],
   "auth": {
     "github": true,
     "docker": true

@@ -130,7 +130,7 @@ pm2 delete ifleet    # remove from PM2 entirely
 
 ## How issues enter the fleet
 
-1. A Sentry error fires, or Seb opens an issue manually.
+1. Seb opens an issue manually (e.g. from a Discord notification, PM2 log alert, or `/audit-scan` finding).
 2. The issue is labeled `auto:ship` on the `weautomatehq1/IFleet` GitHub repo.
 3. On the next PM2 tick (within 5 minutes), the fleet picks it up.
 4. The pipeline runs: Architect plans → Editor codes → Verify checks → Reviewer approves → draft PR opens.
