@@ -24,6 +24,7 @@ bug in a handler.
 | Env var | Default | What it does |
 |---|---|---|
 | `DASHBOARD_PORT` | `3737` | HTTP port |
+| `DASHBOARD_HOST` | `127.0.0.1` | Interface to bind. Default is localhost-only (no LAN exposure). Set to `0.0.0.0` to expose to the LAN (e.g. for a tablet on the same WiFi). The dashboard has no auth — only switch when you trust the network. |
 | `DASHBOARD_TASKS_DB` | `${IFLEET_STATE_DIR:-./state}/tasks.db` | Path to TaskStore SQLite |
 | `DASHBOARD_STATE_DB` | `~/.omc/ifleet/state.db` | Path to StateStore SQLite |
 | `IFLEET_STATE_DIR` | `./state` | Used when `DASHBOARD_TASKS_DB` is unset |

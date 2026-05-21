@@ -165,6 +165,18 @@ describe('dashboard/server', () => {
     expect(body.ok).toBe(true);
   });
 
+  it('GET /api/health does NOT leak filesystem paths (post-audit regression)', async () => {
+    // Earlier shape `{ ok, tasksDb, stateDb }` leaked absolute paths
+    // like `/Users/<name>/.omc/ifleet/state.db` to any client that could
+    // reach the server — including any browser tab on the same machine.
+    // Health must stay minimal.
+    const res = await fetch(`${baseUrl}/api/health`);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(['ok']);
+    expect(body['tasksDb']).toBeUndefined();
+    expect(body['stateDb']).toBeUndefined();
+  });
+
   it('GET /api/sprints/active filters out terminal sprints', async () => {
     const res = await fetch(`${baseUrl}/api/sprints/active`);
     expect(res.status).toBe(200);
