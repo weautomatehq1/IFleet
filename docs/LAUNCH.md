@@ -29,11 +29,10 @@ Confirm every box before declaring "go for launch."
 - [ ] `GITHUB_TOKEN` — fine-grained PAT scoped to `weautomatehq1/IFleet` and target client repos
 - [ ] `DISCORD_BOT_TOKEN` — bot in the `#ifleet` channel
 - [ ] `DISCORD_HMAC_SECRET` — shared between bot and `/control` endpoint
-- [ ] `SENTRY_DSN` — observability sink
 - [ ] `RESEND_API_KEY` — email digest
 - [ ] `BUDGET_USD` — set to a launch-day safety cap (start with `5.00`)
 
-Verify with `ssh root@187.124.77.142 'set | grep -E "ANTHROPIC|OPENAI|GITHUB|DISCORD|SENTRY|RESEND|BUDGET"' | wc -l` — expect 8.
+Verify with `ssh root@187.124.77.142 'set | grep -E "ANTHROPIC|OPENAI|GITHUB|DISCORD|RESEND|BUDGET"' | wc -l` — expect 7.
 
 ### PM2 processes online
 ```bash
@@ -74,11 +73,11 @@ draft PR open within 10 minutes.
    `weautomatehq1/IFleet`. Title prefix: `chore(smoke):`.
 6. Reviewer-bot leaves a Discord summary in `#ifleet` once the PR is open.
 
-**Pass criteria:** PR open within 10 min + Sentry shows zero `error` events
-during the sprint window + budget ledger increment < $0.05.
+**Pass criteria:** PR open within 10 min + no `error`-level entries in the
+event log / PM2 logs during the sprint window + budget ledger increment < $0.05.
 
-**Fail action:** if no PR appears in 15 min OR Sentry shows errors → go to
-§3 (rollback) before debugging further.
+**Fail action:** if no PR appears in 15 min OR the event log / PM2 logs show
+`error`-level entries → go to §3 (rollback) before debugging further.
 
 ---
 
@@ -124,8 +123,7 @@ Tail these in four panes for the first 60 min after launch.
 |---|---|---|
 | 1 — orchestrator log | `ssh root@187.124.77.142 'pm2 logs ifleet'` | `sprint_started`, `pipeline_phase_complete`, NO `error`/`fatal` |
 | 2 — control-plane log | `ssh root@187.124.77.142 'pm2 logs control-plane'` | HMAC validation passes, 200s on `/control` |
-| 3 — Sentry issues feed | https://weautomatehq.sentry.io/issues/?project=ifleet | zero new issues for the launch window |
-| 4 — GitHub PR feed | `gh pr list --repo weautomatehq1/IFleet --state open --limit 20` | PRs opening at the expected cadence (~3/hr in smoke mode) |
+| 3 — GitHub PR feed | `gh pr list --repo weautomatehq1/IFleet --state open --limit 20` | PRs opening at the expected cadence (~3/hr in smoke mode) |
 
 Also keep `#ifleet` Discord channel visible — the bot posts a status line per
 sprint completion, and ApprovalGate verdict requests show up there.
@@ -146,7 +144,6 @@ guard is wired up).
 | VPS / nginx / PM2 | Seb | — |
 | GitHub repo + branch protection | Seb | Esme |
 | Discord bot + control plane | Seb | Esme |
-| Sentry / observability | Seb | — |
 | Spec-template repo (`weautomatehq1/spec-template`) | Esme | Seb |
 
 Escalation: anything red for > 15 min → ping Seb directly in `#ifleet`. If

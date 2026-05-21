@@ -195,7 +195,7 @@ export interface PipelineInput {
 /**
  * Structured observability events emitted by the pipeline runner during a run.
  * Consumers wire a sink into {@link PipelineInput.eventSink} to forward these
- * into the orchestrator event log, Discord, Sentry, etc.
+ * into the orchestrator event log, Discord, etc.
  *
  * Today only `reviewer.haiku_gate_passed` is defined (issue #109); other
  * reviewer/architect events should be added here as they migrate off the

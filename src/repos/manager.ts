@@ -186,7 +186,7 @@ export class GitRepoManager implements RepoManager {
       // git can echo the Authorization header back under GIT_TRACE or when
       // a credential helper logs verbosely — scrub both stderr and stdout
       // before they end up inside a thrown Error that may be surfaced to
-      // Discord, the event log, or a Sentry breadcrumb.
+      // Discord or the event log.
       const stderr = redactToken(result.stderr.trim());
       const stdout = redactToken(result.stdout.trim());
       throw new Error(
