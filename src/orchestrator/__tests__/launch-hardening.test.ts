@@ -28,6 +28,9 @@ function makeStandalone(workerCount = 1): {
       workers: Array.from({ length: workerCount }, (_, i) => ({
         id: `w${i + 1}`,
         provider: 'claude',
+        // 'api' so the budget guard (which only enforces when at least one
+        // enabled worker is API-keyed) remains active for budget tests here.
+        authProfile: 'api',
         maxConcurrent: 1,
         enabled: true,
       })),
