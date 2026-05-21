@@ -6,7 +6,7 @@
  * Architect → Editor → Verify → Reviewer pipeline, and opens a PR.
  *
  * Usage:
- *   npx tsx scripts/run-smoke.ts [--issue <number>] [--dry-run]
+ *   npx tsx scripts/run-smoke.ts [--issue <number>] [--dry-run] [--version]
  *
  * `--dry-run` picks the next issue (read-only — no labels added, no
  * comments posted), prints the classification + worker plan, and exits 0
@@ -430,6 +430,13 @@ async function runWorkerMode(issueNumber: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--version')) {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as { version: string };
+    console.log(pkg.version);
+    process.exitCode = 0;
+    return;
+  }
+
   const PAUSED_FLAG = join(REPO_ROOT, '.omc', 'PAUSED');
   if (existsSync(PAUSED_FLAG)) {
     log('Fleet is paused (.omc/PAUSED exists). Run `npm run fleet:resume` to resume.');
