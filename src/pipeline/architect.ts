@@ -46,6 +46,13 @@ export interface RunArchitectInput {
    */
   repoRoot?: string;
   /**
+   * Absolute path to the per-task git worktree. Architect must run inside
+   * this sandbox so any accidental file write or git op lands in the
+   * throwaway worktree, never the host repo. Required in production; tests
+   * may omit (defaulting to `resolve('.')` in the spawn helper).
+   */
+  worktreePath?: string;
+  /**
    * Deep-interview poster. When provided and the brief looks vague, the
    * architect runs a question-only spawn, posts the questions via this
    * poster, and short-circuits with `approved: false` and an `interview`
@@ -98,6 +105,7 @@ export async function runArchitect(input: RunArchitectInput): Promise<ArchitectO
     role: 'architect',
     systemPrompt,
     abortSignal: input.abortSignal,
+    ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
   });
 
   const result = await handle.result();
@@ -185,6 +193,7 @@ async function runInterview(
     role: 'architect',
     systemPrompt: INTERVIEW_SYSTEM_PROMPT,
     abortSignal: input.abortSignal,
+    ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
   });
   const result = await handle.result();
   const endedAt = Date.now();

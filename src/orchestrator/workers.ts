@@ -4,6 +4,16 @@ import type { WorkerConfig, WorkerId } from './types';
 
 export const DEFAULT_WORKERS_CONFIG = join(process.cwd(), 'config', 'workers.json');
 
+/**
+ * Sentinel value for {@link WorkerConfig.authProfile} that signals the worker
+ * is billed via an Anthropic API key (real per-call USD spend). The budget
+ * cap in `SprintManager.checkBudget` only enforces when at least one enabled
+ * worker uses this profile — see issue #162. Any other value (e.g.
+ * `'default'`, `'claude-max-2'`) is treated as a Max-plan / OAuth profile
+ * where the CLI's reported cost does not reflect real billing.
+ */
+export const API_AUTH_PROFILE = 'api';
+
 interface WorkersFile {
   workers: ReadonlyArray<WorkerConfig>;
 }

@@ -8,7 +8,7 @@ These files/directories are load-bearing for IFleet's operation or contain secre
 
 | Path | Why protected |
 |---|---|
-| `.env`, `.env.*` (except `.env.example`) | Secrets — Discord bot token, Claude API key, HMAC secret, GitHub token, Sentry DSN |
+| `.env`, `.env.*` (except `.env.example`) | Secrets — Discord bot token, Claude API key, HMAC secret, GitHub token |
 | `ecosystem.config.cjs` | PM2 process config — controls VPS daemon lifecycle |
 | `nginx/**` | Reverse proxy config — wrong rule = control plane unreachable |
 | `deploy/deploy.sh`, `deploy/install-vps.sh`, `deploy/env.example`, `deploy/README.md` | VPS deployment scripts — direct path to production |

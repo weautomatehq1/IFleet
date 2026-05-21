@@ -56,6 +56,24 @@ export interface SprintRuntimeState {
   rateResetAt: number | null;
 }
 
+export interface PrDecisionInput {
+  taskId: string;
+  repo: string;
+  prNumber: number | null;
+  verdict: 'merged' | 'abandoned';
+  reviewerLogin: string | null;
+}
+
+export interface PrDecisionRow {
+  id: number;
+  taskId: string;
+  repo: string;
+  prNumber: number | null;
+  verdict: 'merged' | 'abandoned';
+  reviewerLogin: string | null;
+  decidedAt: number;
+}
+
 const MIGRATIONS: ReadonlyArray<string> = [
   `CREATE TABLE IF NOT EXISTS sprints (
     id TEXT PRIMARY KEY,
@@ -157,6 +175,18 @@ const MIGRATIONS: ReadonlyArray<string> = [
     FOREIGN KEY (run_id) REFERENCES verifier_runs(id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_verifier_failures_run ON verifier_failures(run_id)`,
+  // PR decision log: one row per sprint terminal event. Drives the
+  // merge-rate / abandonment-rate metrics (M4 elevation plan).
+  `CREATE TABLE IF NOT EXISTS pr_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    pr_number INTEGER,
+    verdict TEXT NOT NULL,
+    reviewer_login TEXT,
+    decided_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id)`,
 ];
 
 interface AttemptRecordInput {
@@ -381,6 +411,51 @@ export class StateStore {
       );
   }
 
+  /**
+   * Load all events for a sprint, oldest first. The events table is append-only
+   * so this is a simple `WHERE sprint_id = ? ORDER BY ts ASC`. Used by tests
+   * and the dashboard. Optional `kind` filter narrows to a specific event kind.
+   */
+  loadEventsBySprint(sprintId: SprintId, kind?: string): ReadonlyArray<OrchestratorEvent> {
+    const sql = kind
+      ? 'SELECT * FROM events WHERE sprint_id = ? AND kind = ? ORDER BY ts ASC'
+      : 'SELECT * FROM events WHERE sprint_id = ? ORDER BY ts ASC';
+    const rows = kind
+      ? (this.db.prepare(sql).all(sprintId, kind) as Array<{
+          ts: number;
+          sprint_id: string;
+          task_id: string | null;
+          worker_id: string | null;
+          kind: string;
+          payload_json: string;
+        }>)
+      : (this.db.prepare(sql).all(sprintId) as Array<{
+          ts: number;
+          sprint_id: string;
+          task_id: string | null;
+          worker_id: string | null;
+          kind: string;
+          payload_json: string;
+        }>);
+    return rows.map((r) => {
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = JSON.parse(r.payload_json) as Record<string, unknown>;
+      } catch {
+        // tolerate corrupt rows — events are best-effort observability data
+      }
+      const event: OrchestratorEvent = {
+        ts: r.ts,
+        sprintId: r.sprint_id as SprintId,
+        kind: r.kind,
+        payload,
+      };
+      if (r.task_id !== null) event.taskId = r.task_id as TaskId;
+      if (r.worker_id !== null) event.workerId = r.worker_id as WorkerId;
+      return event;
+    });
+  }
+
   recordAttempt(input: AttemptRecordInput): number {
     const info = this.db
       .prepare(
@@ -483,5 +558,45 @@ export class StateStore {
       pressure: row.pressure,
       observedAt: row.observed_at,
     };
+  }
+
+  recordPrDecision(input: PrDecisionInput): void {
+    this.db
+      .prepare(
+        `INSERT INTO pr_decisions (task_id, repo, pr_number, verdict, reviewer_login, decided_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.taskId,
+        input.repo,
+        input.prNumber ?? null,
+        input.verdict,
+        input.reviewerLogin ?? null,
+        Date.now(),
+      );
+  }
+
+  listPrDecisions(taskId: string): ReadonlyArray<PrDecisionRow> {
+    interface RawRow {
+      id: number;
+      task_id: string;
+      repo: string;
+      pr_number: number | null;
+      verdict: string;
+      reviewer_login: string | null;
+      decided_at: number;
+    }
+    const rows = this.db
+      .prepare('SELECT * FROM pr_decisions WHERE task_id = ? ORDER BY id ASC')
+      .all(taskId) as ReadonlyArray<RawRow>;
+    return rows.map((r) => ({
+      id: r.id,
+      taskId: r.task_id,
+      repo: r.repo,
+      prNumber: r.pr_number,
+      verdict: r.verdict as 'merged' | 'abandoned',
+      reviewerLogin: r.reviewer_login,
+      decidedAt: r.decided_at,
+    }));
   }
 }

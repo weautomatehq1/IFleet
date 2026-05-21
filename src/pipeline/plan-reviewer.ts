@@ -137,6 +137,12 @@ export interface RunPlanReviewerInput {
    */
   priorReasons?: PlanReviewVetoReason[];
   /**
+   * Absolute path to the per-task git worktree. The plan-reviewer is
+   * read-only by intent, but we still sandbox it so an out-of-scope tool
+   * call (Bash, Write) can't touch the host repo.
+   */
+  worktreePath?: string;
+  /**
    * Cost ceiling for plan review, expressed as a multiplier of the
    * architect's cost. The spec ("Cap plan-review cost at 10% of architect
    * cost") defaults this to 0.10. When the worker reports
@@ -203,6 +209,7 @@ export async function runPlanReviewer(
       role: 'reviewer',
       systemPrompt: PLAN_REVIEWER_SYSTEM_PROMPT,
       abortSignal: input.abortSignal,
+      ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
     });
     result = await handle.result();
   } catch (err) {

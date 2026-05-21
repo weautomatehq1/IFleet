@@ -175,6 +175,7 @@ export class PipelineBridge implements WorkerAdapter {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       outcome = error;
+      console.error('[pipeline-bridge] execute threw:', error.message, error.stack);
       return {
         taskId,
         workerId,

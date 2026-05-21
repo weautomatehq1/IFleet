@@ -25,7 +25,18 @@ export interface TempEnv {
   cleanup: () => void;
 }
 
-export function makeTempEnv(): TempEnv {
+export interface MakeTempEnvOptions {
+  /**
+   * Override the `authProfile` of the default `w1` worker written to
+   * `workers.json`. Defaults to `'api'` so the budget guard (which only fires
+   * when at least one enabled worker is API-keyed) remains active for the
+   * existing budget tests. Pass a non-`'api'` value (e.g. `'default'`) to
+   * exercise the Max-plan skip path.
+   */
+  authProfile?: string;
+}
+
+export function makeTempEnv(opts: MakeTempEnvOptions = {}): TempEnv {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-orch-'));
   const dbPath = join(dir, 'state.db');
   const workersConfig = join(dir, 'workers.json');
@@ -36,6 +47,7 @@ export function makeTempEnv(): TempEnv {
         {
           id: 'w1',
           provider: 'claude',
+          authProfile: opts.authProfile ?? 'api',
           maxConcurrent: 2,
           enabled: true,
         },
@@ -142,10 +154,12 @@ export function makeManager(opts: {
   briefLoader?: TaskBriefLoader;
   capabilities?: Capabilities;
   budgetUsd?: number;
+  /** Forwarded to {@link makeTempEnv} — controls the lone worker's auth profile. */
+  authProfile?: string;
   onBudgetPaused?: (sprintId: SprintId, spentUsd: number, limitUsd: number) => void | Promise<void>;
   onRatePaused?: (sprintId: SprintId, resetAt: number) => void | Promise<void>;
 } = {}): ManagerHarness {
-  const env = makeTempEnv();
+  const env = makeTempEnv({ authProfile: opts.authProfile });
   const pressure = new PressureTracker({ now: opts.now });
   const adapter = opts.adapter ?? new MockAdapter();
   const events: OrchestratorEvent[] = [];
