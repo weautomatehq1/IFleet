@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import type { QueuedTask, TaskState } from '../contracts/task.js';
 
 export function defaultStateDir(): string {
@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS pr_decisions (
   verdict TEXT NOT NULL,
   reviewer_login TEXT,
   merged_at INTEGER,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
 CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
@@ -118,6 +119,7 @@ export class TaskStore {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
     // Forward-compatible migration: CREATE TABLE IF NOT EXISTS above creates
     // the column on fresh dbs; this ALTER catches dbs created before HIGH-4.
@@ -140,11 +142,39 @@ export class TaskStore {
         verdict TEXT NOT NULL,
         reviewer_login TEXT,
         merged_at INTEGER,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
       CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
     `);
+    // Forward-compat: if an older DB already created pr_decisions WITHOUT the
+    // task_id FK, recreate it. Safe because pr_decisions was dead code until
+    // M4 — nothing wrote to it. If somehow non-empty, keep the data and skip
+    // the recreate; the row will be FK-less but writes will still succeed.
+    const fkList = this.db.pragma('foreign_key_list(pr_decisions)') as Array<{ from: string }>;
+    const hasTaskFk = fkList.some((row) => row.from === 'task_id');
+    if (!hasTaskFk) {
+      const { n } = this.db.prepare(`SELECT COUNT(*) AS n FROM pr_decisions`).get() as { n: number };
+      if (n === 0) {
+        this.db.exec(`
+          DROP TABLE pr_decisions;
+          CREATE TABLE pr_decisions (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            repo TEXT NOT NULL,
+            pr_number INTEGER NOT NULL,
+            verdict TEXT NOT NULL,
+            reviewer_login TEXT,
+            merged_at INTEGER,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
+          CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
+        `);
+      }
+    }
   }
 
   insert(task: QueuedTask): InsertResult {

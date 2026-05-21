@@ -112,6 +112,7 @@ test('sprint.completed + PR URL → merged row with correct pr_number', (_t, don
   const sprintId = 'sprint-pr-1' as SprintId;
   const prUrl = 'https://github.com/weautomatehq1/IFleet/pull/42';
 
+  store.insert(task);
   wireSprintCompletion(sprintId, task, adapter, orch as unknown as Orchestrator, store);
 
   // Pipeline: task completes with PR URL, then sprint completes.
@@ -152,6 +153,7 @@ test('sprint.failed + prior PR URL → abandoned row', (_t, done) => {
   const sprintId = 'sprint-pr-2' as SprintId;
   const prUrl = 'https://github.com/weautomatehq1/IFleet/pull/77';
 
+  store.insert(task);
   wireSprintCompletion(sprintId, task, adapter, orch as unknown as Orchestrator, store);
 
   // PR opened mid-sprint, then sprint fails.
@@ -216,6 +218,7 @@ test('sprint.cancelled + prior PR URL → abandoned row', (_t, done) => {
   const sprintId = 'sprint-pr-4' as SprintId;
   const prUrl = 'https://github.com/weautomatehq1/IFleet/pull/99';
 
+  store.insert(task);
   wireSprintCompletion(sprintId, task, adapter, orch as unknown as Orchestrator, store);
 
   orch.emit({
