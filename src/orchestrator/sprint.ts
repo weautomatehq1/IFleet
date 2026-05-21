@@ -4,7 +4,7 @@ import { isCapabilityAvailable } from './capabilities';
 import { PipelineBridge, type PipelineRunnerFactory } from './pipeline-bridge';
 import type { PressureTracker } from './pressure';
 import type { StateStore } from './store';
-import type { WorkerRegistry } from './workers';
+import { API_AUTH_PROFILE, type WorkerRegistry } from './workers';
 import {
   newSprintId,
   newTaskId,
@@ -118,6 +118,10 @@ export class SprintManager {
   private readonly sprintSpend = new Map<SprintId, number>();
   /** resetAt timestamps for sprints paused due to rate-cap. Used for auto-resume. */
   private readonly rateLimitResetAt = new Map<SprintId, number>();
+  /** Sprints for which `sprint.budget_skipped` has already been emitted.
+   *  One-shot per sprint so the event isn't repeated on every task completion
+   *  after the cap is first exceeded. Resets implicitly on process restart. */
+  private readonly budgetSkipLogged = new Set<SprintId>();
 
   constructor(opts: SprintManagerOptions) {
     this.store = opts.store;
@@ -391,6 +395,7 @@ export class SprintManager {
     } catch (err) {
       this.registry.release(workerId);
       const message = err instanceof Error ? err.message : String(err);
+      console.error('[sprint] dispatch threw for task', task.id, ':', message, err instanceof Error ? err.stack : '');
       this.store.saveTask({
         ...task,
         brief,
@@ -424,6 +429,32 @@ export class SprintManager {
   private async checkBudget(sprintId: SprintId, spentUsd: number): Promise<boolean> {
     const limit = this.budgetUsd;
     if (limit === undefined || spentUsd < limit) return false;
+    // The reported USD comes from the Claude CLI's per-call cost field, which
+    // is computed at API list prices regardless of how the request is billed.
+    // For a Max-plan OAuth subscription (flat monthly fee) that number is not
+    // real spend and the cap fires spuriously after a handful of sprints.
+    // Only enforce when at least one enabled worker uses an API auth profile.
+    const hasApiWorker = this.registry.all().some((w) => w.authProfile === API_AUTH_PROFILE);
+    if (!hasApiWorker) {
+      // Emit once per sprint so operators have an observable signal that the
+      // cap was silently bypassed — otherwise a future operator who sets
+      // BUDGET_USD=5.00 expecting it to fire will get total silence (#162).
+      if (!this.budgetSkipLogged.has(sprintId)) {
+        this.budgetSkipLogged.add(sprintId);
+        this.emit({
+          ts: this.now(),
+          sprintId,
+          kind: 'sprint.budget_skipped',
+          payload: {
+            spentUsd,
+            limitUsd: limit,
+            reason: 'no_api_worker',
+            workerCount: this.registry.all().length,
+          },
+        });
+      }
+      return false;
+    }
     const sprint = this.store.loadSprint(sprintId);
     if (!sprint || sprint.state.kind !== 'running') return false;
     this.transition(sprintId, {

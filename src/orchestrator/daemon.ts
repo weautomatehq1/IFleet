@@ -51,6 +51,7 @@ import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
 import { decodeBridgeBrief, encodeBridgeBrief } from './pipeline-bridge.js';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from './pipeline-bridge.js';
+import type { PipelineEvent } from '../pipeline/types.js';
 import { StateStore } from './store.js';
 import type { QueuedTask } from '../contracts/task.js';
 
@@ -73,6 +74,8 @@ async function main(): Promise<void> {
 
   // -------- Persistent state --------
   const store = new TaskStore(process.env['IFLEET_STATE_DIR'] ? undefined : defaultTasksDbPath());
+  const staleCount = store.recoverStale();
+  if (staleCount > 0) console.warn(`[daemon] recovered ${staleCount} stale in_flight task(s) → pending`);
 
   // -------- Routing / repos --------
   const router = FileChannelRouter.fromFile(channelsPath);
@@ -106,12 +109,40 @@ async function main(): Promise<void> {
     fallbackChannelId: process.env['DISCORD_FALLBACK_CHANNEL_ID'] ?? undefined,
   });
 
+  // Open the orchestrator's StateStore early so we can wire the
+  // discord.post_failed observability callback into DiscordSource below
+  // (the callback lands events in the orchestrator's events table).
+  const orchestratorStore = new StateStore();
+
   // -------- Sources + unified adapter --------
   const githubQueue = new GitHubQueue(new Octokit({ auth: githubToken }), {
     repos: Object.values(reposMap),
   });
   const githubSource = new GitHubIssuesSource(githubQueue);
-  const discordSource = new DiscordSource({ router, out: discordOut });
+  const discordSource = new DiscordSource({
+    router,
+    out: discordOut,
+    store,
+    onPostFailed: (taskId, method, reason) => {
+      // Persist as a structured event so operators can query why a Discord
+      // thread suddenly stopped updating (resolves the silent-no-op gap
+      // flagged in the #165 audit). Tolerant — best effort.
+      try {
+        const task = store.getById(taskId);
+        const sprintId = (task as { sprintId?: string } | null)?.sprintId
+          ?? ('' as SprintId);
+        orchestratorStore.appendEvent({
+          ts: Date.now(),
+          sprintId: sprintId as SprintId,
+          taskId: taskId as TaskId,
+          kind: 'discord.post_failed',
+          payload: { method, reason },
+        });
+      } catch (err) {
+        console.warn('[daemon] discord.post_failed event append threw:', err);
+      }
+    },
+  });
   const unified = new UnifiedQueueAdapter(store, {
     github: githubSource,
     discord: discordSource,
@@ -130,7 +161,19 @@ async function main(): Promise<void> {
   // factory knows three of those at bootstrap and the SHA in teardown — capture
   // both before the worktree is torn down (which happens before task.completed).
   const verifierCtx = new TaskContextRegistry();
-  const orchestratorStore = new StateStore();
+
+  // Cancel any sprints still marked 'running' from a previous crash so
+  // resumeAbandoned() has nothing to recover — preventing double-dispatch when
+  // recoverStale() just reset their tasks back to pending.
+  const staleSprintNow = Date.now();
+  for (const sprint of orchestratorStore.listSprintsByStateKind('running')) {
+    orchestratorStore.saveSprint({
+      ...sprint,
+      state: { kind: 'failed', at: staleSprintNow, error: 'cancelled: stale on daemon boot' },
+      updatedAt: staleSprintNow,
+    });
+  }
+
   const orchestrator = new Orchestrator({
     store: orchestratorStore,
     adapter: { spawn: () => Promise.reject(new Error('raw spawn disabled — use pipelineFactory')) },
@@ -139,6 +182,7 @@ async function main(): Promise<void> {
         productionFactory.factory,
         approvalGate,
         (taskId, plan) => discordOutPlanReady(taskId, plan, store, discordOut),
+        (taskId, event) => persistPipelineEvent(orchestratorStore, taskId, event),
       ),
       verifierCtx,
     ),
@@ -221,7 +265,7 @@ async function main(): Promise<void> {
   // -------- Tick loop: drain pending → submitSprint --------
   let running = true;
   const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
-  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs);
+  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs, store);
 
   orchestrator.start();
   console.warn(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);
@@ -273,6 +317,7 @@ async function runTickLoop(
   orchestrator: Orchestrator,
   isRunning: () => boolean,
   tickMs: number,
+  store: TaskStore,
 ): Promise<void> {
   while (isRunning()) {
     try {
@@ -287,7 +332,7 @@ async function runTickLoop(
         // adapter already flipped the row to in_flight inside pickNext().
         // Wire the sprint's terminal event back to the unified queue so the
         // task row transitions out of in_flight (done / failed).
-        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator);
+        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store);
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
@@ -300,13 +345,16 @@ async function runTickLoop(
  * Registers a one-shot listener on the orchestrator event bus. When the
  * sprint with {@link sprintId} reaches a terminal state (completed/failed/
  * cancelled), the corresponding unified-queue lifecycle method is called so
- * the queue task transitions out of `in_flight`.
+ * the queue task transitions out of `in_flight`. When a PR URL was captured
+ * during the sprint, a {@link PrDecision} row is written to the task store:
+ * verdict `'merged'` on success, `'abandoned'` on failure/cancel.
  */
 function wireSprintCompletion(
   sprintId: string,
   task: import('../contracts/task.js').QueuedTask,
   adapter: UnifiedQueueAdapter,
   orchestrator: Orchestrator,
+  store: TaskStore,
 ): void {
   let lastPrUrl: string | undefined;
 
@@ -320,6 +368,24 @@ function wireSprintCompletion(
 
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
+
+      if (lastPrUrl) {
+        const prNumber = extractPrNumber(lastPrUrl);
+        if (prNumber !== null) {
+          try {
+            store.recordPrDecision({
+              taskId: task.id,
+              repo: task.repo,
+              prNumber,
+              verdict: 'merged',
+              reviewerLogin: null,
+            });
+          } catch (err) {
+            console.warn('[daemon] recordPrDecision(merged) failed:', err);
+          }
+        }
+      }
+
       void adapter.markCompleted(task, lastPrUrl ?? '').catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
@@ -340,6 +406,25 @@ function wireSprintCompletion(
             : event.kind === 'sprint.failed'
               ? 'pipeline failed'
               : 'cancelled';
+
+      // Only record a decision when a PR was opened before the failure/cancel.
+      if (lastPrUrl) {
+        const prNumber = extractPrNumber(lastPrUrl);
+        if (prNumber !== null) {
+          try {
+            store.recordPrDecision({
+              taskId: task.id,
+              repo: task.repo,
+              prNumber,
+              verdict: 'abandoned',
+              reviewerLogin: null,
+            });
+          } catch (err) {
+            console.warn('[daemon] recordPrDecision(abandoned) failed:', err);
+          }
+        }
+      }
+
       void adapter.markFailed(task, reason).catch((err) =>
         console.warn('[daemon] markFailed failed:', err),
       );
@@ -423,6 +508,7 @@ function wrapFactoryWithApprovalAndEmit(
   inner: PipelineRunnerFactory,
   approvalGate: ControlPlaneApprovalGate,
   onPlan: (taskId: string, plan: string) => Promise<void>,
+  emitPipelineEvent?: (taskId: string, event: PipelineEvent) => void,
 ): PipelineRunnerFactory {
   return async (taskId, brief, opts): Promise<PipelineRunBootstrap> => {
     const bootstrap = await inner(taskId, brief, opts);
@@ -430,8 +516,63 @@ function wrapFactoryWithApprovalAndEmit(
     bootstrap.input.onArchitectPlan = async (plan) => {
       await onPlan(taskId, plan);
     };
+    // Wire the pipeline's structured event stream into the orchestrator's
+    // event log. Without this, reviewer.rejected (issue #163),
+    // plan_reviewer.vetoed/escalated/skipped, and reviewer.haiku_gate_passed
+    // are emitted into `undefined?.()` and silently dropped. The translation
+    // to OrchestratorEvent happens in main() where the StateStore lives.
+    if (emitPipelineEvent) {
+      bootstrap.input.eventSink = (event) => {
+        try {
+          emitPipelineEvent(taskId, event);
+        } catch (err) {
+          // Per PipelineInput contract: failures inside the sink must not
+          // affect the pipeline result. Log and continue.
+          console.warn('[daemon] pipeline event sink threw:', err);
+        }
+      };
+    }
     return bootstrap;
   };
+}
+
+/**
+ * Translate a {@link PipelineEvent} into the orchestrator's {@link OrchestratorEvent}
+ * envelope and append to the events table. The sprintId is resolved from the
+ * orchestrator store via `loadTask(taskId).sprintId`; if the task lookup fails
+ * (race during teardown, store closed), the event is dropped with a warn —
+ * the pipeline result is unaffected.
+ *
+ * This is the missing half of issue #163: PR #166 added the `reviewer.rejected`
+ * event but the runner emits it into `input.eventSink?.()` which was `undefined`
+ * in production. This persists it (and three sibling events that were also
+ * being dropped: `plan_reviewer.vetoed/escalated/skipped`, `reviewer.haiku_gate_passed`).
+ */
+export function persistPipelineEvent(
+  store: StateStore,
+  taskId: string,
+  event: PipelineEvent,
+): void {
+  const task = store.loadTask(taskId as TaskId);
+  if (!task) {
+    console.warn(
+      `[daemon] persistPipelineEvent: task ${taskId} not found in state store; dropping event ${event.kind}`,
+    );
+    return;
+  }
+  // Strip kind+taskId from the payload — they live on the envelope. Cast via
+  // `unknown` because the discriminated-union payload shape varies per kind.
+  const { kind: _kind, taskId: _taskId, ...payload } = event as unknown as Record<string, unknown> & {
+    kind: string;
+    taskId: string;
+  };
+  store.appendEvent({
+    ts: Date.now(),
+    sprintId: task.sprintId,
+    taskId: task.id,
+    kind: event.kind,
+    payload,
+  });
 }
 
 /**
@@ -497,6 +638,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function extractPrNumber(prUrl: string): number | null {
+  const m = /\/pull\/(\d+)(?:\/|$)/.exec(prUrl);
+  return m ? parseInt(m[1]!, 10) : null;
+}
+
 // CLI entry: invoked when this module is the node entrypoint.
 const isEntry =
   typeof process.argv[1] === 'string' && /daemon\.(ts|js|mjs)$/.test(process.argv[1]);
@@ -510,6 +656,7 @@ if (isEntry) {
 export {
   main as runDaemon,
   runTickLoop,
+  wireSprintCompletion,
   wrapFactoryWithApprovalAndEmit,
   resolveVerifierContext,
 };

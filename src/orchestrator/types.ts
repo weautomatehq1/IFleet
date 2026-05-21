@@ -82,6 +82,13 @@ export interface SpawnOpts {
   model?: string;
   permissionMode?: string;
   timeoutMs?: number;
+  /**
+   * Agent identity for trace tagging (e.g. "architect", "plan-reviewer",
+   * "diff-reviewer", "editor", "doctor", "worker"). When present, used as
+   * the Langfuse trace name; otherwise traces default to "claude-cli".
+   * Optional + backwards-compatible — pipeline callers can adopt incrementally.
+   */
+  agentName?: string;
 }
 
 export interface SpawnHandle {

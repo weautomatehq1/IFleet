@@ -12,7 +12,6 @@ Last updated: 2026-05-19
 - [pipeline-learnings-interview] ✅ per-repo .omc/learnings.md read+append in architect, deep-interview phase for vague briefs (#69/#71 via PR #102)
 - [doctor-self-heal] ✅ doctor extension — fingerprint matching (.omc/fingerprints.json), 30-min Haiku scan, daily 06:00 learnings rollup; PM2 entry off by default (#76)
 - [brief-library] ✅ docs/briefs/ seeded with 11 real examples + frontmatter contract (via PR #105)
-- [sentry-n8n-bridge] ✅ Sentry → n8n → GitHub Issues pipeline wired and verified 2026-05-15
 - [discord-notifications] ✅ PR #79 — sprint start/success/failure notifications to #ifleet
 - [discord-webhook-env] ✅ DISCORD_IFLEET_WEBHOOK set in .env, PM2 reloaded
 - [in-flight-cleanup] ✅ stripped stale in_flight labels from #69 #70 #76 after connect timeout

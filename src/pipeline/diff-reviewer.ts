@@ -20,6 +20,13 @@ export interface RunReviewerInput {
   plan: string;
   diff: string;
   abortSignal: AbortSignal;
+  /**
+   * Absolute path to the per-task git worktree. Both the haiku gate and the
+   * full reviewer are read-only by intent; sandboxing them means any
+   * out-of-scope tool call lands in the throwaway worktree, never the host
+   * repo.
+   */
+  worktreePath?: string;
 }
 
 export interface ReviewerOutput {
@@ -70,6 +77,7 @@ export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutp
       workerPool: input.workerPool,
       brief,
       abortSignal: input.abortSignal,
+      ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
     });
     if (gateResult.kind === 'clean') {
       return {
@@ -90,6 +98,7 @@ export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutp
     role: 'reviewer',
     systemPrompt: REVIEWER_SYSTEM_PROMPT,
     abortSignal: input.abortSignal,
+    ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
   });
 
   const result = await handle.result();
@@ -144,6 +153,7 @@ interface RunHaikuGateInput {
   workerPool: WorkerPool;
   brief: string;
   abortSignal: AbortSignal;
+  worktreePath?: string;
 }
 
 async function runHaikuGate(input: RunHaikuGateInput): Promise<GateResult> {
@@ -154,6 +164,7 @@ async function runHaikuGate(input: RunHaikuGateInput): Promise<GateResult> {
       role: 'reviewer',
       systemPrompt: HAIKU_GATE_SYSTEM_PROMPT,
       abortSignal: input.abortSignal,
+      ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
     });
     result = await handle.result();
   } catch (err) {

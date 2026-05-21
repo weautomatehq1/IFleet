@@ -110,6 +110,51 @@ test('crash recovery: no abandoned sprints to resume returns empty', () => {
   }
 });
 
+test('double-dispatch prevention: cancelling running sprints at boot leaves resumeAbandoned with nothing', () => {
+  const env = makeStandalone();
+  try {
+    const store = new StateStore(env.dbPath);
+    const sprintId = 'sp_stale' as SprintRecord['id'];
+    const now = Date.now();
+    store.saveSprint({
+      id: sprintId,
+      mode: 'normal',
+      goal: 'stale task',
+      tasks: [],
+      state: { kind: 'running', startedAt: now - 60_000 },
+      createdAt: now - 60_000,
+      updatedAt: now - 60_000,
+    });
+
+    // Simulate what daemon.ts does at boot: cancel all running sprints.
+    for (const sprint of store.listSprintsByStateKind('running')) {
+      store.saveSprint({
+        ...sprint,
+        state: { kind: 'failed', at: now, error: 'cancelled: stale on daemon boot' },
+        updatedAt: now,
+      });
+    }
+
+    const registry = new WorkerRegistry({ configPath: env.workersConfig, watchFs: false });
+    const mgr = new SprintManager({
+      store,
+      registry,
+      pressure: new PressureTracker(),
+      adapter: new MockAdapter(),
+      briefLoader: noopBriefLoader,
+      emit: () => undefined,
+    });
+    // resumeAbandoned should find nothing — the sprint was cancelled before it could be recovered.
+    assert.deepEqual(mgr.resumeAbandoned(), []);
+    const cancelled = store.loadSprint(sprintId);
+    assert.equal(cancelled?.state.kind, 'failed');
+    registry.stop();
+    store.close();
+  } finally {
+    env.cleanup();
+  }
+});
+
 test('state store: migrations are idempotent', () => {
   const env = makeStandalone();
   try {

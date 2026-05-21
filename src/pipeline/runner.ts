@@ -16,6 +16,7 @@ import type {
   PipelineResult,
   PipelineRunner,
   QueuedTask,
+  ReviewerVerdict,
   VerifyResult,
 } from './types.js';
 
@@ -58,7 +59,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       const taskForAttempt =
         planAttempt === 1 ? input.task : augmentTaskWithVetoReasons(input.task, priorReasons);
 
-      console.warn(`[pipeline] architect starting (attempt ${planAttempt})`);
+      console.warn(`[pipeline] architect starting (attempt ${planAttempt}) worktree=${input.worktreePath}`);
       const architect = await runArchitect({
         task: taskForAttempt,
         workerPool: input.workerPool,
@@ -70,6 +71,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         ...(input.onArchitectPlan ? { onPlanReady: input.onArchitectPlan } : {}),
         ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
         ...(input.interviewPoster ? { interviewPoster: input.interviewPoster } : {}),
+        worktreePath: input.worktreePath,
       });
       attempts.push(architect.attempt);
       architectCostUsd = architect.attempt.totalCostUsd;
@@ -119,6 +121,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
           ? { repoSlug: input.task.repo.replace(/\//g, '_') }
           : {}),
         ...(architectCostUsd !== undefined ? { architectCostUsd } : {}),
+        worktreePath: input.worktreePath,
       });
       attempts.push(review.attempt);
 
@@ -232,6 +235,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         diff,
         ciLog,
         abortSignal: input.abortSignal,
+        worktreePath: input.worktreePath,
       });
       attempts.push(doctor.attempt);
       if (!doctor.attempt.ok) return failed(attempts, 'doctor invocation failed');
@@ -263,6 +267,10 @@ export class DefaultPipelineRunner implements PipelineRunner {
     // === Reviewer (with fix-pass loop) ===
     let reviewSummary = '';
     let approved = false;
+    // Track the reviewer's last verdict so we can emit `reviewer.rejected`
+    // with concerns+raw before returning `blocked_by_reviewer` (issue #163).
+    let lastReviewerVerdict: ReviewerVerdict | null = null;
+    let roundsRun = 0;
     for (let round = 1; round <= reviewerMaxRounds; round++) {
       if (input.abortSignal.aborted) return cancelled(attempts);
       const reviewer = await runReviewer({
@@ -275,6 +283,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         plan,
         diff,
         abortSignal: input.abortSignal,
+        worktreePath: input.worktreePath,
       });
       attempts.push(reviewer.attempt);
       if (reviewer.gate === 'haiku') {
@@ -286,6 +295,8 @@ export class DefaultPipelineRunner implements PipelineRunner {
         });
       }
       reviewSummary = formatReviewSummary(reviewer.verdict.verdict, reviewer.verdict.concerns);
+      lastReviewerVerdict = reviewer.verdict;
+      roundsRun = round;
 
       if (reviewer.verdict.verdict === 'approve') {
         approved = true;
@@ -322,6 +333,19 @@ export class DefaultPipelineRunner implements PipelineRunner {
     }
 
     if (!approved) {
+      // Issue #163: emit the reviewer's verdict+concerns before returning so
+      // operators can diagnose the rejection from the events log instead of
+      // seeing only `task.capability_blocked` with exitCode:3.
+      if (lastReviewerVerdict) {
+        input.eventSink?.({
+          kind: 'reviewer.rejected',
+          taskId: input.task.id,
+          verdict: lastReviewerVerdict.verdict,
+          concerns: lastReviewerVerdict.concerns,
+          raw: lastReviewerVerdict.raw,
+          roundCount: roundsRun,
+        });
+      }
       return {
         status: 'blocked_by_reviewer',
         attempts,

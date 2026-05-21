@@ -287,6 +287,64 @@ test('budget: paused sprint does not tick further', async () => {
   }
 });
 
+test('budget: skip enforcement when no API worker is enabled (Max-plan only)', async () => {
+  // Max-plan workers report token-priced USD that doesn't reflect real spend
+  // (the user pays a flat monthly fee). When the registry has no API-keyed
+  // worker, checkBudget must short-circuit — no pause, no Discord alert —
+  // even if the reported cost exceeds the configured cap. See issue #162.
+  const paused: Array<{ sprintId: string; spentUsd: number; limitUsd: number }> = [];
+  const adapter = new MockAdapter({ exitCode: 0, pr: 'PR-1', totalCostUsd: 5.0 });
+  const h = makeManager({
+    adapter,
+    budgetUsd: 1.0,
+    authProfile: 'default',
+    onBudgetPaused: (sprintId, spentUsd, limitUsd) => {
+      paused.push({ sprintId, spentUsd, limitUsd });
+    },
+  });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    const finalRec = h.env.store.loadSprint(rec.id);
+    assert.equal(finalRec?.state.kind, 'completed', 'sprint must not pause when no API worker is registered');
+    assert.equal(paused.length, 0, 'onBudgetPaused must not fire on Max-only registries');
+    const budgetEvt = h.events.find((e) => e.kind === 'sprint.budget_paused');
+    assert.equal(budgetEvt, undefined, 'no sprint.budget_paused event expected on Max-only registries');
+    // Observable signal: must emit sprint.budget_skipped EXACTLY ONCE per
+    // sprint so operators see in the events table that the cap was bypassed
+    // (otherwise BUDGET_USD=5.00 produces total silence). See issue #162 audit.
+    const skipEvts = h.events.filter((e) => e.kind === 'sprint.budget_skipped');
+    assert.equal(skipEvts.length, 1, 'expected exactly one sprint.budget_skipped event');
+    assert.equal(skipEvts[0]?.payload['reason'], 'no_api_worker');
+    assert.equal(skipEvts[0]?.payload['limitUsd'], 1.0);
+    assert.equal(skipEvts[0]?.payload['spentUsd'], 5.0);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('budget: sprint.budget_skipped fires once even when multiple tasks exceed the cap', async () => {
+  // Per-sprint one-shot guard — if every task in a sprint exceeds the cap,
+  // we'd otherwise emit N skip events per sprint. The one-shot keeps the
+  // events table clean while still giving the operator the signal.
+  const adapter = new MockAdapter({ exitCode: 0, pr: 'PR-x', totalCostUsd: 5.0 });
+  const h = makeManager({ adapter, budgetUsd: 1.0, authProfile: 'default' });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1', 't2', 't3'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 30));
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 30));
+    await h.manager.tick(rec.id);
+    const skipEvts = h.events.filter((e) => e.kind === 'sprint.budget_skipped');
+    assert.equal(skipEvts.length, 1, 'one-shot guard must dedupe across tasks in same sprint');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
 test('budget: paused → running transition is valid', () => {
   assert.equal(canTransitionSprint('paused', 'running'), true);
   assert.equal(canTransitionSprint('paused', 'cancelled'), true);

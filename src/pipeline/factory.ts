@@ -76,8 +76,9 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     if (!task) throw new Error('brief is not a structured QueuedTask payload');
 
     const worker = pool.nextWorker();
-    const branchName = titleToBranchName(task.issueNumber, task.title);
-    const worktreePath = await setupWorktree(task.issueNumber, branchName, worktreesDir, opts.repoRoot);
+    const worktreeKey = task.issueNumber > 0 ? String(task.issueNumber) : task.id;
+    const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
+    const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
 
     const workerPool = buildWorkerPool(worker);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels });
@@ -109,7 +110,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       abortController,
       workerId: worker.id,
       teardown: async (_result: PipelineResult | Error) => {
-        await teardownWorktree(task.issueNumber, branchName, worktreesDir, opts.repoRoot);
+        await teardownWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
       },
     };
   };
@@ -121,12 +122,25 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 // Internal collaborator builders
 // ---------------------------------------------------------------------------
 
-function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
+export function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
   const adapter = getActivePipelineAdapter();
 
   return {
     spawn(spec: WorkerSpec, brief: string, opts: PipelineSpawnOpts): PipelineSpawnHandle {
-      const workingDir = opts.worktreePath ?? resolve('.');
+      // Refuse to fall back to the daemon's cwd (the host repo). Every pipeline
+      // stage MUST opt into a worktree explicitly — the original worktree-cwd
+      // bug was caused by stages not threading this through. Throwing here
+      // catches any future regression at the seam instead of silently writing
+      // commits into the host IFleet checkout.
+      if (!opts.worktreePath) {
+        throw new Error(
+          `buildWorkerPool.spawn refused: role="${opts.role}" called without worktreePath. ` +
+            `Pipeline stages must pass input.worktreePath to keep work sandboxed. ` +
+            `Falling back to process.cwd() ("${resolve('.')}") would risk committing ` +
+            `into the host repo (see PR #161).`,
+        );
+      }
+      const workingDir = opts.worktreePath;
       const model = mapModel(spec.model);
       let rateLimitHits = 0;
 
@@ -234,12 +248,12 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
 // ---------------------------------------------------------------------------
 
 async function setupWorktree(
-  issueNumber: number,
+  worktreeKey: string,
   branchName: string,
   worktreesDir: string,
   repoRoot: string,
 ): Promise<string> {
-  const worktreePath = join(worktreesDir, `task-${issueNumber}`);
+  const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
   mkdirSync(worktreesDir, { recursive: true });
 
   if (existsSync(worktreePath)) {
@@ -272,12 +286,12 @@ async function setupWorktree(
 }
 
 async function teardownWorktree(
-  issueNumber: number,
+  worktreeKey: string,
   branchName: string,
   worktreesDir: string,
   repoRoot: string,
 ): Promise<void> {
-  const worktreePath = join(worktreesDir, `task-${issueNumber}`);
+  const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
   await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot }).catch(() => undefined);
   await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
   await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);

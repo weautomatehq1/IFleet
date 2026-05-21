@@ -136,3 +136,123 @@ describe('DiscordSource.ingest', () => {
     assert.notEqual(idempotencyForDiscord('c', 'm'), idempotencyForDiscord('c', 'n'));
   });
 });
+
+describe('DiscordSource.markFailed — HTTP control-plane regression', () => {
+  it('no-ops instead of throwing when threadId could not be materialized', async () => {
+    // Reproduces today's pm2 log: `markFailed failed: Error: task ... has no
+    // Discord threadId`. Prior threadIdOrThrow shadowed the original failure
+    // reason; the new resolveThread path should log + no-op.
+    const { store, cleanup } = tmpStore();
+    try {
+      const calls: string[] = [];
+      const stillBrokenOut: DiscordOut = {
+        postTaskCreated: async () => { calls.push('created'); return { threadId: '' }; },
+        postProgress: async () => undefined,
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => { calls.push('failed'); },
+      };
+      const src = new DiscordSource({ router: mockRouter(ROUTE), out: stillBrokenOut, store });
+      const task = await src.ingest(
+        { goal: 'X', channelId: ROUTE.channelId, messageId: '01KS4VTEST000000001IFLEET', userId: 'u', userLabel: 'Seb' },
+        store,
+      );
+      // markFailed must NOT throw even though postTaskCreated stays empty.
+      await src.markFailed(task, 'sprint cancelled by operator');
+      // postFailed should be skipped (no thread to write to).
+      assert.ok(!calls.includes('failed'), 'postFailed must be skipped when threadId is empty');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('fires onPostFailed callback when the Discord side-effect is skipped (audit follow-up)', async () => {
+    // The console.warn alone gets rotated out of PM2 logs and is invisible
+    // to operators. The callback hook lets the daemon persist a
+    // discord.post_failed event so the failure is queryable.
+    const { store, cleanup } = tmpStore();
+    try {
+      const captured: Array<{ taskId: string; method: string; reason: string }> = [];
+      const stillBrokenOut: DiscordOut = {
+        postTaskCreated: async () => ({ threadId: '' }),
+        postProgress: async () => undefined,
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => undefined,
+      };
+      const src = new DiscordSource({
+        router: mockRouter(ROUTE),
+        out: stillBrokenOut,
+        store,
+        onPostFailed: (taskId, method, reason) => captured.push({ taskId, method, reason }),
+      });
+      const task = await src.ingest(
+        { goal: 'X', channelId: ROUTE.channelId, messageId: '01KS4VCALLBACKTEST00IFLEET', userId: 'u', userLabel: 'Seb' },
+        store,
+      );
+
+      await src.markPicked(task);
+      await src.markCompleted(task, 'https://github.com/x/y/pull/1');
+      await src.markFailed(task, 'oom');
+      await src.markBlocked(task, 'docker');
+
+      assert.equal(captured.length, 4, 'all four mark* methods must fire the callback when threadId stays empty');
+      assert.deepEqual(captured.map((c) => c.method), ['markPicked', 'markCompleted', 'markFailed', 'markBlocked']);
+      assert.equal(captured[0]?.taskId, task.id);
+      assert.match(captured[2]?.reason ?? '', /oom/);
+      assert.match(captured[3]?.reason ?? '', /docker/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('DiscordSource.markPicked — deferred thread creation', () => {
+  it('creates thread on-demand when ingest used a deferring DiscordOut (HTTP path)', async () => {
+    const { store, cleanup } = tmpStore();
+    try {
+      const threadId = 'thr-late';
+      const calls: string[] = [];
+
+      // Deferring out: postTaskCreated returns empty string (control-plane path)
+      const deferringOut: DiscordOut = {
+        postTaskCreated: async () => ({ threadId: '' }),
+        postProgress: async (tid, msg) => { calls.push(`progress:${tid}:${msg}`); },
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => undefined,
+      };
+
+      // Real out used by daemon (returns a real threadId)
+      const daemonOut: DiscordOut = {
+        postTaskCreated: async () => { calls.push('created'); return { threadId }; },
+        postProgress: async (tid, msg) => { calls.push(`progress:${tid}:${msg}`); },
+        postPlanForApproval: async () => ({ messageId: '' }),
+        postCompleted: async () => undefined,
+        postFailed: async () => undefined,
+      };
+
+      // server.ts path: ingest with deferring out → empty threadId stored
+      const serverSource = new DiscordSource({ router: mockRouter(ROUTE), out: deferringOut });
+      const task = await serverSource.ingest(
+        { goal: 'fix bug', channelId: ROUTE.channelId, messageId: 'm-defer', userId: 'u', userLabel: 'Seb' },
+        store,
+      );
+      assert.equal(task.source.kind === 'discord' ? task.source.threadId : 'x', '');
+
+      // daemon path: markPicked with real out + store → creates thread, persists it
+      const daemonSource = new DiscordSource({ router: mockRouter(ROUTE), out: daemonOut, store });
+      await daemonSource.markPicked(task);
+
+      assert.ok(calls.includes('created'), 'postTaskCreated called to create deferred thread');
+      assert.ok(calls.some((c) => c.startsWith(`progress:${threadId}:`)), 'progress posted to real threadId');
+      // in-memory task updated
+      assert.equal(task.source.kind === 'discord' ? task.source.threadId : '', threadId);
+      // store persisted
+      const reloaded = store.getById(task.id);
+      assert.equal(reloaded?.source.kind === 'discord' ? reloaded.source.threadId : '', threadId);
+    } finally {
+      cleanup();
+    }
+  });
+});

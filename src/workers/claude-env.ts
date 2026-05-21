@@ -12,6 +12,8 @@
 const CLAUDE_ENV_ALLOWLIST = [
   'HOME',
   'PATH',
+  'USER',
+  'LOGNAME',
   'NODE_ENV',
   'LANG',
   'LC_ALL',

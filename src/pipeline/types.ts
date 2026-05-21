@@ -195,7 +195,7 @@ export interface PipelineInput {
 /**
  * Structured observability events emitted by the pipeline runner during a run.
  * Consumers wire a sink into {@link PipelineInput.eventSink} to forward these
- * into the orchestrator event log, Discord, Sentry, etc.
+ * into the orchestrator event log, Discord, etc.
  *
  * Today only `reviewer.haiku_gate_passed` is defined (issue #109); other
  * reviewer/architect events should be added here as they migrate off the
@@ -233,6 +233,17 @@ export type PipelineEvent =
       taskId: string;
       attempt: number;
       reason: 'rate-limit' | 'cost-cap' | 'worker-error';
+    }
+  | {
+      // Emitted just before the runner returns status='blocked_by_reviewer'.
+      // Carries the reviewer's final verdict text + concerns array so
+      // operators can diagnose why the diff was rejected (issue #163).
+      kind: 'reviewer.rejected';
+      taskId: string;
+      verdict: 'approve' | 'request_changes';
+      concerns: ReadonlyArray<string>;
+      raw: string;
+      roundCount: number;
     };
 
 export type PipelineEventSink = (event: PipelineEvent) => void;
