@@ -17,5 +17,9 @@ export default defineConfig({
     environment: 'node',
     pool: 'forks',
     testTimeout: 15000,
+    env: {
+      DISCORD_IFLEET_WEBHOOK: '',
+      DISCORD_FALLBACK_CHANNEL_ID: '',
+    },
   },
 });
