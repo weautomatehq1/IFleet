@@ -60,7 +60,14 @@ export function buildSlashCommands(): SlashCommandDef[] {
       .setDescription('Scan this channel\'s repo for code quality issues'),
     new SlashCommandBuilder()
       .setName('audit-fix')
-      .setDescription('Fix CRITICAL findings in this channel\'s repo'),
+      .setDescription('List, fix, or auto-fix audit findings from .audits/index.json.')
+      .addStringOption((o) =>
+        o
+          .setName('target')
+          .setDescription('Omit to list · a finding id to fix one · "auto" to fix all.')
+          .setRequired(false)
+          .setMaxLength(80),
+      ),
     new SlashCommandBuilder()
       .setName('audit-autopilot')
       .setDescription('Fix ALL findings overnight — CRITICAL → IMPORTANT → COSMETIC'),
