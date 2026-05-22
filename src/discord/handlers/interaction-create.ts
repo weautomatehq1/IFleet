@@ -6,14 +6,24 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type { ChannelRouter } from '../../contracts/channel-router.js';
+import type { ChannelRoute, ChannelRouter } from '../../contracts/channel-router.js';
 import type {
   ControlCommand,
+  ControlPlaneAck,
   ControlPlaneClient,
   DiscordCommandSource,
 } from '../../contracts/control-plane-client.js';
 import { parseCustomId, type DiscordCustomIdVerb } from '../../contracts/discord-out.js';
 import { ControlPlaneError } from '../hmac-client.js';
+import {
+  formatFindingsList,
+  markFindingsFixing,
+  openFindings,
+  readAuditIndex,
+  resolveAuditIndexPath,
+  setFindingsStatus,
+  synthesizeAuditBrief,
+} from '../audit-runner.js';
 
 export interface InteractionDeps {
   router: ChannelRouter;
@@ -90,6 +100,13 @@ async function handleSlashCommand(
     userLabel: interaction.user.username,
   };
 
+  // `/audit-fix` is multi-shaped (list = no command, fix = one, auto = many),
+  // so it cannot flow through the single-command buildCommandFromSlash path.
+  if (interaction.commandName === 'audit-fix') {
+    await handleAuditFix(interaction, route, source, deps);
+    return;
+  }
+
   const command = buildCommandFromSlash(interaction, route.repo, source);
   if (!command) {
     await interaction.editReply(`Unknown command \`${interaction.commandName}\`.`);
@@ -106,6 +123,124 @@ async function handleSlashCommand(
   } catch (err) {
     await interaction.editReply(formatErrorReply(err));
   }
+}
+
+/**
+ * Handle `/audit-fix`. Three modes, distinguished by the `target` option:
+ *  - empty / `list` — read `.audits/index.json` and reply with open findings;
+ *    no control-plane call.
+ *  - `auto` — dispatch every open finding as its own `sprint_goal`.
+ *  - `<finding id>` — dispatch that one finding.
+ *
+ * Findings are marked `fixing` before dispatch so a crash mid-loop does not
+ * lose the intent; any that fail to queue are reverted to `open`.
+ */
+async function handleAuditFix(
+  interaction: ChatInputCommandInteraction,
+  route: ChannelRoute,
+  source: DiscordCommandSource,
+  deps: InteractionDeps,
+): Promise<void> {
+  // This read drives target selection only; markFindingsFixing / markFindingClosed
+  // each re-read before mutating. Safe under the single-process IFleet daemon
+  // (the only other writer, /audit-scan, is a separate CLI invoked by hand).
+  const indexPath = resolveAuditIndexPath();
+  const index = readAuditIndex(indexPath);
+  if (!index) {
+    await interaction.editReply('No audit findings yet. Run /audit-scan first.');
+    return;
+  }
+
+  const rawArg = interaction.options.getString('target')?.trim() ?? '';
+  const lowerArg = rawArg.toLowerCase();
+
+  // List mode — read-only.
+  if (rawArg === '' || lowerArg === 'list') {
+    await interaction.editReply(formatFindingsList(index));
+    return;
+  }
+
+  const auto = lowerArg === 'auto';
+  const targets = auto ? openFindings(index) : index.findings.filter((f) => f.id === rawArg);
+
+  if (auto && targets.length === 0) {
+    await interaction.editReply('No open audit findings to fix.');
+    return;
+  }
+  if (!auto && targets.length === 0) {
+    await interaction.editReply(
+      `No finding with id \`${rawArg}\`. Run \`/audit-fix\` to list open findings.`,
+    );
+    return;
+  }
+  if (!auto && targets[0] && targets[0].status !== 'open') {
+    await interaction.editReply(
+      `Finding \`${rawArg}\` is \`${targets[0].status}\`, not open — nothing to dispatch.`,
+    );
+    return;
+  }
+
+  // Mark fixing BEFORE dispatch (intent survives a mid-loop crash).
+  markFindingsFixing(
+    indexPath,
+    targets.map((f) => f.id),
+  );
+
+  const queued: string[] = [];
+  const failed: string[] = [];
+  let lastAck: ControlPlaneAck | undefined;
+  for (const finding of targets) {
+    const command: ControlCommand = {
+      type: 'sprint_goal',
+      goal: synthesizeAuditBrief(finding),
+      repo: route.repo,
+      source,
+    };
+    // Per-finding idempotency key so the control plane does not collapse the
+    // auto-mode batch (one interaction id, many commands) into a single task.
+    command.idempotencyKey = `discord:${interaction.channelId}:${interaction.id}:${finding.id}`;
+    try {
+      const ack = await deps.controlPlane.postCommand(command);
+      if (ack.accepted) {
+        queued.push(finding.id);
+        lastAck = ack;
+      } else {
+        failed.push(finding.id);
+      }
+    } catch {
+      failed.push(finding.id);
+    }
+  }
+
+  // Revert anything that failed to queue so it stays visible to /audit-fix.
+  if (failed.length > 0) setFindingsStatus(indexPath, failed, 'open');
+
+  await interaction.editReply(formatAuditFixReply(auto, rawArg, queued, failed, lastAck));
+}
+
+function formatAuditFixReply(
+  auto: boolean,
+  rawArg: string,
+  queued: string[],
+  failed: string[],
+  lastAck: ControlPlaneAck | undefined,
+): string {
+  if (auto) {
+    if (queued.length === 0) {
+      return `❌ Failed to queue all ${failed.length} findings — left open. Try again.`;
+    }
+    let reply = `Queued ${queued.length} findings. IFleet will open one PR per finding — check back in #ifleet.`;
+    if (failed.length > 0) {
+      reply += `\n⚠ ${failed.length} failed to queue and were left open.`;
+    }
+    return reply;
+  }
+  if (queued.length === 1) {
+    const task = lastAck?.taskId ? ` Task: \`${lastAck.taskId}\`.` : '';
+    const thread = lastAck?.threadId ? ` Thread: <#${lastAck.threadId}>` : '';
+    return `✔ Queued fix for \`${queued[0]}\`.${task}${thread}`;
+  }
+  return `❌ Failed to queue fix for \`${rawArg}\` — left open. Try again.`;
 }
 
 async function handleButton(

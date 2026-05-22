@@ -10,6 +10,11 @@ import {
 import { runDoctor, countDoctorAttempts, DOCTOR_MAX_ATTEMPTS } from './doctor.js';
 import { openPipelinePr } from './pr.js';
 import { appendCostRecord } from '../utils/costs.js';
+import {
+  extractAuditFindingId,
+  markFindingClosed,
+  resolveAuditIndexPath,
+} from '../discord/audit-runner.js';
 import type {
   AttemptRecord,
   PipelineInput,
@@ -382,6 +387,12 @@ export class DefaultPipelineRunner implements PipelineRunner {
       reviewerSpec: input.routing.reviewer,
     });
 
+    // Audit-fix close-out: when this task was dispatched by `/audit-fix`, its
+    // goal carries an `[audit-fix:<id>]` tag — mark the finding closed in
+    // `.audits/index.json` now that a PR exists. Best-effort bookkeeping;
+    // never let it fail an otherwise-successful pipeline run.
+    maybeCloseAuditFinding(input, opened.url);
+
     const result: PipelineResult = {
       status: 'pr_opened',
       prUrl: opened.url,
@@ -391,6 +402,24 @@ export class DefaultPipelineRunner implements PipelineRunner {
     };
     await logCosts(input, attempts);
     return result;
+  }
+}
+
+function maybeCloseAuditFinding(input: PipelineInput, prUrl: string): void {
+  if (!input.repoRoot) return;
+  const findingId = extractAuditFindingId(input.task.body);
+  if (!findingId) return;
+  try {
+    const closed = markFindingClosed(resolveAuditIndexPath(input.repoRoot), findingId, prUrl);
+    if (closed) {
+      console.warn(`[pipeline] audit finding ${findingId} marked closed → ${prUrl}`);
+    }
+  } catch (err) {
+    console.warn(
+      `[pipeline] audit-fix close-out failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 }
 

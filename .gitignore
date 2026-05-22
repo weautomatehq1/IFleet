@@ -31,6 +31,9 @@ yarn-error.log*
 .omc/logs/
 .omc/sprints/
 .omc/PAUSED
+
+# Audit findings — written by /audit-scan and /audit-fix, public repo
+.audits/
 state.db
 state.db-journal
 *.sqlite
