@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+node_modules
 
 # Build artifacts
 dist/
@@ -9,6 +10,9 @@ dist/
 .env
 .env.local
 .env.*.local
+
+# Claude Code local config — never commit to a public repo
+.claude/
 
 # Editor
 .vscode/*
