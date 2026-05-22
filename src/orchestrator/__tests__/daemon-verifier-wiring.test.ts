@@ -66,6 +66,10 @@ async function makeFixture(): Promise<Fixture> {
   await git(['init', '-q', '-b', 'main', worktree]);
   await git(['-C', worktree, 'config', 'user.email', 'test@test']);
   await git(['-C', worktree, 'config', 'user.name', 'test']);
+  // Disable commit signing for the temporary test repo — the global config has
+  // commit.gpgsign=true with an SSH signing key that only works for known repos
+  // (the signing server returns 400 "missing source" for ad-hoc tmpdir repos).
+  await git(['-C', worktree, 'config', 'commit.gpgsign', 'false']);
   await git(['-C', worktree, 'commit', '--allow-empty', '-m', 'init']);
   const store = new StateStore(join(workdir, 'state.db'));
   const sprintId = newSprintId('sprint-1');

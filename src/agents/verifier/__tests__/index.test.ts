@@ -65,8 +65,9 @@ describe('VerifierAgent (scaffold)', () => {
     });
 
     await expect(agent.verify(baseInput)).rejects.toThrow('docker daemon unreachable');
-    expect(events.map((e) => e.kind)).toEqual(['verifier.error']);
-    expect(events[0]?.payload.error).toBe('docker daemon unreachable');
+    // verifier.started fires BEFORE sandbox.run() so the sequence is started → error.
+    expect(events.map((e) => e.kind)).toEqual(['verifier.started', 'verifier.error']);
+    expect(events[1]?.payload.error).toBe('docker daemon unreachable');
   });
 
   it('MAX_VERIFIER_ATTEMPTS is the documented 3-retry cap', () => {

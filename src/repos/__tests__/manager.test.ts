@@ -37,6 +37,9 @@ beforeEach(() => {
   git(seed, 'init', '--initial-branch=main', '--quiet');
   git(seed, 'config', 'user.email', 'test@example.com');
   git(seed, 'config', 'user.name', 'Test');
+  // Disable commit signing — the global config uses an SSH signing server that
+  // rejects ad-hoc tmpdir repos (returns 400 "missing source").
+  git(seed, 'config', 'commit.gpgsign', 'false');
   writeFileSync(join(seed, 'README.md'), '# seed\n');
   git(seed, 'add', '.');
   git(seed, 'commit', '-m', 'init', '--quiet');
