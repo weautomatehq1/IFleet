@@ -530,7 +530,7 @@ export class SprintManager {
             taskId,
             workerId: entry.workerId,
             kind: 'task.completed',
-            payload: { pr: result.pr ?? null, costUsd: result.totalCostUsd ?? 0 },
+            payload: { pr: result.pr ?? null, costUsd: result.totalCostUsd ?? 0, totalTokens: result.totalTokens ?? 0 },
           });
           break;
         case 2:

@@ -88,6 +88,9 @@ export function createClaudeCliAdapter(opts: ClaudeCliAdapterOptions = {}): Work
           if (typeof result.totalCostUsd === 'number') {
             spawnResult.totalCostUsd = result.totalCostUsd;
           }
+          if (typeof result.inputTokens === 'number' && typeof result.outputTokens === 'number') {
+            spawnResult.totalTokens = result.inputTokens + result.outputTokens;
+          }
           trace.end({
             ok: result.ok,
             exitCode: spawnResult.exitCode,

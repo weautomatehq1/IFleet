@@ -46,6 +46,7 @@ function mockOut(): { out: DiscordOut; calls: string[]; threadId: string } {
     postFailed: async (tid, reason) => {
       calls.push(`fail:${tid}:${reason}`);
     },
+    postChannelMessage: async () => undefined,
   };
   return { out, calls, threadId };
 }
@@ -151,6 +152,7 @@ describe('DiscordSource.markFailed — HTTP control-plane regression', () => {
         postPlanForApproval: async () => ({ messageId: '' }),
         postCompleted: async () => undefined,
         postFailed: async () => { calls.push('failed'); },
+        postChannelMessage: async () => undefined,
       };
       const src = new DiscordSource({ router: mockRouter(ROUTE), out: stillBrokenOut, store });
       const task = await src.ingest(
@@ -179,6 +181,7 @@ describe('DiscordSource.markFailed — HTTP control-plane regression', () => {
         postPlanForApproval: async () => ({ messageId: '' }),
         postCompleted: async () => undefined,
         postFailed: async () => undefined,
+        postChannelMessage: async () => undefined,
       };
       const src = new DiscordSource({
         router: mockRouter(ROUTE),
@@ -221,6 +224,7 @@ describe('DiscordSource.markPicked — deferred thread creation', () => {
         postPlanForApproval: async () => ({ messageId: '' }),
         postCompleted: async () => undefined,
         postFailed: async () => undefined,
+        postChannelMessage: async () => undefined,
       };
 
       // Real out used by daemon (returns a real threadId)
@@ -230,6 +234,7 @@ describe('DiscordSource.markPicked — deferred thread creation', () => {
         postPlanForApproval: async () => ({ messageId: '' }),
         postCompleted: async () => undefined,
         postFailed: async () => undefined,
+        postChannelMessage: async () => undefined,
       };
 
       // server.ts path: ingest with deferring out → empty threadId stored

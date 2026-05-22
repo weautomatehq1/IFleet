@@ -205,6 +205,7 @@ function mapPipelineResult(
   if (exitCode !== 0) {
     spawnResult.error = result.failureReason ?? result.status;
   }
+  if (result.totalTokens) spawnResult.totalTokens = result.totalTokens;
   return spawnResult;
 }
 

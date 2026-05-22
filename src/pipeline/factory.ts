@@ -71,7 +71,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     pool = createAccountPool(workers);
   }
 
-  const factory: PipelineRunnerFactory = async (taskId, brief, _spawnOpts): Promise<PipelineRunBootstrap> => {
+  const factory: PipelineRunnerFactory = async (_taskId, brief, _spawnOpts): Promise<PipelineRunBootstrap> => {
     const task = decodeBridgeBrief(brief);
     if (!task) throw new Error('brief is not a structured QueuedTask payload');
 
@@ -170,7 +170,11 @@ export function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
         result: async () => {
           const r = await workerHandle.result;
           await eventLoop;
-          return { ok: r.ok, output: r.text, sessionId: r.sessionId, rateLimitHits };
+          const baseResult = { ok: r.ok, output: r.text, sessionId: r.sessionId, rateLimitHits };
+          if (typeof r.inputTokens === 'number' && typeof r.outputTokens === 'number') {
+            return { ...baseResult, totalTokens: r.inputTokens + r.outputTokens };
+          }
+          return baseResult;
         },
         cancel: workerHandle.cancel,
       };

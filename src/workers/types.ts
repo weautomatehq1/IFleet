@@ -60,6 +60,8 @@ export interface WorkerResult {
   text: string;
   sessionId: string;
   totalCostUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
   durationMs: number;
 }
 

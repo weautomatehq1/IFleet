@@ -173,6 +173,7 @@ function deferringDiscordOut(): DiscordOut {
     postPlanForApproval: async () => ({ messageId: '' }),
     postCompleted: async () => undefined,
     postFailed: async () => undefined,
+    postChannelMessage: async () => undefined,
   };
 }
 

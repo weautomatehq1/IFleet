@@ -19,6 +19,12 @@ export interface DiscordOut {
   postCompleted(threadId: string, prUrl: string): Promise<void>;
   postFailed(threadId: string, reason: string): Promise<void>;
   /**
+   * Post a plain-text message directly to a channel (not a thread).
+   * Used for channel-level pings (e.g. audit-fix completion summary).
+   * Implementations must never throw — wrap in try/catch internally.
+   */
+  postChannelMessage(channelId: string, message: string): Promise<void>;
+  /**
    * Optional. Bind a Discord-sourced task's existing thread to its taskId so
    * subsequent `postPlanForApproval` calls emit `<verb>:<taskId>` customIds
    * instead of falling back to the threadId. Implementations that route
