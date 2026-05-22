@@ -36,6 +36,10 @@ export function createDiscordClient(deps: DiscordClientDeps): Client {
     partials: [Partials.Message, Partials.Reaction, Partials.Channel],
   });
 
+  client.on(Events.Error, (err) => {
+    log(`[discord] client error (non-fatal, will reconnect): ${stringify(err)}`);
+  });
+
   client.once(Events.ClientReady, (c) => {
     log(`[discord] logged in as ${c.user.tag}`);
     log(`[discord] mapped channels: ${deps.router.list().map((r) => `${r.channelId}→${r.repo}`).join(', ') || '(none)'}`);

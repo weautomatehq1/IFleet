@@ -1,5 +1,7 @@
 import {
+  DiscordAPIError,
   MessageFlags,
+  RESTJSONErrorCodes,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Interaction,
@@ -33,12 +35,41 @@ export async function handleInteractionCreate(
   }
 }
 
+/**
+ * Defer the interaction reply, tolerating a Discord gateway reconnect that
+ * replays the same interaction. A replayed event arrives as a *new* object
+ * with `deferred`/`replied` still false, so the property guard alone cannot
+ * catch it — only the API rejection (40060) reveals the double-acknowledge.
+ * Returns true when this delivery should proceed, false when it was already
+ * handled or the interaction token expired and it must be abandoned.
+ */
+async function safeDeferReply(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+): Promise<boolean> {
+  if (interaction.deferred || interaction.replied) return false;
+  try {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    return true;
+  } catch (err) {
+    if (
+      err instanceof DiscordAPIError &&
+      (err.code === RESTJSONErrorCodes.InteractionHasAlreadyBeenAcknowledged ||
+        err.code === RESTJSONErrorCodes.UnknownInteraction)
+    ) {
+      return false;
+    }
+    throw err;
+  }
+}
+
 async function handleSlashCommand(
   interaction: ChatInputCommandInteraction,
   deps: InteractionDeps,
 ): Promise<void> {
-  // Discord 3s window — defer first, do work after.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  // Discord 3s window — defer first, do work after. A WS reconnect can replay
+  // the same interaction; safeDeferReply absorbs the resulting double-ack and
+  // signals whether this delivery should proceed.
+  if (!(await safeDeferReply(interaction))) return;
 
   const route = deps.router.resolve(interaction.channelId);
   if (!route) {
@@ -81,17 +112,15 @@ async function handleButton(
   interaction: ButtonInteraction,
   deps: InteractionDeps,
 ): Promise<void> {
-  const customId = interaction.customId;
-  const parsed = parseCustomId(customId);
+  // Defer first so a WS reconnect replay can't crash on a double-acknowledge,
+  // same as the slash path. Every response below uses editReply.
+  if (!(await safeDeferReply(interaction))) return;
+
+  const parsed = parseCustomId(interaction.customId);
   if (!parsed) {
-    await interaction.reply({
-      content: `Unrecognised button \`${customId}\`.`,
-      flags: MessageFlags.Ephemeral,
-    });
+    await interaction.editReply(`Unrecognised button \`${interaction.customId}\`.`);
     return;
   }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // Deny on missing route. The previous form short-circuited when `route` was
   // null (DM or unmapped channel), so any guild member could approve/reject/

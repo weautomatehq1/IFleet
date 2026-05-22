@@ -298,6 +298,13 @@ export class DefaultPipelineRunner implements PipelineRunner {
       lastReviewerVerdict = reviewer.verdict;
       roundsRun = round;
 
+      console.warn(
+        `[pipeline] reviewer round=${round}/${reviewerMaxRounds} gate=${reviewer.gate} verdict=${reviewer.verdict.verdict}` +
+          (reviewer.verdict.concerns.length > 0
+            ? ` concerns: ${reviewer.verdict.concerns.map((c, i) => `(${i + 1}) ${c}`).join(' | ')}`
+            : ''),
+      );
+
       if (reviewer.verdict.verdict === 'approve') {
         approved = true;
         break;

@@ -89,12 +89,31 @@ export class DiscordOutAdapter implements DiscordOut {
         const ch = (await this.client.channels.fetch(route.channelId)) as TextChannel | null;
         if (!ch) throw new Error(`channel ${route.channelId} not fetchable`);
         const origin = (await ch.messages.fetch(route.messageId)) as Message;
-        const thread = await origin.startThread({
-          name: shortTitle(task),
-          autoArchiveDuration: 1440,
-        });
-        this.threadTaskIndex.set(thread.id, task.id);
-        return { threadId: thread.id };
+        // Fast path: thread already in the client cache.
+        if (origin.thread) {
+          this.threadTaskIndex.set(origin.thread.id, task.id);
+          return { threadId: origin.thread.id };
+        }
+        try {
+          const thread = await origin.startThread({
+            name: shortTitle(task),
+            autoArchiveDuration: 1440,
+          });
+          this.threadTaskIndex.set(thread.id, task.id);
+          return { threadId: thread.id };
+        } catch (err) {
+          // The thread exists server-side but was absent from the cache (the
+          // common case after a daemon restart, where `origin.thread` is null)
+          // or a duplicate delivery raced us. A thread started from a message
+          // shares that message's snowflake id — resolve it directly so the
+          // duplicate reuses the existing thread instead of failing.
+          const existing = await this.resolveThreadById(route.messageId);
+          if (existing) {
+            this.threadTaskIndex.set(existing, task.id);
+            return { threadId: existing };
+          }
+          throw err;
+        }
       }
 
       const ch = (await this.client.channels.fetch(route.channelId)) as TextChannel | null;
@@ -110,6 +129,22 @@ export class DiscordOutAdapter implements DiscordOut {
       this.log('warn', `postTaskCreated failed for ${task.id}: ${errMsg(err)}`);
       return { threadId: '' };
     }
+  }
+
+  /**
+   * Resolve a thread channel by its snowflake id. A thread started from a
+   * message shares that message's id, so this doubles as "does this message
+   * already have a thread?" without depending on the client cache. Returns
+   * the thread id, or null when no thread exists there / Discord is down.
+   */
+  private async resolveThreadById(threadId: string): Promise<string | null> {
+    try {
+      const ch = await this.client.channels.fetch(threadId);
+      if (ch?.isThread()) return ch.id;
+    } catch {
+      // No thread at that id, or Discord unreachable — caller falls through.
+    }
+    return null;
   }
 
   async postProgress(threadId: string, message: string): Promise<void> {

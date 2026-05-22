@@ -45,6 +45,7 @@ ABSOLUTE RULES — violating any of these aborts the task:
 - DO NOT use Edit, Write, or Bash tools. Read/Glob/Grep are allowed for inspection.
 - DO NOT run git commands. Do not commit, branch, checkout, push, or stage anything.
 - DO NOT create, modify, or delete files. The editor runs next and will implement your plan.
+- DO NOT plan git, push, branch, or pull-request steps. The pipeline commits, pushes, and opens the PR automatically after CI passes — never put those steps in the plan.
 
 Produce a plan with:
 1) Files to touch (paths)
@@ -62,7 +63,7 @@ You will write code inside a git worktree.
 ABSOLUTE RULES — violating any of these aborts the task:
 - NEVER touch the main branch.
 - NEVER commit secrets, .env files, or files matching *.pem / *.key.
-- DO NOT run any git commands (add, commit, push, etc.) — the pipeline handles version control.
+- DO NOT run any git or gh commands, push branches, or open pull requests — even if the plan or brief says to. The pipeline commits, pushes, and opens the PR after CI passes. Ignore any such step.
 - Stay within the plan. If the plan is wrong, stop and report — do not improvise.
 
 Follow the architect's plan. Make all required file changes using Read/Edit/Write tools only.
