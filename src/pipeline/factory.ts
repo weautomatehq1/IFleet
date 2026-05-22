@@ -223,11 +223,24 @@ function buildGitOps(): GitOps {
   };
 }
 
+/**
+ * Normalize reviewer logins for the `gh` CLI: strip leading `@` (config and
+ * CODEOWNERS files store `@user`, but `gh` wants the bare login) and drop
+ * empty entries. A stray `@` makes `gh` reject the login outright.
+ */
+export function normalizeReviewers(reviewers: string[]): string[] {
+  return reviewers.map((r) => r.replace(/^@+/, '').trim()).filter((r) => r.length > 0);
+}
+
 function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string): PrOpener {
   return {
     async open(input) {
       await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath });
-      const reviewerArgs = input.reviewers.flatMap((r) => ['--reviewer', r]);
+      // Create the PR WITHOUT --reviewer. Reviewer assignment can fail for
+      // reasons unrelated to the PR itself (invalid login, reviewer == PR
+      // author, reviewer not a collaborator). Bundling it into `gh pr create`
+      // makes `gh` exit non-zero *after* the PR is already created — which
+      // would fail the whole task over a non-essential step.
       const { stdout } = await execFileAsync('gh', [
         'pr', 'create',
         '--repo', repoId,
@@ -235,11 +248,24 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
         '--base', input.baseBranch,
         '--title', input.title,
         '--body', input.body,
-        ...reviewerArgs,
       ]);
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
-      return { url, number: match?.[1] ? parseInt(match[1], 10) : 0 };
+      const number = match?.[1] ? parseInt(match[1], 10) : 0;
+      // Best-effort reviewer request — never throws. A failed review request
+      // must not fail an otherwise-successful PR.
+      const reviewers = normalizeReviewers(input.reviewers);
+      if (number > 0 && reviewers.length > 0) {
+        await execFileAsync('gh', [
+          'pr', 'edit', String(number),
+          '--repo', repoId,
+          ...reviewers.flatMap((r) => ['--add-reviewer', r]),
+        ]).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[pr] reviewer request failed (non-fatal) for PR #${number}: ${msg}`);
+        });
+      }
+      return { url, number };
     },
   };
 }
