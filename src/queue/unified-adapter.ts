@@ -50,7 +50,7 @@ export class UnifiedQueueAdapter {
     return task;
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
     this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
     const prNumber = parsePrNumber(prUrl);
     if (prNumber !== null) {
@@ -69,7 +69,7 @@ export class UnifiedQueueAdapter {
         );
       }
     }
-    await this.sourceFor(task).markCompleted(task, prUrl);
+    await this.sourceFor(task).markCompleted(task, prUrl, totalTokens);
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
