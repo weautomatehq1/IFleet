@@ -1,5 +1,9 @@
 # Dependencies
+node_modules
 node_modules/
+
+# Local worktree config
+.claude/settings.json
 
 # Build artifacts
 dist/
