@@ -244,6 +244,17 @@ export class DiscordOutAdapter implements DiscordOut {
       this.log('warn', `postFailed failed for thread ${threadId}: ${errMsg(err)}`);
     }
   }
+
+  async postChannelMessage(channelId: string, message: string): Promise<void> {
+    if (!channelId) return;
+    try {
+      const channel = (await this.client.channels.fetch(channelId)) as TextChannel | null;
+      if (!channel) throw new Error(`channel ${channelId} not fetchable`);
+      await channel.send(truncate(message, DISCORD_MESSAGE_LIMIT));
+    } catch (err) {
+      this.log('warn', `postChannelMessage failed for channel ${channelId}: ${errMsg(err)}`);
+    }
+  }
 }
 
 // ---- helpers (exported for tests) ----

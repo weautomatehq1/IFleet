@@ -33,6 +33,8 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
 
       let textBuffer = '';
       let totalCostUsd: number | undefined;
+      let inputTokens: number | undefined;
+      let outputTokens: number | undefined;
       let finalText = '';
 
       const handle = runStreaming({
@@ -51,6 +53,9 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
             if (typeof cost === 'number') totalCostUsd = cost;
           }, (text) => {
             finalText = text;
+          }, (tokens) => {
+            inputTokens = tokens.inputTokens;
+            outputTokens = tokens.outputTokens;
           });
         },
         finalize: ({ startedAt, endedAt, sessionId: capturedSessionId, stderrTail }) => {
@@ -60,6 +65,8 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
             text: finalText !== '' ? finalText : textBuffer,
             sessionId: capturedSessionId !== '' ? capturedSessionId : sessionId,
             totalCostUsd,
+            inputTokens,
+            outputTokens,
             durationMs: endedAt - startedAt,
           };
         },
@@ -128,6 +135,10 @@ interface ClaudeStreamEvent {
   is_error?: boolean;
   result?: string;
   total_cost_usd?: number;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
   attempt?: number;
   max_retries?: number;
   retry_delay_ms?: number;
@@ -141,6 +152,7 @@ function parseClaudeEvent(
   onTextDelta: (text: string) => void,
   onCost: (cost: number | undefined) => void,
   onFinalText: (text: string) => void,
+  onTokens?: (tokens: { inputTokens?: number; outputTokens?: number }) => void,
 ): void {
   if (typeof raw !== 'object' || raw === null) return;
   const evt = raw as ClaudeStreamEvent;
@@ -202,6 +214,12 @@ function parseClaudeEvent(
   if (type === 'result') {
     onCost(evt.total_cost_usd);
     if (typeof evt.result === 'string') onFinalText(evt.result);
+    if (onTokens && evt.usage) {
+      onTokens({
+        inputTokens: typeof evt.usage.input_tokens === 'number' ? evt.usage.input_tokens : undefined,
+        outputTokens: typeof evt.usage.output_tokens === 'number' ? evt.usage.output_tokens : undefined,
+      });
+    }
     return;
   }
 

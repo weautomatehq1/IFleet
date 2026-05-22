@@ -90,6 +90,8 @@ export interface SpawnResult {
   // report cost (e.g. Codex today). Pipeline consumers must treat undefined as
   // "unknown", not "free".
   totalCostUsd?: number;
+  // Token count (input + output, excluding cache) from the result event.
+  totalTokens?: number;
   error?: string;
 }
 
@@ -268,6 +270,8 @@ export interface AttemptRecord {
   // `SpawnResult.totalCostUsd` so `logCosts` can record the real per-attempt
   // spend in `.omc/costs.json` and the BUDGET_USD guard can enforce end-to-end.
   totalCostUsd?: number;
+  // Token count (input + output, excluding cache) reported by the worker.
+  totalTokens?: number;
   // Only set on reviewer attempts when the haiku cost-split gate is active.
   // 'haiku' = approved by gate, full reviewer skipped. 'full' = gate said
   // REVIEW_NEEDED or errored, and the full reviewer ran.
@@ -292,6 +296,8 @@ export interface PipelineResult {
   // deep-interview phase and used by the control plane to seed the Discord
   // thread reply handler.
   interviewQuestions?: string[];
+  // Sum of input+output tokens across all attempts in this pipeline run.
+  totalTokens?: number;
 }
 
 export interface PipelineRunner {

@@ -106,6 +106,7 @@ export interface SpawnResult {
   pr?: string;
   error?: string;
   totalCostUsd?: number;
+  totalTokens?: number;
 }
 
 export interface WorkerAdapter {

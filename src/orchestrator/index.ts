@@ -262,9 +262,10 @@ export class Orchestrator {
     if (!this.discordOut || !this.queuedTaskLoader) return;
     try {
       const out = this.discordOut;
+      const taskLoader = this.queuedTaskLoader;
       let threadId = this.taskThreadIds.get(taskId);
       if (!threadId) {
-        const task = this.queuedTaskLoader(taskId);
+        const task = taskLoader(taskId);
         if (!task) return;
         const existing =
           task.source.kind === 'discord' ? task.source.threadId : undefined;
@@ -286,8 +287,19 @@ export class Orchestrator {
           return;
         case 'task.completed': {
           const pr = event.payload['pr'] as string | undefined;
+          const totalTokens = event.payload['totalTokens'] as number | undefined;
           await out.postCompleted(threadId, pr ?? '(no PR url)');
           this.taskThreadIds.delete(taskId);
+
+          // Channel-level ping for discord-source tasks with a PR.
+          const completedTask = taskLoader(taskId);
+          if (completedTask?.source.kind === 'discord' && pr) {
+            const channelId = completedTask.source.channelId;
+            const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
+            const findingMatch = completedTask.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);
+            const findingStr = findingMatch ? ` \`${findingMatch[1]}\` fixed →` : '';
+            await out.postChannelMessage(channelId, `✅${findingStr} ${pr}${tokenStr}`).catch(() => {});
+          }
           return;
         }
         case 'task.failed': {

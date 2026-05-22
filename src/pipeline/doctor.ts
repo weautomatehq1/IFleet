@@ -109,6 +109,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorOutput> {
       output: result.output,
       rateLimitHits: result.rateLimitHits,
       ...(result.totalCostUsd !== undefined && { totalCostUsd: result.totalCostUsd }),
+      ...(result.totalTokens !== undefined && { totalTokens: result.totalTokens }),
     },
     diagnosis,
   };

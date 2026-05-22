@@ -393,12 +393,14 @@ export class DefaultPipelineRunner implements PipelineRunner {
     // never let it fail an otherwise-successful pipeline run.
     maybeCloseAuditFinding(input, opened.url);
 
+    const totalTokens = attempts.reduce((sum, a) => sum + (a.totalTokens ?? 0), 0);
     const result: PipelineResult = {
       status: 'pr_opened',
       prUrl: opened.url,
       attempts,
       planSummary,
       reviewSummary,
+      ...(totalTokens > 0 && { totalTokens }),
     };
     await logCosts(input, attempts);
     return result;
