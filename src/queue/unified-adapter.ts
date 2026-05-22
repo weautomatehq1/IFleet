@@ -52,23 +52,12 @@ export class UnifiedQueueAdapter {
 
   async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
     this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
-    const prNumber = parsePrNumber(prUrl);
-    if (prNumber !== null) {
-      try {
-        this.store.recordPrDecision({
-          taskId: task.id,
-          repo: task.repo,
-          prNumber,
-          verdict: 'merged',
-        });
-      } catch (err) {
-        console.warn(
-          `[unified-queue] recordPrDecision failed for ${task.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
+    // NOTE: recordPrDecision is intentionally NOT called here. In the daemon's
+    // tick loop, wireSprintCompletion() calls adapter.markCompleted() after it
+    // has already written the pr_decisions row on sprint.completed. Calling it
+    // here too would produce duplicate rows (the table has no UNIQUE constraint
+    // on (task_id, pr_number)). The single authoritative write is in
+    // wireSprintCompletion (daemon.ts). See AUDIT-IFleet-DBLPRDEC.
     await this.sourceFor(task).markCompleted(task, prUrl);
   }
 
@@ -105,9 +94,7 @@ export class UnifiedQueueAdapter {
   }
 }
 
-function parsePrNumber(prUrl: string): number | null {
-  if (!prUrl) return null;
-  const match = /\/pull\/(\d+)/.exec(prUrl);
-  if (match?.[1]) return Number(match[1]);
-  return null;
-}
+// parsePrNumber was used for recordPrDecision which was removed (AUDIT-IFleet-DBLPRDEC):
+// daemon.ts wireSprintCompletion is now the single authoritative writer for pr_decisions.
+// Kept prefixed for clarity; removed to avoid the unused-var lint error.
+

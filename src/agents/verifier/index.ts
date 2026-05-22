@@ -71,6 +71,15 @@ export class VerifierAgent {
       attempt,
     };
 
+    // Emit verifier.started before the sandbox runs so subscribers (e.g. Discord
+    // progress posts) observe the correct event ordering. runId is not yet known
+    // here; emit a stable placeholder derived from the attempt so the event is
+    // still queryable. The authoritative runId is on the final result event.
+    this.emitEvent('verifier.started', opts.sprintId, opts.taskId, {
+      runId: `verifier-pending-attempt-${attempt}`,
+      attempt,
+    });
+
     let result: VerifierRunResult;
     try {
       result = await this.sandbox.run(input);
@@ -82,11 +91,6 @@ export class VerifierAgent {
       });
       throw err;
     }
-
-    this.emitEvent('verifier.started', opts.sprintId, opts.taskId, {
-      runId: result.runId,
-      attempt,
-    });
 
     const finalKind: VerifierEventKind =
       result.status === 'passed'

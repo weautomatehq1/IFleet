@@ -166,7 +166,10 @@ describe('UnifiedQueueAdapter', () => {
     }
   });
 
-  it('markCompleted records a pr_decision (verdict=merged) when prUrl contains a PR number', async () => {
+  // NOTE: markCompleted no longer records pr_decisions directly (AUDIT-IFleet-DBLPRDEC).
+  // The single authoritative write is in daemon.ts wireSprintCompletion on sprint.completed.
+  // The test below verifies that markCompleted does NOT write a duplicate row.
+  it('markCompleted does NOT record a pr_decision (recorded by wireSprintCompletion instead)', async () => {
     const { store, cleanup } = tmpStore();
     try {
       const t = ghTask('rec-1');
@@ -177,17 +180,15 @@ describe('UnifiedQueueAdapter', () => {
 
       await adapter.markCompleted(t, 'https://github.com/org/repo/pull/77');
 
+      // Expect NO rows — daemon.ts wireSprintCompletion is the authoritative writer.
       const decisions = store.getPrDecisionsByRepo('org/repo');
-      assert.equal(decisions.length, 1);
-      assert.equal(decisions[0]!.taskId, 'rec-1');
-      assert.equal(decisions[0]!.prNumber, 77);
-      assert.equal(decisions[0]!.verdict, 'merged');
+      assert.equal(decisions.length, 0, 'markCompleted must not record pr_decisions; that is wireSprintCompletion\'s job');
     } finally {
       cleanup();
     }
   });
 
-  it('markCompleted skips pr_decision recording when prUrl has no PR number', async () => {
+  it('markCompleted updates task state to done even without PR number', async () => {
     const { store, cleanup } = tmpStore();
     try {
       const t = ghTask('rec-2');
@@ -197,6 +198,7 @@ describe('UnifiedQueueAdapter', () => {
       const adapter = new UnifiedQueueAdapter(store, { github, discord });
 
       await adapter.markCompleted(t, '');
+      assert.equal(store.getById('rec-2')?.state, 'done');
       const decisions = store.getPrDecisionsByRepo('org/repo');
       assert.equal(decisions.length, 0);
     } finally {

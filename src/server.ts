@@ -107,10 +107,17 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     onApprove: async (taskId) => {
       const task = store.getById(taskId);
       if (!task) return;
-      // Approvals are resolved in the daemon process (ApprovalGate). The
-      // public control-plane only records the verdict in stateMeta — the
-      // daemon's in-process control-plane is what actually unblocks the
-      // architect.
+      // IMPORTANT: The public control-plane's approve is a passive signal only.
+      // The architect blocks on the daemon's in-process ControlPlaneApprovalGate
+      // (port 3002), not this one (port 3001). This write records `approvedAt`
+      // in stateMeta as a breadcrumb for observability, but does NOT unblock the
+      // architect — it is the daemon that does that via approvalGate.resolve().
+      // If the daemon is down when this fires, the approval is silently lost.
+      if (task.state !== 'in_flight') {
+        console.warn(
+          `[control-plane] approve for task ${taskId} arrived but task is in state '${task.state}' — approval may not reach architect`,
+        );
+      }
       store.updateState(taskId, task.state ?? 'in_flight', {
         ...(task.stateMeta ?? {}),
         approvedAt: Date.now(),

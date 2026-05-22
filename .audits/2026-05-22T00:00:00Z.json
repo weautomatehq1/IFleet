@@ -1,0 +1,92 @@
+{
+  "audit_id": "audit-20260522T000000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-05-22T00:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-VFR1EVNT",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "VerifierAgent emits verifier.started AFTER sandbox.run() completes — event ordering inverted",
+      "detail": "In src/agents/verifier/index.ts, VerifierAgent.verify() awaits this.sandbox.run(input) and only then emits 'verifier.started'. Any subscriber that uses this event to gate UI or observability (e.g. Discord posting 'verification running…') receives it after the verifier has already finished. The contract docstring on line 59 says 'Emits verifier.started, then exactly one of…' but the code does the opposite.",
+      "file_globs": ["src/agents/verifier/index.ts"],
+      "fix_sketch": "Move this.emitEvent('verifier.started', ...) to before the await this.sandbox.run(input) call. The runId is not yet known at that point — either generate it before sandbox.run or emit with a placeholder; the VerifierController already generates its own runId before sandbox.run so the pattern is established there.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-05-22T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-DBLPRDEC",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "Duplicate pr_decisions rows: wireSprintCompletion and UnifiedQueueAdapter.markCompleted both call recordPrDecision",
+      "detail": "daemon.ts wireSprintCompletion() calls store.recordPrDecision({verdict:'merged'}) on sprint.completed, and unified-adapter.ts markCompleted() also calls store.recordPrDecision({verdict:'merged'}). Both run for every completed Discord-sourced task. The pr_decisions table has no UNIQUE constraint on (task_id, pr_number) so duplicate rows accumulate silently. The store.ts docstring even warns 'a second call for the same pair will throw a UNIQUE constraint if the table ever gains that constraint; for now callers are responsible for not double-writing' — but two callers already do.",
+      "file_globs": ["src/orchestrator/daemon.ts", "src/queue/unified-adapter.ts", "src/queue/store.ts"],
+      "fix_sketch": "Remove the recordPrDecision call from UnifiedQueueAdapter.markCompleted (lines 57-70 in unified-adapter.ts) since daemon.ts wireSprintCompletion already records it with the same verdict. Alternatively, add INSERT OR IGNORE semantics by adding a UNIQUE constraint on (task_id, pr_number) in the schema and using INSERT OR IGNORE in recordPrDecision.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-05-22T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-SPWNSTDI",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "audit-handler spawnClaude uses stdio:'inherit' — attaches daemon's stdio to child process",
+      "detail": "In src/audit/audit-handler.ts, spawnClaude() spawns the claude CLI with {stdio: 'inherit'}, meaning the child process inherits the daemon process's stdin, stdout, and stderr file descriptors. This can cause the daemon to appear to hang if the child reads from stdin, and any output the child writes to stdout/stderr goes directly to PM2 logs without the audit-handler being able to detect errors or timeouts. All other subprocess invocations in the codebase (claude.ts, sandbox.ts) use piped stdio.",
+      "file_globs": ["src/audit/audit-handler.ts"],
+      "fix_sketch": "Change stdio from 'inherit' to ['ignore','pipe','pipe'] and capture stdout/stderr in the Promise handler so errors can be surfaced via the existing postToChannel path. Add a timeout (e.g. 10 minutes) so a hung claude process does not block the audit handler forever.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-05-22T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-FNDIDPRM",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "finding.id passed unsanitized into Claude prompt argument — prompt injection risk",
+      "detail": "In audit-handler.ts fixOne(), line 200 passes finding.id into the claude -p prompt as: spawnClaude('/audit-fix ' + finding.id, ctx.repoPath). The finding.id comes from reading index.json from disk. If an attacker can write to .audits/index.json (e.g. via a malicious PR that modifies audit output), they can craft an id containing newlines or the DATA-block close marker (USER_BRIEF_END>>>) to break out of the prompt context and inject arbitrary instructions into the Claude subprocess that runs with acceptEdits permission on the repo.",
+      "file_globs": ["src/audit/audit-handler.ts"],
+      "fix_sketch": "Validate that finding.id matches the expected pattern /^AUDIT-[A-Za-z0-9_-]{4,64}$/ before passing it to spawnClaude. If it does not match, log a warning and skip the fix. This prevents newlines and special characters from reaching the prompt.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-05-22T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-SVRSTAPP",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "server.ts onApprove calls store.updateState with task.state as the new state — writes state_meta but transitions nothing",
+      "detail": "In src/server.ts onApprove (lines 107-118), the code reads the task's current state with store.getById(taskId) and then calls store.updateState(taskId, task.state ?? 'in_flight', {...approvedAt...}). The second argument to updateState is the new target state — passing the current state means no state transition happens; only state_meta is updated. The comment says 'only records the verdict in stateMeta — the daemon's in-process control-plane is what actually unblocks the architect', suggesting this is intentional, but it is confusing: the public control-plane silently no-ops on approvals when the daemon is down, with no error surfaced.",
+      "file_globs": ["src/server.ts"],
+      "fix_sketch": "Either add a clear comment that the public control-plane's approval is a fallback signal only and the daemon's in-process gate is authoritative, or route all approval through a shared mechanism. At minimum, log a clear warning when the task is not in_flight at approval time so operators can diagnose approval-not-reaching-architect issues.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-05-22T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-TASKSTRD",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Dual-store naming inconsistency: TaskStore (queue/store.ts) vs StateStore (orchestrator/store.ts) are both called 'store'",
+      "detail": "The daemon creates both a TaskStore (unified queue: tasks.db) and a StateStore (orchestrator: state.db) and refers to them as 'store' and 'orchestratorStore' respectively. This naming convention is inconsistent across files — some call the TaskStore 'store' and some call the StateStore 'store'. The distinction is architecturally significant (one is the public task queue, the other is the internal sprint/task state machine) but is not clearly reflected in variable names across all call sites.",
+      "file_globs": ["src/orchestrator/daemon.ts", "src/queue/store.ts", "src/orchestrator/store.ts"],
+      "fix_sketch": "Consider renaming the local variable in daemon.ts from 'orchestratorStore' to 'sprintStore' or 'orchStore' consistently throughout. Add a one-line comment on each store instantiation explaining what it stores. No API change needed — this is variable naming only.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-05-22T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}

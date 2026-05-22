@@ -104,13 +104,42 @@ function recomputeRollup(index: AuditIndex): AuditIndex {
   return index;
 }
 
+const SPAWN_CLAUDE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 function spawnClaude(slashCommand: string, cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', slashCommand], { cwd, stdio: 'inherit' });
-    child.on('error', reject);
+    // Use piped stdio so the daemon's own stdin/stdout/stderr are not inherited
+    // by the child (inheriting would expose the daemon's stdio to the subprocess
+    // and could block if claude waits for stdin). Pipe stderr to capture errors.
+    const child = spawn('claude', ['-p', slashCommand], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const stderrChunks: Buffer[] = [];
+    child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGKILL');
+      reject(new Error(`claude timed out after ${SPAWN_CLAUDE_TIMEOUT_MS / 1000}s`));
+    }, SPAWN_CLAUDE_TIMEOUT_MS);
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`claude exited with code ${code ?? 'null'}`));
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+      } else {
+        const stderr = Buffer.concat(stderrChunks).toString('utf8').slice(0, 500);
+        reject(new Error(`claude exited with code ${code ?? 'null'}${stderr ? `: ${stderr}` : ''}`));
+      }
     });
   });
 }
@@ -183,11 +212,22 @@ export async function handleAuditScan(
   await postToChannel(deps.client, ctx.channelId, lines.join('\n'));
 }
 
+/** Safe finding ID pattern: alpha-numeric, hyphens, underscores only. */
+const SAFE_FINDING_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
 async function fixOne(
   finding: AuditFinding,
   ctx: RepoContext,
   _deps: AuditHandlerDeps,
 ): Promise<boolean> {
+  // Validate finding.id before passing it into the claude prompt. A crafted
+  // finding id with newlines or the DATA-block sentinel could inject arbitrary
+  // instructions into the Claude subprocess that runs with acceptEdits. See
+  // AUDIT-IFleet-FNDIDPRM.
+  if (!SAFE_FINDING_ID_RE.test(finding.id)) {
+    console.warn(`[audit-handler] fixOne: rejecting unsafe finding id ${JSON.stringify(finding.id)}`);
+    return false;
+  }
   const index = await readIndex(ctx.repoPath);
   if (index) {
     const target = index.findings.find((f) => f.id === finding.id);
