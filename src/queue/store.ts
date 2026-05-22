@@ -12,6 +12,29 @@ export function defaultTasksDbPath(): string {
   return join(defaultStateDir(), 'tasks.db');
 }
 
+/**
+ * Single source of truth for the pr_decisions table DDL.
+ * Used in both SCHEMA (fresh databases) and the constructor migration
+ * (databases created before this table existed). The FK-repair recreate
+ * block intentionally uses a bare CREATE TABLE (no IF NOT EXISTS) after
+ * an explicit DROP — do NOT substitute this constant there.
+ */
+const PR_DECISIONS_DDL = `
+CREATE TABLE IF NOT EXISTS pr_decisions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  verdict TEXT NOT NULL,
+  reviewer_login TEXT,
+  merged_at INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
+CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
+`;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
@@ -33,21 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
-
-CREATE TABLE IF NOT EXISTS pr_decisions (
-  id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL,
-  repo TEXT NOT NULL,
-  pr_number INTEGER NOT NULL,
-  verdict TEXT NOT NULL,
-  reviewer_login TEXT,
-  merged_at INTEGER,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
-CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
-`;
+${PR_DECISIONS_DDL}`;
 
 const PRIORITY_ORDER_SQL =
   "CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END";
@@ -132,22 +141,9 @@ export class TaskStore {
       if (!/duplicate column name: priority/i.test(message)) throw err;
     }
     // pr_decisions table was added later; SCHEMA creates it on fresh DBs, this
-    // migration covers existing DBs that pre-date the table.
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS pr_decisions (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL,
-        repo TEXT NOT NULL,
-        pr_number INTEGER NOT NULL,
-        verdict TEXT NOT NULL,
-        reviewer_login TEXT,
-        merged_at INTEGER,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
-      CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
-    `);
+    // migration covers existing DBs that pre-date the table. PR_DECISIONS_DDL
+    // is the shared constant — edit column definitions there, not here.
+    this.db.exec(PR_DECISIONS_DDL);
     // Forward-compat: if an older DB already created pr_decisions WITHOUT the
     // task_id FK, recreate it. Safe because pr_decisions was dead code until
     // M4 — nothing wrote to it. If somehow non-empty, keep the data and skip
@@ -157,6 +153,8 @@ export class TaskStore {
     if (!hasTaskFk) {
       const { n } = this.db.prepare(`SELECT COUNT(*) AS n FROM pr_decisions`).get() as { n: number };
       if (n === 0) {
+        // Intentionally bare CREATE TABLE (no IF NOT EXISTS) — always follows
+        // an explicit DROP TABLE above. Do NOT replace with PR_DECISIONS_DDL.
         this.db.exec(`
           DROP TABLE pr_decisions;
           CREATE TABLE pr_decisions (
