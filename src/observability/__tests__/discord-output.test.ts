@@ -246,6 +246,55 @@ describe('DiscordOutAdapter.postTaskCreated', () => {
   });
 });
 
+describe('F2: postTaskCreated survives a thread that already exists', () => {
+  const EXISTING_MSG = '1503769258981589013'; // discordTask().source.messageId
+
+  it('reuses the existing thread when startThread fails (WS reconnect replay)', async () => {
+    const log = vi.fn();
+    const startThread = vi.fn(async () => {
+      throw new Error('A thread has already been created for this message');
+    });
+    const channelsFetch = vi.fn(async (id: string) => {
+      // A thread started from a message shares the message's snowflake id.
+      if (id === EXISTING_MSG) return { id: EXISTING_MSG, isThread: () => true };
+      // The parent text channel — origin.thread is null (empty cache).
+      return {
+        id,
+        messages: { fetch: async (mid: string) => ({ id: mid, thread: null, startThread }) },
+      };
+    });
+    const client = { channels: { fetch: channelsFetch } } as unknown as Client;
+    const adapter = new DiscordOutAdapter({ client, router: makeRouter([]), log });
+
+    const { threadId } = await adapter.postTaskCreated(discordTask());
+
+    expect(threadId).toBe(EXISTING_MSG);
+    expect(startThread).toHaveBeenCalledTimes(1);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('logs + returns empty threadId when startThread fails and no thread resolves', async () => {
+    const log = vi.fn();
+    const startThread = vi.fn(async () => {
+      throw new Error('unexpected discord failure');
+    });
+    const channelsFetch = vi.fn(async (id: string) => {
+      if (id === EXISTING_MSG) throw new Error('Unknown Channel');
+      return {
+        id,
+        messages: { fetch: async (mid: string) => ({ id: mid, thread: null, startThread }) },
+      };
+    });
+    const client = { channels: { fetch: channelsFetch } } as unknown as Client;
+    const adapter = new DiscordOutAdapter({ client, router: makeRouter([]), log });
+
+    const { threadId } = await adapter.postTaskCreated(discordTask());
+
+    expect(threadId).toBe('');
+    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('postTaskCreated failed'));
+  });
+});
+
 describe('DiscordOutAdapter.postProgress', () => {
   it('chunks long progress messages across multiple sends', async () => {
     const { client, threadSend } = mockClient();

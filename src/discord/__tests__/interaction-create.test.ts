@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DiscordAPIError } from 'discord.js';
 import {
   buildCommandFromButton,
   buildCommandFromSlash,
@@ -213,6 +214,148 @@ describe('CRIT-2: handleInteractionCreate authz on unmapped channels', () => {
     await handleInteractionCreate(interaction, { router, controlPlane });
 
     expect(controlPlane.posted).toHaveLength(0);
+  });
+});
+
+describe('F1: slash command survives WS reconnect replay (error 40060)', () => {
+  function okRouter(): ChannelRouter {
+    return {
+      resolve: (channelId: string) =>
+        channelId === ALLSTATE
+          ? {
+              channelId,
+              repo: 'weautomatehq1/allstate',
+              defaultBranch: 'main',
+              defaultModel: 'opus',
+              allowedUserIds: ['111'],
+              codeowners: [],
+              workDir: '/tmp/r',
+            }
+          : null,
+      list: () => [],
+    };
+  }
+
+  function spyControlPlane(): ControlPlaneClient & { posted: ControlCommand[] } {
+    const posted: ControlCommand[] = [];
+    return {
+      posted,
+      postCommand: async (cmd) => {
+        posted.push(cmd);
+        return { accepted: true };
+      },
+    };
+  }
+
+  function discordError(code: number, message: string): DiscordAPIError {
+    return new DiscordAPIError({ code, message }, code, code >= 50000 ? 403 : 400, 'POST', 'https://discord.test', {
+      body: {},
+      files: [],
+    });
+  }
+
+  function makeSlashInteraction(over: Record<string, unknown> = {}): any {
+    return {
+      isChatInputCommand: () => true,
+      isButton: () => false,
+      id: 'INTERACTION_1',
+      channelId: ALLSTATE,
+      commandName: 'ship',
+      options: { getString: vi.fn(() => 'add a thing') },
+      user: { id: '111', username: 'seb' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => undefined),
+      editReply: vi.fn(async () => undefined),
+      ...over,
+    };
+  }
+
+  it('swallows error 40060 from deferReply and does not dispatch', async () => {
+    const interaction = makeSlashInteraction({
+      deferReply: vi.fn(async () => {
+        throw discordError(40060, 'Interaction has already been acknowledged.');
+      }),
+    });
+    const controlPlane = spyControlPlane();
+
+    await expect(
+      handleInteractionCreate(interaction, { router: okRouter(), controlPlane }),
+    ).resolves.toBeUndefined();
+    expect(controlPlane.posted).toHaveLength(0);
+    expect(interaction.editReply).not.toHaveBeenCalled();
+  });
+
+  it('swallows error 10062 (unknown interaction — token expired) from deferReply', async () => {
+    const interaction = makeSlashInteraction({
+      deferReply: vi.fn(async () => {
+        throw discordError(10062, 'Unknown interaction');
+      }),
+    });
+    const controlPlane = spyControlPlane();
+
+    await expect(
+      handleInteractionCreate(interaction, { router: okRouter(), controlPlane }),
+    ).resolves.toBeUndefined();
+    expect(controlPlane.posted).toHaveLength(0);
+  });
+
+  it('skips a same-object replay where deferred is already true', async () => {
+    const interaction = makeSlashInteraction({ deferred: true });
+    const controlPlane = spyControlPlane();
+
+    await handleInteractionCreate(interaction, { router: okRouter(), controlPlane });
+
+    expect(interaction.deferReply).not.toHaveBeenCalled();
+    expect(controlPlane.posted).toHaveLength(0);
+  });
+
+  it('rethrows a non-ignorable Discord API error', async () => {
+    const err = discordError(50001, 'Missing Access');
+    const interaction = makeSlashInteraction({
+      deferReply: vi.fn(async () => {
+        throw err;
+      }),
+    });
+
+    await expect(
+      handleInteractionCreate(interaction, { router: okRouter(), controlPlane: spyControlPlane() }),
+    ).rejects.toBe(err);
+  });
+
+  it('swallows error 40060 on a replayed button interaction', async () => {
+    const interaction = {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId: 'approve:T1',
+      channelId: ALLSTATE,
+      user: { id: '111', username: 'seb' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        throw discordError(40060, 'Interaction has already been acknowledged.');
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+    } as any;
+    const controlPlane = spyControlPlane();
+
+    await expect(
+      handleInteractionCreate(interaction, { router: okRouter(), controlPlane }),
+    ).resolves.toBeUndefined();
+    expect(controlPlane.posted).toHaveLength(0);
+    expect(interaction.editReply).not.toHaveBeenCalled();
+  });
+
+  it('dispatches normally when deferReply succeeds', async () => {
+    const interaction = makeSlashInteraction();
+    const controlPlane = spyControlPlane();
+
+    await handleInteractionCreate(interaction, { router: okRouter(), controlPlane });
+
+    expect(interaction.deferReply).toHaveBeenCalledTimes(1);
+    expect(controlPlane.posted).toHaveLength(1);
+    expect(controlPlane.posted[0]).toMatchObject({ type: 'sprint_goal' });
   });
 });
 
