@@ -98,6 +98,11 @@ export class DefaultPipelineRunner implements PipelineRunner {
       if (architect.plan.trim().length === 0) {
         return failed(attempts, 'architect returned empty plan');
       }
+      if (architect.plan.trim() === 'ALREADY_RESOLVED') {
+        console.warn(`[pipeline] architect signalled ALREADY_RESOLVED — closing finding without editor`);
+        maybeCloseAuditFinding(input, 'already-resolved');
+        return alreadyResolved(attempts);
+      }
       if (!architect.approved) {
         if (input.abortSignal.aborted) return cancelled(attempts);
         return failed(attempts, 'architect plan not approved');
@@ -212,6 +217,13 @@ export class DefaultPipelineRunner implements PipelineRunner {
       // typically a silent tool-use failure in `claude -p` print mode (often
       // haiku). Bail before the reviewer burns tokens on "no diff provided".
       if (!diff.trim()) {
+        // Distinguish: substantial output = Claude understood the task and determined
+        // no changes were needed (already resolved). Short/empty output = silent
+        // tool-use failure (claude -p dropped its edits without explanation).
+        if (editor.attempt.output.trim().length > 200) {
+          maybeCloseAuditFinding(input, 'already-resolved');
+          return alreadyResolved(attempts);
+        }
         return failed(attempts, 'editor produced no diff — possible silent tool-use failure');
       }
     }
@@ -452,6 +464,10 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
       worktreePath: input.worktreePath,
     }).catch(() => {}); // never let cost logging break the pipeline
   }
+}
+
+function alreadyResolved(attempts: AttemptRecord[]): PipelineResult {
+  return { status: 'already_resolved', attempts };
 }
 
 function failed(attempts: AttemptRecord[], reason: string): PipelineResult {

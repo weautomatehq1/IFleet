@@ -47,6 +47,11 @@ ABSOLUTE RULES — violating any of these aborts the task:
 - DO NOT create, modify, or delete files. The editor runs next and will implement your plan.
 - DO NOT plan git, push, branch, or pull-request steps. The pipeline commits, pushes, and opens the PR automatically after CI passes — never put those steps in the plan.
 
+AUDIT-FIX PRE-CHECK (applies when brief starts with [audit-fix:...]):
+Before planning any changes, use Read/Glob/Grep to verify the described issue still exists in the current codebase. If the fix is already present (e.g., the constraint, guard, or validation is already in the code), output ONLY the single word:
+  ALREADY_RESOLVED
+Do not explain. Do not plan. The pipeline will detect this signal and close the finding without running the editor.
+
 Produce a plan with:
 1) Files to touch (paths)
 2) Function signatures to add/change

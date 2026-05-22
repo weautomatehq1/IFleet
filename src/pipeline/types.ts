@@ -280,6 +280,7 @@ export interface AttemptRecord {
 
 export type PipelineStatus =
   | 'pr_opened'
+  | 'already_resolved'
   | 'blocked_by_reviewer'
   | 'awaiting_interview'
   | 'failed'
