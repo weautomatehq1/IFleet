@@ -224,7 +224,11 @@ export class DiscordOutAdapter implements DiscordOut {
       if (!thread) throw new Error(`thread ${threadId} not fetchable`);
       const embed = new EmbedBuilder()
         .setTitle(`${STATUS_BADGE.done} Completed`)
-        .setDescription(`Pull request opened.\n${prUrl}`);
+        .setDescription(
+          prUrl === 'already-resolved'
+            ? 'Already resolved — no changes needed. Finding closed.'
+            : `Pull request opened.\n${prUrl}`,
+        );
       await thread.send({ embeds: [embed] });
     } catch (err) {
       this.log('warn', `postCompleted failed for thread ${threadId}: ${errMsg(err)}`);

@@ -142,7 +142,7 @@ export class DiscordSource implements TaskSource {
       return;
     }
     await this.opts.out.postCompleted(tid, prUrl);
-    if (prUrl && task.source.kind === 'discord') {
+    if (prUrl && prUrl !== 'already-resolved' && task.source.kind === 'discord') {
       const channelId = task.source.channelId;
       const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
       const findingMatch = task.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);

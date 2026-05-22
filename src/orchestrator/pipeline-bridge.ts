@@ -212,6 +212,7 @@ function mapPipelineResult(
 function statusToExitCode(status: PipelineResult['status']): number {
   switch (status) {
     case 'pr_opened': return 0;
+    case 'already_resolved': return 0;
     case 'failed': return 1;
     case 'cancelled': return 2;
     case 'blocked_by_reviewer': return 3;
