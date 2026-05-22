@@ -1,4 +1,5 @@
 # Dependencies
+node_modules
 node_modules/
 
 # Build artifacts
@@ -9,6 +10,9 @@ dist/
 .env
 .env.local
 .env.*.local
+
+# Claude Code local settings (machine-specific, public repo — must not be committed)
+.claude/settings.json
 
 # Editor
 .vscode/*
