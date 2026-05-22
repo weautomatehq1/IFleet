@@ -17,6 +17,7 @@ These files/directories are load-bearing for IFleet's operation or contain secre
 | `src/orchestrator/store.ts` | SQLite state — task state + idempotency dedup |
 | `src/queue/**` | GitHub bridge — the ONLY layer allowed to call GitHub API |
 | `config/routing.json` | Live model routing — wrong edit costs money or breaks pipeline |
+| `config/channels.json` | Discord ACL — `allowedUserIds` controls who can issue fleet commands |
 | `docs/adr/**` | Architecture Decision Records — immutable, only superseded |
 
 ### Carve-outs (agent-writable under stricter rules)
@@ -47,6 +48,14 @@ When IFleet proposes changes to its own codebase (`weautomatehq1/IFleet`):
 - **GitHub PAT leak** → adversary opens malicious PRs → bypasses `allowedUserIds`. Mitigation: PAT is fine-grained, scoped to specific repos, no admin.
 - **Compromised dep (npm supply chain)** → arbitrary code in our process. Mitigation: pnpm lockfile committed (root + nested), enforced locally via `pnpm install --frozen-lockfile`. TODO M1 — wire `pnpm audit --audit-level=high` (or equivalent `npm audit` given `.github/workflows/ci.yml` currently installs via `npm ci --no-audit`) as a non-blocking CI step; this PR did not ship the CI step because adding a new audit job warrants Sebastian's sign-off on the failure-blocking policy.
 - **Self-modification gone wrong** → IFleet writes a bug into itself, propagates. Mitigation: SECURITY.md + shadow eval + human approval gate (above).
+- **Single Discord operator (control plane SPOF)** → both `factory` and `ifleet` channels in
+  `config/channels.json` gate on one Discord user ID (`1503477896402960405`, Sebastian).
+  If that account is compromised, locked, or unavailable, no Discord commands can be issued.
+  Mitigation (partial): HMAC still protects the HTTP entry point; the gap is Discord-to-control-plane
+  only, not the queue or GitHub bridge.
+  Remediation path: add Esme's Discord snowflake ID to `allowedUserIds` in both channel entries —
+  her operator status is documented in `docs/runbooks/secrets.md` and `config/repos.json`.
+  Tracked: AUDIT-IFleet-6a1cdff1. Open follow-on issue once ID is confirmed.
 
 ## Reporting
 
