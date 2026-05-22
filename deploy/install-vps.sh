@@ -36,9 +36,11 @@ npm -v
 
 # ---- 3. pnpm (matches packageManager field in package.json) -----------------
 # NOTE: if packageManager in package.json is updated, update the version here in tandem.
-if ! command -v pnpm >/dev/null 2>&1; then
-  log "Installing pnpm@10.33.2"
-  npm install -g pnpm@10.33.2
+PNPM_REQUIRED="10.33.2"
+PNPM_INSTALLED="$(pnpm --version 2>/dev/null || true)"
+if [[ "$PNPM_INSTALLED" != "$PNPM_REQUIRED" ]]; then
+  log "Installing pnpm@${PNPM_REQUIRED} (installed: '${PNPM_INSTALLED:-none}')"
+  npm install -g "pnpm@${PNPM_REQUIRED}"
 fi
 pnpm --version
 
