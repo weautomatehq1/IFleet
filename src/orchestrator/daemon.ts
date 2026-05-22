@@ -291,7 +291,7 @@ async function main(): Promise<void> {
   // -------- Tick loop: drain pending → submitSprint --------
   let running = true;
   const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
-  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs, store);
+  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs, store, discordOut);
 
   orchestrator.start();
   console.warn(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);
@@ -344,6 +344,7 @@ async function runTickLoop(
   isRunning: () => boolean,
   tickMs: number,
   store: TaskStore,
+  out?: DiscordOutAdapter,
 ): Promise<void> {
   while (isRunning()) {
     try {
@@ -358,7 +359,7 @@ async function runTickLoop(
         // adapter already flipped the row to in_flight inside pickNext().
         // Wire the sprint's terminal event back to the unified queue so the
         // task row transitions out of in_flight (done / failed).
-        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store);
+        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store, out);
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
@@ -381,12 +382,20 @@ function wireSprintCompletion(
   adapter: UnifiedQueueAdapter,
   orchestrator: Orchestrator,
   store: TaskStore,
+  out?: DiscordOutAdapter,
 ): void {
   let lastPrUrl: string | undefined;
   let lastTotalTokens: number | undefined;
 
   const handler = (event: OrchestratorEvent): void => {
     if (event.sprintId !== sprintId) return;
+
+    if (event.kind === 'task.assigned') {
+      if (out && task.source.kind === 'discord' && task.source.threadId) {
+        void out.postProgress(task.source.threadId, '🟡 picked up — architect starting').catch(() => {});
+      }
+      return;
+    }
 
     if (event.kind === 'task.completed') {
       lastPrUrl = event.payload['pr'] as string | undefined;
