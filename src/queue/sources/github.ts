@@ -38,7 +38,7 @@ export class GitHubIssuesSource implements TaskSource {
     await this.queue.markPicked(legacy, 'unified-store');
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl: string, _totalTokens?: number): Promise<void> {
     await this.queue.markCompleted(unifiedToLegacyShape(task), prUrl);
   }
 

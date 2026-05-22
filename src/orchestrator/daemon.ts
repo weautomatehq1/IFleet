@@ -383,12 +383,14 @@ function wireSprintCompletion(
   store: TaskStore,
 ): void {
   let lastPrUrl: string | undefined;
+  let lastTotalTokens: number | undefined;
 
   const handler = (event: OrchestratorEvent): void => {
     if (event.sprintId !== sprintId) return;
 
     if (event.kind === 'task.completed') {
       lastPrUrl = event.payload['pr'] as string | undefined;
+      lastTotalTokens = event.payload['totalTokens'] as number | undefined;
       return;
     }
 
@@ -412,7 +414,7 @@ function wireSprintCompletion(
         }
       }
 
-      void adapter.markCompleted(task, lastPrUrl ?? '').catch((err) =>
+      void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens).catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
       return;
