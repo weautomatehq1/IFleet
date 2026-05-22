@@ -335,8 +335,6 @@ export function buildCommandFromSlash(
     }
     case 'audit':
       return { type: 'audit_scan', source };
-    case 'audit-fix':
-      return { type: 'audit_fix', source };
     case 'audit-autopilot':
       return { type: 'audit_autopilot', source };
     case 'audit-status':
