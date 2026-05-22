@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, type SlashCommandOptionsOnlyBuilder } from 'discord.js';
 
-export const SLASH_COMMAND_NAMES = ['ship', 'plan', 'status', 'cancel', 'approve', 'verify'] as const;
+export const SLASH_COMMAND_NAMES = ['ship', 'plan', 'status', 'cancel', 'approve', 'verify', 'audit', 'audit-fix', 'audit-autopilot', 'audit-status'] as const;
 export type SlashCommandName = (typeof SLASH_COMMAND_NAMES)[number];
 
 /** Returned builders always have at least one option, hence the union. */
@@ -55,5 +55,17 @@ export function buildSlashCommands(): SlashCommandDef[] {
       .addStringOption((o) =>
         o.setName('taskid').setDescription('Task ID to re-verify.').setRequired(true),
       ),
+    new SlashCommandBuilder()
+      .setName('audit')
+      .setDescription('Scan this channel\'s repo for code quality issues'),
+    new SlashCommandBuilder()
+      .setName('audit-fix')
+      .setDescription('Fix CRITICAL findings in this channel\'s repo'),
+    new SlashCommandBuilder()
+      .setName('audit-autopilot')
+      .setDescription('Fix ALL findings overnight — CRITICAL → IMPORTANT → COSMETIC'),
+    new SlashCommandBuilder()
+      .setName('audit-status')
+      .setDescription('Show open finding counts for this channel\'s repo'),
   ];
 }

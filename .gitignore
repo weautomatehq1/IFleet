@@ -46,3 +46,6 @@ secrets/
 # Per-repo verify-env files (contain PATs/tokens, never committed)
 .ifleet/verify-env/*
 !.ifleet/verify-env/.gitkeep
+
+# Audit findings (local only, never committed)
+.audits/

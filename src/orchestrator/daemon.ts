@@ -33,6 +33,12 @@ import { promisify } from 'node:util';
 import type { Client } from 'discord.js';
 import { Octokit } from '@octokit/rest';
 import { VerifierController, type TaskRunContext } from '../agents/verifier/controller.js';
+import {
+  handleAuditAutopilot,
+  handleAuditFix,
+  handleAuditScan,
+  handleAuditStatus,
+} from '../audit/audit-handler.js';
 import { loadReposConfig } from '../config/repos.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
@@ -240,6 +246,26 @@ async function main(): Promise<void> {
     },
     onApprove: async (taskId) => {
       approvalGate.resolve(taskId, 'approve');
+    },
+    onAuditScan: async (cmd) => {
+      void handleAuditScan(cmd.channelId, { router, client }).catch((err) =>
+        console.warn('[daemon] handleAuditScan failed:', err),
+      );
+    },
+    onAuditFix: async (cmd) => {
+      void handleAuditFix(cmd.channelId, { router, client }).catch((err) =>
+        console.warn('[daemon] handleAuditFix failed:', err),
+      );
+    },
+    onAuditAutopilot: async (cmd) => {
+      void handleAuditAutopilot(cmd.channelId, { router, client }).catch((err) =>
+        console.warn('[daemon] handleAuditAutopilot failed:', err),
+      );
+    },
+    onAuditStatus: async (cmd) => {
+      void handleAuditStatus(cmd.channelId, { router, client }).catch((err) =>
+        console.warn('[daemon] handleAuditStatus failed:', err),
+      );
     },
     onCancel: async (taskId, reason) => {
       // Mark as failed first so the picked-up state flips back before the
