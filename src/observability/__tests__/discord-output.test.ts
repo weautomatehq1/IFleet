@@ -101,13 +101,13 @@ function mockClient(): {
   const channels = {
     fetch: vi.fn().mockImplementation(async (id: string) => {
       if (id === 'T_NEW') {
-        return { id: 'T_NEW', send: threadSend, isTextBased: () => true };
+        return { id: 'T_NEW', send: threadSend, isTextBased: (): boolean => true };
       }
       return {
         id,
         send: channelSend,
         messages: { fetch: messagesFetch },
-        isTextBased: () => true,
+        isTextBased: (): boolean => true,
       };
     }),
   };
@@ -257,12 +257,12 @@ describe('F2: postTaskCreated survives a thread that already exists', () => {
     });
     const channelsFetch = vi.fn(async (id: string) => {
       // A thread started from a message shares the message's snowflake id.
-      if (id === EXISTING_MSG) return { id: EXISTING_MSG, isThread: () => true, isTextBased: () => true };
+      if (id === EXISTING_MSG) return { id: EXISTING_MSG, isThread: () => true, isTextBased: (): boolean => true };
       // The parent text channel — origin.thread is null (empty cache).
       return {
         id,
         messages: { fetch: async (mid: string) => ({ id: mid, thread: null, startThread }) },
-        isTextBased: () => true,
+        isTextBased: (): boolean => true,
       };
     });
     const client = { channels: { fetch: channelsFetch } } as unknown as Client;
@@ -285,7 +285,7 @@ describe('F2: postTaskCreated survives a thread that already exists', () => {
       return {
         id,
         messages: { fetch: async (mid: string) => ({ id: mid, thread: null, startThread }) },
-        isTextBased: () => true,
+        isTextBased: (): boolean => true,
       };
     });
     const client = { channels: { fetch: channelsFetch } } as unknown as Client;
