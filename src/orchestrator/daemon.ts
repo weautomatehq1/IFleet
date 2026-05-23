@@ -248,21 +248,25 @@ async function main(): Promise<void> {
       approvalGate.resolve(taskId, 'approve');
     },
     onAuditScan: async (cmd) => {
+      if (!cmd.channelId) { console.warn('[daemon] audit_scan missing channelId — skipping'); return; }
       void handleAuditScan(cmd.channelId, { router, client }).catch((err) =>
         console.warn('[daemon] handleAuditScan failed:', err),
       );
     },
     onAuditFix: async (cmd) => {
+      if (!cmd.channelId) { console.warn('[daemon] audit_fix missing channelId — skipping'); return; }
       void handleAuditFix(cmd.channelId, { router, client }).catch((err) =>
         console.warn('[daemon] handleAuditFix failed:', err),
       );
     },
     onAuditAutopilot: async (cmd) => {
+      if (!cmd.channelId) { console.warn('[daemon] audit_autopilot missing channelId — skipping'); return; }
       void handleAuditAutopilot(cmd.channelId, { router, client }).catch((err) =>
         console.warn('[daemon] handleAuditAutopilot failed:', err),
       );
     },
     onAuditStatus: async (cmd) => {
+      if (!cmd.channelId) { console.warn('[daemon] audit_status missing channelId — skipping'); return; }
       void handleAuditStatus(cmd.channelId, { router, client }).catch((err) =>
         console.warn('[daemon] handleAuditStatus failed:', err),
       );

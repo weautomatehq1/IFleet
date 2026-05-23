@@ -373,7 +373,8 @@ function formatAckReply(
 
 function formatErrorReply(err: unknown): string {
   if (err instanceof ControlPlaneError) {
-    return `❌ Control plane error (${err.status}): ${err.responseBody || 'no body'}`;
+    const body = (err.responseBody || 'no body').slice(0, 200);
+    return `❌ Control plane error (${err.status}): ${body}`;
   }
   if (err instanceof Error) return `❌ ${err.message}`;
   return `❌ unknown error`;
