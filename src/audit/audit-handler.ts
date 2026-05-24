@@ -104,9 +104,16 @@ function recomputeRollup(index: AuditIndex): AuditIndex {
   return index;
 }
 
+function resolveClaude(): string {
+  // PM2 runs with a restricted PATH — use CLAUDE_BIN env or fall back to
+  // the known absolute path on the VPS rather than relying on PATH lookup.
+  return process.env['CLAUDE_BIN'] ?? '/usr/bin/claude';
+}
+
 function spawnClaude(slashCommand: string, cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', slashCommand], { cwd, stdio: 'inherit' });
+    const bin = resolveClaude();
+    const child = spawn(bin, ['-p', slashCommand], { cwd, stdio: 'inherit' });
     child.on('error', reject);
     child.on('exit', (code) => {
       if (code === 0) resolve();
