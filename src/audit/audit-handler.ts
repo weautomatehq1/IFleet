@@ -273,10 +273,32 @@ export async function handleAuditAutopilot(
     console.warn('[audit-handler] handleAuditAutopilot: no repo context for channel', channelId);
     return;
   }
-  const index = await readIndex(ctx.repoPath);
+  let index = await readIndex(ctx.repoPath);
   if (!index) {
-    await postToChannel(deps.client, ctx.channelId, 'No audit findings yet — run /audit-scan first');
-    return;
+    await postToChannel(
+      deps.client,
+      ctx.channelId,
+      `No audit index found — running scan on ${ctx.repo} first…`,
+    );
+    try {
+      await spawnClaude('/audit-scan', ctx.repoPath);
+    } catch (err) {
+      await postToChannel(
+        deps.client,
+        ctx.channelId,
+        `Audit scan failed on ${ctx.repo}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    index = await readIndex(ctx.repoPath);
+    if (!index) {
+      await postToChannel(
+        deps.client,
+        ctx.channelId,
+        `Audit scan produced no index for ${ctx.repo} — cannot proceed.`,
+      );
+      return;
+    }
   }
   await postToChannel(
     deps.client,
