@@ -9,7 +9,7 @@
 // The on-disk schema for findings lives at <repoPath>/.audits/index.json —
 // see ~/.claude/commands/audit-scan.md for the authoritative schema.
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import type { Client, TextChannel } from 'discord.js';
@@ -110,6 +110,17 @@ function resolveClaude(): string {
   return process.env['CLAUDE_BIN'] ?? '/usr/bin/claude';
 }
 
+/**
+ * Resolve the working directory for audit operations.
+ * ctx.repoPath is the channel router's workDir (e.g. /opt/ifleet/repos/owner-name),
+ * which may not exist if the daemon is running inside the repo itself.
+ * Fall back to IFLEET_REPO_ROOT (the daemon's own checkout) in that case.
+ */
+function resolveAuditCwd(repoPath: string): string {
+  if (existsSync(repoPath)) return repoPath;
+  return process.env['IFLEET_REPO_ROOT'] ?? process.cwd();
+}
+
 function spawnClaude(slashCommand: string, cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const bin = resolveClaude();
@@ -131,7 +142,8 @@ export async function handleAuditStatus(
     console.warn('[audit-handler] handleAuditStatus: no repo context for channel', channelId);
     return;
   }
-  const index = await readIndex(ctx.repoPath);
+  const cwd = resolveAuditCwd(ctx.repoPath);
+  const index = await readIndex(cwd);
   if (!index) {
     await postToChannel(
       deps.client,
@@ -161,9 +173,10 @@ export async function handleAuditScan(
     console.warn('[audit-handler] handleAuditScan: no repo context for channel', channelId);
     return;
   }
+  const cwd = resolveAuditCwd(ctx.repoPath);
   await postToChannel(deps.client, ctx.channelId, `Running audit scan on ${ctx.repo}…`);
   try {
-    await spawnClaude('/audit-scan', ctx.repoPath);
+    await spawnClaude('/audit-scan', cwd);
   } catch (err) {
     await postToChannel(
       deps.client,
@@ -172,7 +185,7 @@ export async function handleAuditScan(
     );
     return;
   }
-  const index = await readIndex(ctx.repoPath);
+  const index = await readIndex(cwd);
   if (!index) {
     await postToChannel(
       deps.client,
@@ -195,23 +208,24 @@ async function fixOne(
   ctx: RepoContext,
   _deps: AuditHandlerDeps,
 ): Promise<boolean> {
-  const index = await readIndex(ctx.repoPath);
+  const cwd = resolveAuditCwd(ctx.repoPath);
+  const index = await readIndex(cwd);
   if (index) {
     const target = index.findings.find((f) => f.id === finding.id);
     if (target) {
       target.status = 'fixing';
-      await writeIndex(ctx.repoPath, recomputeRollup(index));
+      await writeIndex(cwd, recomputeRollup(index));
     }
   }
   try {
-    await spawnClaude(`/audit-fix ${finding.id}`, ctx.repoPath);
-    const post = await readIndex(ctx.repoPath);
+    await spawnClaude(`/audit-fix ${finding.id}`, cwd);
+    const post = await readIndex(cwd);
     if (post) {
       const target = post.findings.find((f) => f.id === finding.id);
       if (target) {
         target.status = 'fixed';
         target.closed_at = new Date().toISOString();
-        await writeIndex(ctx.repoPath, recomputeRollup(post));
+        await writeIndex(cwd, recomputeRollup(post));
       }
     }
     return true;
@@ -219,12 +233,12 @@ async function fixOne(
     console.warn(
       `[audit-handler] fix failed for ${finding.id}: ${err instanceof Error ? err.message : String(err)}`,
     );
-    const post = await readIndex(ctx.repoPath);
+    const post = await readIndex(cwd);
     if (post) {
       const target = post.findings.find((f) => f.id === finding.id);
       if (target && target.status === 'fixing') {
         target.status = 'open';
-        await writeIndex(ctx.repoPath, recomputeRollup(post));
+        await writeIndex(cwd, recomputeRollup(post));
       }
     }
     return false;
@@ -280,7 +294,8 @@ export async function handleAuditAutopilot(
     console.warn('[audit-handler] handleAuditAutopilot: no repo context for channel', channelId);
     return;
   }
-  let index = await readIndex(ctx.repoPath);
+  const cwd = resolveAuditCwd(ctx.repoPath);
+  let index = await readIndex(cwd);
   if (!index) {
     await postToChannel(
       deps.client,
@@ -288,7 +303,7 @@ export async function handleAuditAutopilot(
       `No audit index found — running scan on ${ctx.repo} first…`,
     );
     try {
-      await spawnClaude('/audit-scan', ctx.repoPath);
+      await spawnClaude('/audit-scan', cwd);
     } catch (err) {
       await postToChannel(
         deps.client,
@@ -297,7 +312,7 @@ export async function handleAuditAutopilot(
       );
       return;
     }
-    index = await readIndex(ctx.repoPath);
+    index = await readIndex(cwd);
     if (!index) {
       await postToChannel(
         deps.client,
@@ -317,7 +332,7 @@ export async function handleAuditAutopilot(
   let totalFailed = 0;
   for (const tier of tiers) {
     // Re-read each tier — fixes can mutate later findings via fingerprint dedup.
-    const current = await readIndex(ctx.repoPath);
+    const current = await readIndex(cwd);
     if (!current) break;
     const targets = current.findings.filter(
       (f) => f.severity === tier && (f.status === 'open' || f.status === 'reopened'),
