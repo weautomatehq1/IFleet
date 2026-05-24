@@ -66,6 +66,7 @@ async function makeFixture(): Promise<Fixture> {
   await git(['init', '-q', '-b', 'main', worktree]);
   await git(['-C', worktree, 'config', 'user.email', 'test@test']);
   await git(['-C', worktree, 'config', 'user.name', 'test']);
+  await git(['-C', worktree, 'config', 'commit.gpgsign', 'false']);
   await git(['-C', worktree, 'commit', '--allow-empty', '-m', 'init']);
   const store = new StateStore(join(workdir, 'state.db'));
   const sprintId = newSprintId('sprint-1');

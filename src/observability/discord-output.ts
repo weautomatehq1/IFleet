@@ -87,7 +87,7 @@ export class DiscordOutAdapter implements DiscordOut {
     try {
       if (route.kind === 'discord-thread-anchor') {
         const ch = (await this.client.channels.fetch(route.channelId)) as TextChannel | null;
-        if (!ch) throw new Error(`channel ${route.channelId} not fetchable`);
+        if (!ch || !ch.isTextBased()) throw new Error(`channel ${route.channelId} not fetchable or not text-based`);
         const origin = (await ch.messages.fetch(route.messageId)) as Message;
         // Fast path: thread already in the client cache.
         if (origin.thread) {
@@ -117,7 +117,7 @@ export class DiscordOutAdapter implements DiscordOut {
       }
 
       const ch = (await this.client.channels.fetch(route.channelId)) as TextChannel | null;
-      if (!ch) throw new Error(`channel ${route.channelId} not fetchable`);
+      if (!ch || !ch.isTextBased()) throw new Error(`channel ${route.channelId} not fetchable or not text-based`);
       const anchor = await ch.send({ embeds: [taskEmbed(task)] });
       const thread = await anchor.startThread({
         name: shortTitle(task),
@@ -253,7 +253,7 @@ export class DiscordOutAdapter implements DiscordOut {
     if (!channelId) return;
     try {
       const channel = (await this.client.channels.fetch(channelId)) as TextChannel | null;
-      if (!channel) throw new Error(`channel ${channelId} not fetchable`);
+      if (!channel || !channel.isTextBased()) throw new Error(`channel ${channelId} not fetchable or not text-based`);
       await channel.send(truncate(message, DISCORD_MESSAGE_LIMIT));
     } catch (err) {
       this.log('warn', `postChannelMessage failed for channel ${channelId}: ${errMsg(err)}`);

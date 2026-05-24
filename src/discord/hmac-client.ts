@@ -72,7 +72,8 @@ export class HmacControlPlaneClient implements ControlPlaneClient {
     if (!text) return { accepted: true };
     try {
       const parsed: unknown = JSON.parse(text);
-      if (isAck(parsed)) return parsed;
+      const ack = normalizeAck(parsed);
+      if (ack) return ack;
       return { accepted: true, message: text };
     } catch {
       return { accepted: true, message: text };
@@ -99,13 +100,18 @@ async function safeText(res: Response): Promise<string> {
   }
 }
 
-function isAck(value: unknown): value is ControlPlaneAck {
-  if (typeof value !== 'object' || value === null) return false;
+function normalizeAck(value: unknown): ControlPlaneAck | null {
+  if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
-  if (typeof v['accepted'] === 'boolean') return true;
-  if (typeof v['ok'] === 'boolean') {
-    v['accepted'] = v['ok'] as boolean;
-    return true;
-  }
-  return false;
+  const accepted =
+    typeof v['accepted'] === 'boolean' ? v['accepted'] :
+    typeof v['ok'] === 'boolean' ? v['ok'] :
+    null;
+  if (accepted === null) return null;
+  return {
+    accepted,
+    ...(typeof v['taskId'] === 'string' && { taskId: v['taskId'] }),
+    ...(typeof v['threadId'] === 'string' && { threadId: v['threadId'] }),
+    ...(typeof v['message'] === 'string' && { message: v['message'] }),
+  };
 }

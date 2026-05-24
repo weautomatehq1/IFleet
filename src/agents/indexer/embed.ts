@@ -85,7 +85,7 @@ export class VoyageEmbeddingClient implements EmbeddingClient {
         attempt += 1;
       }
     }
-    void lastErr;
+    console.warn('[embed] Voyage embedChunk failed after all retries:', lastErr);
     return slice.map(() => null);
   }
 

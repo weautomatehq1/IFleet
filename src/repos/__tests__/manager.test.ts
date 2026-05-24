@@ -37,6 +37,7 @@ beforeEach(() => {
   git(seed, 'init', '--initial-branch=main', '--quiet');
   git(seed, 'config', 'user.email', 'test@example.com');
   git(seed, 'config', 'user.name', 'Test');
+  git(seed, 'config', 'commit.gpgsign', 'false');
   writeFileSync(join(seed, 'README.md'), '# seed\n');
   git(seed, 'add', '.');
   git(seed, 'commit', '-m', 'init', '--quiet');
