@@ -30,6 +30,7 @@ beforeEach(() => {
   git(seed, 'init', '--initial-branch=main', '--quiet');
   git(seed, 'config', 'user.email', 't@e');
   git(seed, 'config', 'user.name', 't');
+  git(seed, 'config', 'commit.gpgsign', 'false');
   writeFileSync(join(seed, 'a'), '');
   git(seed, 'add', '.');
   git(seed, 'commit', '-m', 'x', '--quiet');

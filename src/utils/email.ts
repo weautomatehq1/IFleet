@@ -21,6 +21,12 @@ function getClient(): Resend {
 }
 
 export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
+  const recipients = Array.isArray(payload.to) ? payload.to : [payload.to];
+  for (const addr of recipients) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) {
+      throw new Error(`Invalid email address: ${addr}`);
+    }
+  }
   const client = getClient();
   const { data, error } = await client.emails.send({
     from: payload.from ?? DEFAULT_FROM,
