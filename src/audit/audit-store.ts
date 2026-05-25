@@ -86,7 +86,10 @@ export async function dbReadFindings(repo: string): Promise<AuditFinding[]> {
 
 /**
  * Build an AuditIndex from Supabase. Returns null when the DB is unreachable
- * or no findings exist for the repo.
+ * OR no findings exist for the repo (zero rows). Callers must treat null as
+ * "Supabase has no data for this repo yet — fall back to local file" rather
+ * than as a hard error; the local index.json on Mac is the source of truth
+ * until `pnpm audit:sync` lands findings into Supabase.
  */
 export async function dbReadIndex(repo: string): Promise<AuditIndex | null> {
   let findings: AuditFinding[];

@@ -45,6 +45,7 @@ import { createVerifyRunner } from '../src/verify/runner.ts';
 import { titleToBranchName } from '../src/utils/branch-name.ts';
 import { acquireDispatchLock } from './dispatcher-lock.ts';
 import { broadcastIFleet } from '../src/observability/discord-broadcast.ts';
+import { isFleetPaused, readPauseInfo } from '../src/orchestrator/fleet-control.ts';
 import {
   PipelineBridge,
   decodeBridgeBrief,
@@ -414,9 +415,17 @@ async function runWorkerMode(issueNumber: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const PAUSED_FLAG = join(REPO_ROOT, '.omc', 'PAUSED');
-  if (existsSync(PAUSED_FLAG)) {
-    log('Fleet is paused (.omc/PAUSED exists). Run `npm run fleet:resume` to resume.');
+  // Single source of truth for the pause flag — same helper the daemon and
+  // /pause /continue Discord commands use (AUDIT-IFleet-6fa2869e). Keeping
+  // the path derivation inside fleet-control means future changes (renames,
+  // moves, IFLEET_REPO_ROOT semantics) only have one site to update.
+  if (isFleetPaused(REPO_ROOT)) {
+    const info = readPauseInfo(REPO_ROOT);
+    log(
+      `Fleet is paused${info.by ? ` (by ${info.by})` : ''}${
+        info.reason ? ` — ${info.reason}` : ''
+      }. Run /continue in Discord or remove .omc/PAUSED to resume.`,
+    );
     return;
   }
 

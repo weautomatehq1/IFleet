@@ -286,6 +286,17 @@ async function main(): Promise<void> {
         }
         resolvedId = candidates[0]!.id;
       }
+      // TOCTOU guard (AUDIT-IFleet-42408e04): re-read the task right before
+      // mutating it. If it already completed or failed between sentinel
+      // resolution and now, do nothing — overwriting `completed` → `failed`
+      // would diverge queue state from reality (the PR is already open).
+      const current = store.getById(resolvedId);
+      if (current && current.state !== 'in_flight' && current.state !== 'pending') {
+        broadcastIFleet(
+          `⚠ /cancel — task \`${resolvedId}\` already \`${current.state}\`; nothing to do.`,
+        );
+        return;
+      }
       // Mark as failed first so the picked-up state flips back before the
       // architect resolves cancel — keeps the store consistent if the
       // architect is still mid-spawn.
@@ -295,6 +306,19 @@ async function main(): Promise<void> {
         /* row may not exist yet */
       }
       approvalGate.resolve(resolvedId, 'cancel');
+      // Actually abort the running pipeline worker (AUDIT-IFleet-7dd1062f).
+      // approvalGate.resolve only unblocks a pipeline waiting at HITL; the
+      // SprintManager's cancelSprint walks `running` and calls handle.cancel()
+      // which in turn calls abortController.abort() — that's what kills the
+      // editor/verifier/reviewer mid-spawn.
+      try {
+        const task = orchestratorStore.loadTask(resolvedId as TaskId);
+        if (task) {
+          await orchestrator.cancelSprint(task.sprintId, reason ?? 'cancelled via control plane');
+        }
+      } catch (err) {
+        console.warn('[daemon] onCancel: orchestrator.cancelSprint failed:', err);
+      }
       broadcastIFleet(`🛑 /cancel — task \`${resolvedId}\` cancelled${reason ? ` — ${reason}` : ''}.`);
     },
     onPause: async (cmd) => {
@@ -318,36 +342,51 @@ async function main(): Promise<void> {
       }
     },
     onStop: async (cmd) => {
-      // Cancel every sprint currently running. Each sprint maps to one task
-      // (single-seat policy); resolve(cancel) lets the architect/editor/
-      // verifier loops exit cleanly without leaving zombie children.
+      // (AUDIT-IFleet-7dd1062f) /stop must actually abort running workers,
+      // not just flip store state. orchestrator.cancelSprint walks the
+      // SprintManager's `running` map and fires each handle.cancel() →
+      // PipelineBridge → abortController.abort(). The pipeline runner
+      // checks abortSignal between phases (architect/editor/verifier/
+      // reviewer) and exits cleanly without producing a PR. Store state
+      // and approvalGate.resolve(cancel) are kept for the case where a
+      // sprint is queued/planning (not in `running`) — abort is a no-op
+      // there, but the state flip still terminates it.
+      const reason = cmd.reason ?? 'fleet stopped';
       const runningSprints = orchestratorStore.listSprintsByStateKind('running');
       let cancelled = 0;
+      const sprintCancels: Promise<unknown>[] = [];
       for (const sprint of runningSprints) {
         try {
-          // SprintRecord.tasks holds the taskIds in creation order; we
-          // resolve each via loadSprint so we never read stale state.
           const full = orchestratorStore.loadSprint(sprint.id);
           const taskIds = full?.tasks ?? [];
           for (const taskId of taskIds) {
             try {
-              store.updateState(taskId, 'failed', { reason: cmd.reason ?? 'fleet stopped' });
+              store.updateState(taskId, 'failed', { reason });
             } catch {
               /* unified row may not exist for this taskId */
             }
             approvalGate.resolve(taskId, 'cancel');
             cancelled++;
           }
+          sprintCancels.push(
+            orchestrator.cancelSprint(sprint.id, reason).catch((err: unknown) =>
+              console.warn(`[daemon] onStop: cancelSprint ${sprint.id} failed:`, err),
+            ),
+          );
         } catch (err) {
           console.warn('[daemon] onStop: sprint cancel iteration failed:', err);
         }
       }
+      // Set the pause flag BEFORE awaiting cancellations so the very next
+      // tick already sees the freeze even if the abort takes a few seconds
+      // to propagate through the pipeline phases.
       const opts: { reason?: string; by?: string } = { reason: cmd.reason ?? 'STOP' };
       if (cmd.userLabel) opts.by = cmd.userLabel;
       setFleetPaused(opts);
+      await Promise.allSettled(sprintCancels);
       broadcastIFleet(
         `🛑 Fleet STOPPED${cmd.userLabel ? ` by ${cmd.userLabel}` : ''}${cmd.reason ? ` — ${cmd.reason}` : ''}. ` +
-          `Cancelled ${cancelled} in-flight task(s); queue paused. Use /continue to resume pickups.`,
+          `Aborted ${cancelled} in-flight task(s); queue paused. Use /continue to resume pickups.`,
       );
     },
     resolveTask: () => null,
@@ -512,7 +551,12 @@ function wireSprintCompletion(
       if (lastPrUrl) {
         broadcastIFleet(`✅ PR opened: ${lastPrUrl} — ${task.repo} · ${task.title}`);
       } else {
-        broadcastIFleet(`✅ task completed (no PR) — ${task.repo} · ${task.title}`);
+        // (AUDIT-IFleet-4d424525) Be explicit about the "no PR" case. The
+        // pipeline short-circuits to `already_resolved` / `no_changes_needed`
+        // when the editor verified the fix was already in place — that's a
+        // success, not a silent failure. Surface that to the operator.
+        const reason = (event.payload['failureReason'] as string | undefined) ?? 'no changes needed';
+        broadcastIFleet(`✅ task completed — ${task.repo} · ${task.title} (no PR: ${reason})`);
       }
       // Mirror the `task.assigned` Discord ping above: post a completion
       // message to the task's thread the moment a PR opens, so operators

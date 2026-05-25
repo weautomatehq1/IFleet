@@ -32,7 +32,7 @@ pnpm install
 |---|---|---|
 | `RESEND_API_KEY` | Yes | Email delivery for notifications. Get from resend.com/api-keys. |
 | `BUDGET_USD` | No | Pause a sprint when cumulative spend reaches this USD threshold. **Only enforced when at least one enabled worker in `config/workers.json` has `authProfile: "api"`** (the literal string `"api"` — case-sensitive; matched against the `API_AUTH_PROFILE` constant in `src/orchestrator/workers.ts`). Max-plan workers report token-priced USD that does not reflect real spend, so the guard short-circuits to skip and emits a `sprint.budget_skipped` event (one per sprint) to the `events` table — query with `sqlite3 ~/.omc/ifleet/state.db "SELECT * FROM events WHERE kind='sprint.budget_skipped'"`. Omit `BUDGET_USD` to disable entirely. See issue #162. |
-| `DISCORD_IFLEET_WEBHOOK` | No | Discord webhook URL for budget-pause alerts. |
+| `DISCORD_IFLEET_WEBHOOK` | No | Discord webhook URL for fleet broadcasts (pickup / PR opened / failure / cancel / pause / stop). **Required in practice** — without it every task is silent and you'll learn about token-burn from the bill, not from Discord. Set in `/opt/ifleet/.env` on the VPS AND `~/dev/IFleet/.env` on the Mac. Rotation: create a new webhook in Discord channel settings, update both `.env` files, restart `pm2 restart ifleet --update-env`. The URL is not high-sensitivity (write-only, single channel, easy to regenerate) but anyone with SSH access can read it from the file. |
 | `GITHUB_TOKEN` | No | Falls back to `gh auth token` automatically if not set. |
 
 ---

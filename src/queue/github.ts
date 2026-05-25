@@ -8,11 +8,14 @@ import {
   LABEL_AUTO_SHIP,
   LABEL_CAPABILITY_BLOCKED,
   LABEL_FAILED,
+  LABEL_IFLEET_CHRONIC_FAIL,
   LABEL_IFLEET_COOLDOWN,
   LABEL_IFLEET_DONE,
   LABEL_IFLEET_IN_PROGRESS,
   LABEL_IN_FLIGHT,
+  LABEL_RETRY_PREFIX,
   LABEL_SHIPPED,
+  MAX_AUTO_RETRIES,
   type PickOpts,
   type QueueAdapter,
   type QueuedTask,
@@ -183,21 +186,43 @@ export class GitHubQueue implements QueueAdapter {
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
     await this.removeLabel(task, LABEL_IN_FLIGHT);
     await this.removeLabel(task, LABEL_IFLEET_IN_PROGRESS);
-    // `ifleet:cooldown` lets the smoke dispatcher restore `auto:ship` 30 min
-    // later (see sweepCooldowns). `auto:failed` remains a terminal label —
-    // never auto-restored — so chronic failures don't auto-retry forever.
-    await this.addLabels(task, [LABEL_FAILED, LABEL_IFLEET_COOLDOWN]);
-    await this.comment(task, `❌ Failed: ${reason} (cooldown ${COOLDOWN_MS / 60_000}m before retry)`);
+    // Bump the retry counter via a label of the form `ifleet:retry:N`. After
+    // MAX_AUTO_RETRIES failures the issue gets `ifleet:chronic-fail` and
+    // sweepCooldowns will skip it — a human must remove the label to
+    // re-enable retries. This is the backstop against the infinite-loop
+    // token burn that #70/#72/#75 hit.
+    const currentRetry = this.readRetryCount(task.labels);
+    const nextRetry = currentRetry + 1;
+    const newLabels: string[] = [LABEL_FAILED, LABEL_IFLEET_COOLDOWN, `${LABEL_RETRY_PREFIX}${nextRetry}`];
+    if (nextRetry >= MAX_AUTO_RETRIES) {
+      newLabels.push(LABEL_IFLEET_CHRONIC_FAIL);
+    }
+    // Replace the prior retry label to keep the issue tidy.
+    if (currentRetry > 0) {
+      await this.removeLabel(task, `${LABEL_RETRY_PREFIX}${currentRetry}`);
+    }
+    await this.addLabels(task, newLabels);
+    const tail =
+      nextRetry >= MAX_AUTO_RETRIES
+        ? ` Marked \`${LABEL_IFLEET_CHRONIC_FAIL}\` after ${nextRetry} failure(s); auto-retry disabled.`
+        : ` (cooldown ${COOLDOWN_MS / 60_000}m before retry ${nextRetry}/${MAX_AUTO_RETRIES})`;
+    await this.comment(task, `❌ Failed: ${reason}${tail}`);
   }
 
   /**
    * Restore issues whose `ifleet:cooldown` was set more than COOLDOWN_MS ago.
-   * Removes `ifleet:cooldown` + `auto:failed`, re-adds `auto:ship`. Idempotent —
-   * intended to run at the top of every dispatch tick.
+   * Skips any issue with `ifleet:chronic-fail` (retry cap hit).
+   *
+   * Ordering matters for crash-safety (AUDIT-IFleet-80abf649): we remove
+   * `auto:failed` first, then add `auto:ship`, then remove `ifleet:cooldown`.
+   * If the process dies after steps 1-2 the issue is pickable with a stale
+   * cooldown label that the NEXT sweep will clean up. If it dies after only
+   * step 1 the issue is no worse off than a manual triage.
    */
-  async sweepCooldowns(): Promise<{ restored: number; remaining: number }> {
+  async sweepCooldowns(): Promise<{ restored: number; remaining: number; skippedChronic: number }> {
     let restored = 0;
     let remaining = 0;
+    let skippedChronic = 0;
     for (const repo of this.repos) {
       const issues = await this.octokit.paginate(this.octokit.issues.listForRepo, {
         owner: repo.owner,
@@ -207,10 +232,14 @@ export class GitHubQueue implements QueueAdapter {
         per_page: 100,
       });
       for (const issue of issues) {
-        const cooldownLabel = (issue.labels as ReadonlyArray<string | { name?: string | null }>)
+        const labelNames = (issue.labels as ReadonlyArray<string | { name?: string | null }>)
           .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
-          .find((n) => n === LABEL_IFLEET_COOLDOWN);
-        if (!cooldownLabel) continue;
+          .filter((n) => n.length > 0);
+        if (!labelNames.includes(LABEL_IFLEET_COOLDOWN)) continue;
+        if (labelNames.includes(LABEL_IFLEET_CHRONIC_FAIL)) {
+          skippedChronic++;
+          continue;
+        }
         const labelAddedAt = await this.findLabelAddedAt(repo, issue.number, LABEL_IFLEET_COOLDOWN);
         if (labelAddedAt === null) continue;
         const elapsed = this.now() - labelAddedAt;
@@ -219,24 +248,29 @@ export class GitHubQueue implements QueueAdapter {
           continue;
         }
         try {
-          await this.octokit.issues.removeLabel({
-            owner: repo.owner,
-            repo: repo.name,
-            issue_number: issue.number,
-            name: LABEL_IFLEET_COOLDOWN,
-          }).catch((err) => { if (!isNotFound(err)) throw err; });
+          // Step 1: drop `auto:failed` so pickNext won't skip it.
           await this.octokit.issues.removeLabel({
             owner: repo.owner,
             repo: repo.name,
             issue_number: issue.number,
             name: LABEL_FAILED,
           }).catch((err) => { if (!isNotFound(err)) throw err; });
+          // Step 2: add `auto:ship` so pickNext sees it next tick.
           await this.octokit.issues.addLabels({
             owner: repo.owner,
             repo: repo.name,
             issue_number: issue.number,
             labels: [LABEL_AUTO_SHIP],
           });
+          // Step 3: remove `ifleet:cooldown` last — if we crash here, the
+          // next sweep will see the stale cooldown + auto:ship, find the
+          // cooldown is past COOLDOWN_MS, and idempotently re-clean it.
+          await this.octokit.issues.removeLabel({
+            owner: repo.owner,
+            repo: repo.name,
+            issue_number: issue.number,
+            name: LABEL_IFLEET_COOLDOWN,
+          }).catch((err) => { if (!isNotFound(err)) throw err; });
           restored++;
         } catch (err) {
           console.warn(
@@ -246,7 +280,22 @@ export class GitHubQueue implements QueueAdapter {
         }
       }
     }
-    return { restored, remaining };
+    return { restored, remaining, skippedChronic };
+  }
+
+  /**
+   * Read the current retry count from labels of the form `ifleet:retry:N`.
+   * Returns 0 when no such label is present. If multiple are present (corrupted
+   * state) the highest N wins so we never under-count.
+   */
+  private readRetryCount(labels: ReadonlyArray<string>): number {
+    let max = 0;
+    for (const label of labels) {
+      if (!label.startsWith(LABEL_RETRY_PREFIX)) continue;
+      const n = Number.parseInt(label.slice(LABEL_RETRY_PREFIX.length), 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max;
   }
 
   private async findLabelAddedAt(
