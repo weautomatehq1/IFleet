@@ -34,7 +34,7 @@ export async function handleMessageCreate(
     return { kind: 'ignored', reason: 'user not allowed' };
   }
 
-  const raw = (message.content ?? '').trim();
+  const raw = (message.content ?? '').slice(0, 10_000).trim();
   if (raw.length === 0) return { kind: 'ignored', reason: 'empty body' };
   if (raw.startsWith('!!')) return { kind: 'ignored', reason: 'debug prefix' };
 

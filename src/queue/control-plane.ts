@@ -83,8 +83,17 @@ const NONCE_TTL_PADDING_SEC = 60;
  */
 class NonceStore {
   private readonly seen = new Map<string, number>();
+  private readonly timer: NodeJS.Timeout;
 
-  constructor(private readonly ttlMs: number) {}
+  constructor(private readonly ttlMs: number) {
+    // Periodic sweep so the ledger doesn't grow unboundedly in low-traffic periods
+    // where the lazy per-request sweep never fires.
+    this.timer = setInterval(() => this.sweep(Date.now()), 60_000).unref();
+  }
+
+  destroy(): void {
+    clearInterval(this.timer);
+  }
 
   /** Returns true if the nonce was fresh and is now recorded. False if seen. */
   registerOrReject(nonce: string, now: number = Date.now()): boolean {
@@ -126,6 +135,7 @@ export function createControlPlane(opts: ControlPlaneOptions): ControlPlane {
       }),
     stop: () =>
       new Promise<void>((resolve, reject) => {
+        nonceStore.destroy();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };

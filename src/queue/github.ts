@@ -442,6 +442,8 @@ function toTask(repo: RepoRef, issue: IssueLike): QueuedTask {
   const labels = issue.labels
     .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
     .filter((s): s is string => s.length > 0);
+  const parsedAt = Date.parse(issue.created_at);
+  const createdAt = Number.isFinite(parsedAt) ? parsedAt : Date.now();
   return {
     id: issue.node_id,
     repo: `${repo.owner}/${repo.name}`,
@@ -451,7 +453,7 @@ function toTask(repo: RepoRef, issue: IssueLike): QueuedTask {
     author: issue.user?.login ?? '',
     labels,
     routingHints: parseLabels(labels),
-    createdAt: Date.parse(issue.created_at),
+    createdAt,
     url: issue.html_url,
   };
 }
