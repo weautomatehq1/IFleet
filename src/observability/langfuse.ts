@@ -43,6 +43,7 @@ export interface LangfuseTrace {
   end(output: TraceOutput): void;
 }
 
+// Cached per process lifetime — intentional, env vars don't change at runtime
 let cached: Langfuse | undefined | null = undefined;
 
 /**
