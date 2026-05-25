@@ -36,6 +36,7 @@ import { VerifierController, type TaskRunContext } from '../agents/verifier/cont
 import { loadReposConfig } from '../config/repos.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
+import { broadcastIFleet } from '../observability/discord-broadcast.js';
 import { DiscordOutAdapter } from '../observability/discord-output.js';
 import { makeProductionFactory } from '../pipeline/factory.js';
 import { createControlPlane } from '../queue/control-plane.js';
@@ -389,6 +390,12 @@ function wireSprintCompletion(
     if (event.sprintId !== sprintId) return;
 
     if (event.kind === 'task.assigned') {
+      // Broadcast the pickup to #ifleet via webhook FIRST — this is the
+      // source-agnostic notification. GitHub-source tasks have no thread,
+      // so without this they were invisible until completion (or failure).
+      // Webhook failures swallow internally; we never lose the event silently
+      // (see broadcast-discord.ts warn-once on unset env).
+      broadcastIFleet(`🟡 picked up — ${task.repo} · ${task.title}`);
       // Re-read the task from the store: the closure captured the original
       // QueuedTask before discordSource.ingest() opened a thread, so its
       // threadId may be stale (null on the snapshot, populated on the row).
@@ -410,6 +417,13 @@ function wireSprintCompletion(
     if (event.kind === 'task.completed') {
       lastPrUrl = event.payload['pr'] as string | undefined;
       lastTotalTokens = event.payload['totalTokens'] as number | undefined;
+      // Broadcast PR open to #ifleet via webhook (source-agnostic). Mirror
+      // the per-thread post below for Discord-source tasks.
+      if (lastPrUrl) {
+        broadcastIFleet(`✅ PR opened: ${lastPrUrl} — ${task.repo} · ${task.title}`);
+      } else {
+        broadcastIFleet(`✅ task completed (no PR) — ${task.repo} · ${task.title}`);
+      }
       // Mirror the `task.assigned` Discord ping above: post a completion
       // message to the task's thread the moment a PR opens, so operators
       // see visibility in the same thread that announced 🟡 picked up.
@@ -465,6 +479,13 @@ function wireSprintCompletion(
             : event.kind === 'sprint.failed'
               ? 'pipeline failed'
               : 'cancelled';
+
+      // Broadcast the terminal state to #ifleet via webhook BEFORE markFailed
+      // touches the issue — this is the gap that let token-burn go silent.
+      // Use the same wire format the smoke runner uses so the channel reads
+      // consistently regardless of who dispatched the task.
+      const verb = event.kind === 'sprint.cancelled' ? '🛑 cancelled' : '❌ failed';
+      broadcastIFleet(`${verb} — ${task.repo} · ${task.title}\n${reason}`);
 
       // Only record a decision when a PR was opened before the failure/cancel.
       if (lastPrUrl) {

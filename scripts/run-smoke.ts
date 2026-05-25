@@ -31,7 +31,6 @@
  */
 
 import { execFile, spawn as spawnChild } from 'node:child_process';
-import { request } from 'node:https';
 import { promisify } from 'node:util';
 import { symlinkSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, openSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -45,6 +44,7 @@ import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
 import { titleToBranchName } from '../src/utils/branch-name.ts';
 import { acquireDispatchLock } from './dispatcher-lock.ts';
+import { broadcastIFleet } from '../src/observability/discord-broadcast.ts';
 import {
   PipelineBridge,
   decodeBridgeBrief,
@@ -305,28 +305,10 @@ function log(msg: string): void {
   console.log(`[smoke ${new Date().toISOString()}] ${msg}`);
 }
 
-function notify(msg: string): void {
-  const url = process.env['DISCORD_IFLEET_WEBHOOK'];
-  if (!url) return;
-  const body = JSON.stringify({ content: msg });
-  try {
-    const parsed = new URL(url);
-    const req = request(
-      {
-        hostname: parsed.hostname,
-        path: parsed.pathname + parsed.search,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      },
-      (res) => { res.resume(); },
-    );
-    req.on('error', () => undefined);
-    req.write(body);
-    req.end();
-  } catch {
-    // never let Discord failures affect the sprint
-  }
-}
+// notify wraps the shared broadcaster so this script's existing call sites
+// don't need touching. Centralising the HTTP path means the daemon and the
+// smoke runner share one notification contract (see feedback_ifleet_visibility).
+const notify = broadcastIFleet;
 
 // ---------------------------------------------------------------------------
 // Worker mode — runs the full pipeline for a pre-picked issue.
