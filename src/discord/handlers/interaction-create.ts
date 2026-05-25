@@ -437,8 +437,26 @@ export function buildCommandFromSlash(
       return { type: 'status', taskId: `__channel__:${interaction.channelId}`, source };
     }
     case 'cancel': {
-      const taskId = interaction.options.getString('taskid', true);
+      const explicit = interaction.options.getString('taskid');
+      // No taskid → server resolves the newest in-flight task in this channel
+      // via the `__channel_current__:` sentinel. Same pattern as /status.
+      const taskId = explicit ?? `__channel_current__:${interaction.channelId}`;
       return { type: 'cancel', taskId, reason: 'cancelled via discord', source };
+    }
+    case 'pause': {
+      const reason = interaction.options.getString('reason') ?? undefined;
+      const cmd: ControlCommand = { type: 'pause', source };
+      if (reason) cmd.reason = reason;
+      return cmd;
+    }
+    case 'continue': {
+      return { type: 'continue', source };
+    }
+    case 'stop': {
+      const reason = interaction.options.getString('reason') ?? undefined;
+      const cmd: ControlCommand = { type: 'stop', source };
+      if (reason) cmd.reason = reason;
+      return cmd;
     }
     case 'approve': {
       const taskId = interaction.options.getString('taskid', true);
@@ -479,6 +497,12 @@ function formatAckReply(
       return `✔ Force-PR dispatched for \`${command.taskId}\`.`;
     case 'run':
       return `✔ Run dispatched.`;
+    case 'pause':
+      return `⏸ Fleet pause dispatched${command.reason ? ` — ${command.reason}` : ''}.`;
+    case 'continue':
+      return `▶ Fleet continue dispatched.`;
+    case 'stop':
+      return `🛑 Fleet STOP dispatched${command.reason ? ` — ${command.reason}` : ''}. All in-flight tasks cancelling; queue paused.`;
     default:
       return `✔ ok`;
   }

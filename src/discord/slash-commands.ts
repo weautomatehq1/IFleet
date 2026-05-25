@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, type SlashCommandOptionsOnlyBuilder } from 'discord.js';
 
-export const SLASH_COMMAND_NAMES = ['ship', 'plan', 'status', 'cancel', 'approve', 'verify', 'audit', 'audit-fix', 'audit-autopilot', 'audit-status'] as const;
+export const SLASH_COMMAND_NAMES = ['ship', 'plan', 'status', 'cancel', 'approve', 'verify', 'audit', 'audit-fix', 'audit-autopilot', 'audit-status', 'pause', 'continue', 'stop'] as const;
 export type SlashCommandName = (typeof SLASH_COMMAND_NAMES)[number];
 
 /** Returned builders always have at least one option, hence the union. */
@@ -39,9 +39,9 @@ export function buildSlashCommands(): SlashCommandDef[] {
       ),
     new SlashCommandBuilder()
       .setName('cancel')
-      .setDescription('Cancel an in-flight task.')
+      .setDescription('Cancel an in-flight task. Omit taskid to cancel the newest task in this channel.')
       .addStringOption((o) =>
-        o.setName('taskid').setDescription('Task ID to cancel.').setRequired(true),
+        o.setName('taskid').setDescription('Task ID to cancel. Optional — defaults to newest in-flight task in this channel.').setRequired(false),
       ),
     new SlashCommandBuilder()
       .setName('approve')
@@ -74,5 +74,20 @@ export function buildSlashCommands(): SlashCommandDef[] {
     new SlashCommandBuilder()
       .setName('audit-status')
       .setDescription('Show open finding counts for this channel\'s repo'),
+    new SlashCommandBuilder()
+      .setName('pause')
+      .setDescription('Pause the whole IFleet queue — running task keeps going, no new pickups.')
+      .addStringOption((o) =>
+        o.setName('reason').setDescription('Optional reason (shown in #ifleet).').setRequired(false).setMaxLength(200),
+      ),
+    new SlashCommandBuilder()
+      .setName('continue')
+      .setDescription('Resume the IFleet queue after a /pause.'),
+    new SlashCommandBuilder()
+      .setName('stop')
+      .setDescription('STOP everything — cancels all in-flight tasks AND pauses the queue.')
+      .addStringOption((o) =>
+        o.setName('reason').setDescription('Optional reason (shown in #ifleet).').setRequired(false).setMaxLength(200),
+      ),
   ];
 }

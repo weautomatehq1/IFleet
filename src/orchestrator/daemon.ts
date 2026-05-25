@@ -50,6 +50,12 @@ import { titleToBranchName } from '../utils/branch-name.js';
 import { newTaskId, type OrchestratorEvent, type SprintId, type TaskId, type WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
+import {
+  clearFleetPause,
+  isFleetPaused,
+  readPauseInfo,
+  setFleetPaused,
+} from './fleet-control.js';
 import { decodeBridgeBrief, encodeBridgeBrief } from './pipeline-bridge.js';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from './pipeline-bridge.js';
 import type { PipelineEvent } from '../pipeline/types.js';
@@ -267,15 +273,82 @@ async function main(): Promise<void> {
       }
     },
     onCancel: async (taskId, reason) => {
+      // Resolve `__channel_current__:<channelId>` sentinel emitted by
+      // /cancel-with-no-arg. Picks the most recently-created in-flight task
+      // in that channel (mirrors how /status defaults to the same channel).
+      let resolvedId = taskId;
+      if (taskId.startsWith('__channel_current__:')) {
+        const channelId = taskId.slice('__channel_current__:'.length);
+        const candidates = store.list({ channelId, state: 'in_flight' }, 1);
+        if (candidates.length === 0) {
+          broadcastIFleet(`⚠ /cancel — no in-flight task in <#${channelId}> to cancel.`);
+          return;
+        }
+        resolvedId = candidates[0]!.id;
+      }
       // Mark as failed first so the picked-up state flips back before the
       // architect resolves cancel — keeps the store consistent if the
       // architect is still mid-spawn.
       try {
-        store.updateState(taskId, 'failed', { reason: reason ?? 'cancelled via control plane' });
+        store.updateState(resolvedId, 'failed', { reason: reason ?? 'cancelled via control plane' });
       } catch {
         /* row may not exist yet */
       }
-      approvalGate.resolve(taskId, 'cancel');
+      approvalGate.resolve(resolvedId, 'cancel');
+      broadcastIFleet(`🛑 /cancel — task \`${resolvedId}\` cancelled${reason ? ` — ${reason}` : ''}.`);
+    },
+    onPause: async (cmd) => {
+      const opts: { reason?: string; by?: string } = {};
+      if (cmd.reason) opts.reason = cmd.reason;
+      if (cmd.userLabel) opts.by = cmd.userLabel;
+      setFleetPaused(opts);
+      const info = readPauseInfo();
+      broadcastIFleet(
+        `⏸ Fleet PAUSED${info.by ? ` by ${info.by}` : ''}${info.reason ? ` — ${info.reason}` : ''}. ` +
+          `Running task continues; no new pickups until /continue.`,
+      );
+    },
+    onContinue: async (cmd) => {
+      const was = isFleetPaused();
+      clearFleetPause();
+      if (was) {
+        broadcastIFleet(`▶ Fleet RESUMED${cmd.userLabel ? ` by ${cmd.userLabel}` : ''}.`);
+      } else {
+        broadcastIFleet(`▶ /continue — fleet was not paused${cmd.userLabel ? ` (by ${cmd.userLabel})` : ''}.`);
+      }
+    },
+    onStop: async (cmd) => {
+      // Cancel every sprint currently running. Each sprint maps to one task
+      // (single-seat policy); resolve(cancel) lets the architect/editor/
+      // verifier loops exit cleanly without leaving zombie children.
+      const runningSprints = orchestratorStore.listSprintsByStateKind('running');
+      let cancelled = 0;
+      for (const sprint of runningSprints) {
+        try {
+          // SprintRecord.tasks holds the taskIds in creation order; we
+          // resolve each via loadSprint so we never read stale state.
+          const full = orchestratorStore.loadSprint(sprint.id);
+          const taskIds = full?.tasks ?? [];
+          for (const taskId of taskIds) {
+            try {
+              store.updateState(taskId, 'failed', { reason: cmd.reason ?? 'fleet stopped' });
+            } catch {
+              /* unified row may not exist for this taskId */
+            }
+            approvalGate.resolve(taskId, 'cancel');
+            cancelled++;
+          }
+        } catch (err) {
+          console.warn('[daemon] onStop: sprint cancel iteration failed:', err);
+        }
+      }
+      const opts: { reason?: string; by?: string } = { reason: cmd.reason ?? 'STOP' };
+      if (cmd.userLabel) opts.by = cmd.userLabel;
+      setFleetPaused(opts);
+      broadcastIFleet(
+        `🛑 Fleet STOPPED${cmd.userLabel ? ` by ${cmd.userLabel}` : ''}${cmd.reason ? ` — ${cmd.reason}` : ''}. ` +
+          `Cancelled ${cancelled} in-flight task(s); queue paused. Use /continue to resume pickups.`,
+      );
     },
     resolveTask: () => null,
   });
@@ -345,8 +418,25 @@ async function runTickLoop(
   store: TaskStore,
   out?: DiscordOutAdapter,
 ): Promise<void> {
+  let lastPausedAt = false;
   while (isRunning()) {
     try {
+      // Honour the fleet PAUSED flag — same flag the smoke runner cron
+      // checks at the top of main(). Long-running tasks already in flight
+      // are NOT killed; only new pickups are frozen. /stop is the verb that
+      // kills + pauses.
+      if (isFleetPaused()) {
+        if (!lastPausedAt) {
+          console.warn('[daemon] fleet PAUSED — skipping pickups until /continue');
+          lastPausedAt = true;
+        }
+        await sleep(tickMs);
+        continue;
+      }
+      if (lastPausedAt) {
+        console.warn('[daemon] fleet resumed — pickups re-enabled');
+        lastPausedAt = false;
+      }
       const task = await adapter.pickNext();
       if (task) {
         const brief = encodeBridgeBrief(task);

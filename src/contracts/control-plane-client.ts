@@ -32,7 +32,13 @@ export type ControlCommand =
    * `failed`, but a `force_pr_at` audit row goes into events). Triggered by
    * the [Force-PR] button on a failure surface.
    */
-  | { type: 'force_pr'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string };
+  | { type: 'force_pr'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  /** Freeze the queue — new tasks won't pick up, the running one keeps going. */
+  | { type: 'pause'; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string }
+  /** Thaw the queue — pickups resume on the next tick. */
+  | { type: 'continue'; source?: DiscordCommandSource; idempotencyKey?: string }
+  /** Kill everything in flight AND pause the queue. */
+  | { type: 'stop'; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string };
 
 export interface DiscordCommandSource {
   kind: 'discord';

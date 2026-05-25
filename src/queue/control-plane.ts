@@ -16,11 +16,14 @@ export type ControlCommand =
       planOnly?: boolean;
     }
   | { type: 'run'; repo?: string }
-  | { type: 'cancel'; taskId: string; reason?: string }
+  | { type: 'cancel'; taskId: string; reason?: string; channelId?: string; userLabel?: string }
   | { type: 'status'; taskId: string }
   | { type: 'approve'; taskId: string }
   | { type: 'verify'; taskId: string }
-  | { type: 'force_pr'; taskId: string; reason?: string };
+  | { type: 'force_pr'; taskId: string; reason?: string }
+  | { type: 'pause'; reason?: string; userLabel?: string }
+  | { type: 'continue'; userLabel?: string }
+  | { type: 'stop'; reason?: string; userLabel?: string };
 
 export interface SprintGoalResult {
   taskId?: string;
@@ -54,6 +57,12 @@ export interface ControlPlaneOptions {
   onVerify?: (taskId: string) => Promise<void> | void;
   /** Hook for [Force-PR] button override — open the PR despite verifier failures. */
   onForcePr?: (taskId: string, reason?: string) => Promise<void> | void;
+  /** Hook for /pause — freeze the queue. Implementations should be idempotent. */
+  onPause?: (cmd: Extract<ControlCommand, { type: 'pause' }>) => Promise<void> | void;
+  /** Hook for /continue — thaw the queue. */
+  onContinue?: (cmd: Extract<ControlCommand, { type: 'continue' }>) => Promise<void> | void;
+  /** Hook for /stop — cancel everything in flight AND pause. */
+  onStop?: (cmd: Extract<ControlCommand, { type: 'stop' }>) => Promise<void> | void;
 }
 
 export interface ControlPlane {
@@ -285,6 +294,15 @@ async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Pro
     case 'force_pr':
       await opts.onForcePr?.(command.taskId, command.reason);
       return;
+    case 'pause':
+      await opts.onPause?.(command);
+      return;
+    case 'continue':
+      await opts.onContinue?.(command);
+      return;
+    case 'stop':
+      await opts.onStop?.(command);
+      return;
   }
 }
 
@@ -329,6 +347,18 @@ export function parseCommand(body: string): ControlCommand {
       if (typeof parsed.taskId !== 'string') throw new Error('cancel requires taskId');
       const cmd: ControlCommand = { type: 'cancel', taskId: parsed.taskId };
       if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
+      // Accept Discord audit fields either flat or nested under `source` so
+      // /cancel without an explicit taskId can resolve the newest task in
+      // this channel server-side (sentinel encoding in interaction-create).
+      const source = isRecord(parsed.source) ? parsed.source : undefined;
+      const pickStr = (k: string): string | undefined => {
+        const v = source?.[k] ?? parsed[k];
+        return typeof v === 'string' ? v : undefined;
+      };
+      const channelId = pickStr('channelId');
+      if (channelId) cmd.channelId = channelId;
+      const userLabel = pickStr('userLabel');
+      if (userLabel) cmd.userLabel = userLabel;
       return cmd;
     }
     case 'status': {
@@ -347,6 +377,37 @@ export function parseCommand(body: string): ControlCommand {
       if (typeof parsed.taskId !== 'string') throw new Error('force_pr requires taskId');
       const cmd: ControlCommand = { type: 'force_pr', taskId: parsed.taskId };
       if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
+      return cmd;
+    }
+    case 'pause': {
+      const cmd: ControlCommand = { type: 'pause' };
+      const source = isRecord(parsed.source) ? parsed.source : undefined;
+      const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
+      if (reason) cmd.reason = reason;
+      const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
+        ? String(source?.['userLabel'] ?? parsed.userLabel)
+        : undefined;
+      if (userLabel) cmd.userLabel = userLabel;
+      return cmd;
+    }
+    case 'continue': {
+      const cmd: ControlCommand = { type: 'continue' };
+      const source = isRecord(parsed.source) ? parsed.source : undefined;
+      const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
+        ? String(source?.['userLabel'] ?? parsed.userLabel)
+        : undefined;
+      if (userLabel) cmd.userLabel = userLabel;
+      return cmd;
+    }
+    case 'stop': {
+      const cmd: ControlCommand = { type: 'stop' };
+      const source = isRecord(parsed.source) ? parsed.source : undefined;
+      const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
+      if (reason) cmd.reason = reason;
+      const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
+        ? String(source?.['userLabel'] ?? parsed.userLabel)
+        : undefined;
+      if (userLabel) cmd.userLabel = userLabel;
       return cmd;
     }
     default:
