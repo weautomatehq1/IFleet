@@ -410,6 +410,18 @@ function wireSprintCompletion(
     if (event.kind === 'task.completed') {
       lastPrUrl = event.payload['pr'] as string | undefined;
       lastTotalTokens = event.payload['totalTokens'] as number | undefined;
+      // Mirror the `task.assigned` Discord ping above: post a completion
+      // message to the task's thread the moment a PR opens, so operators
+      // see visibility in the same thread that announced 🟡 picked up.
+      if (out && lastPrUrl) {
+        const current = store.getById(task.id);
+        const threadId =
+          current && current.source.kind === 'discord' ? current.source.threadId : undefined;
+        if (threadId) {
+          const msg = `✅ PR opened: ${lastPrUrl} — ${task.title}`;
+          void out.postProgress(threadId, msg).catch(() => {});
+        }
+      }
       return;
     }
 

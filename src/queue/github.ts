@@ -4,9 +4,13 @@ import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
 import { parseLabels } from './labels.js';
 import {
+  COOLDOWN_MS,
   LABEL_AUTO_SHIP,
   LABEL_CAPABILITY_BLOCKED,
   LABEL_FAILED,
+  LABEL_IFLEET_COOLDOWN,
+  LABEL_IFLEET_DONE,
+  LABEL_IFLEET_IN_PROGRESS,
   LABEL_IN_FLIGHT,
   LABEL_SHIPPED,
   type PickOpts,
@@ -159,21 +163,112 @@ export class GitHubQueue implements QueueAdapter {
   }
 
   async markPicked(task: QueuedTask, workerId: string): Promise<void> {
-    await this.addLabels(task, [LABEL_IN_FLIGHT]);
+    // Remove `auto:ship` first so a crash or hung pipeline can't re-queue the
+    // same issue on the next cron tick (the bug that burned tokens on
+    // #70/#72/#75). `ifleet:in_progress` is the new state marker; `in_flight`
+    // is kept for the legacy pickNext guard.
+    await this.removeLabel(task, LABEL_AUTO_SHIP);
+    await this.addLabels(task, [LABEL_IN_FLIGHT, LABEL_IFLEET_IN_PROGRESS]);
     const stamp = new Date(this.now()).toISOString();
     await this.comment(task, `🤖 Picked up by \`${workerId}\` at \`${stamp}\``);
   }
 
   async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
     await this.removeLabel(task, LABEL_IN_FLIGHT);
-    await this.addLabels(task, [LABEL_SHIPPED]);
+    await this.removeLabel(task, LABEL_IFLEET_IN_PROGRESS);
+    await this.addLabels(task, [LABEL_SHIPPED, LABEL_IFLEET_DONE]);
     await this.comment(task, `✅ Completed — PR: ${prUrl}`);
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
     await this.removeLabel(task, LABEL_IN_FLIGHT);
-    await this.addLabels(task, [LABEL_FAILED]);
-    await this.comment(task, `❌ Failed: ${reason}`);
+    await this.removeLabel(task, LABEL_IFLEET_IN_PROGRESS);
+    // `ifleet:cooldown` lets the smoke dispatcher restore `auto:ship` 30 min
+    // later (see sweepCooldowns). `auto:failed` remains a terminal label —
+    // never auto-restored — so chronic failures don't auto-retry forever.
+    await this.addLabels(task, [LABEL_FAILED, LABEL_IFLEET_COOLDOWN]);
+    await this.comment(task, `❌ Failed: ${reason} (cooldown ${COOLDOWN_MS / 60_000}m before retry)`);
+  }
+
+  /**
+   * Restore issues whose `ifleet:cooldown` was set more than COOLDOWN_MS ago.
+   * Removes `ifleet:cooldown` + `auto:failed`, re-adds `auto:ship`. Idempotent —
+   * intended to run at the top of every dispatch tick.
+   */
+  async sweepCooldowns(): Promise<{ restored: number; remaining: number }> {
+    let restored = 0;
+    let remaining = 0;
+    for (const repo of this.repos) {
+      const issues = await this.octokit.paginate(this.octokit.issues.listForRepo, {
+        owner: repo.owner,
+        repo: repo.name,
+        state: 'open',
+        labels: LABEL_IFLEET_COOLDOWN,
+        per_page: 100,
+      });
+      for (const issue of issues) {
+        const cooldownLabel = (issue.labels as ReadonlyArray<string | { name?: string | null }>)
+          .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
+          .find((n) => n === LABEL_IFLEET_COOLDOWN);
+        if (!cooldownLabel) continue;
+        const labelAddedAt = await this.findLabelAddedAt(repo, issue.number, LABEL_IFLEET_COOLDOWN);
+        if (labelAddedAt === null) continue;
+        const elapsed = this.now() - labelAddedAt;
+        if (elapsed < COOLDOWN_MS) {
+          remaining++;
+          continue;
+        }
+        try {
+          await this.octokit.issues.removeLabel({
+            owner: repo.owner,
+            repo: repo.name,
+            issue_number: issue.number,
+            name: LABEL_IFLEET_COOLDOWN,
+          }).catch((err) => { if (!isNotFound(err)) throw err; });
+          await this.octokit.issues.removeLabel({
+            owner: repo.owner,
+            repo: repo.name,
+            issue_number: issue.number,
+            name: LABEL_FAILED,
+          }).catch((err) => { if (!isNotFound(err)) throw err; });
+          await this.octokit.issues.addLabels({
+            owner: repo.owner,
+            repo: repo.name,
+            issue_number: issue.number,
+            labels: [LABEL_AUTO_SHIP],
+          });
+          restored++;
+        } catch (err) {
+          console.warn(
+            `[queue] sweepCooldowns: failed to restore ${repo.owner}/${repo.name}#${issue.number}:`,
+            err,
+          );
+        }
+      }
+    }
+    return { restored, remaining };
+  }
+
+  private async findLabelAddedAt(
+    repo: RepoRef,
+    issueNumber: number,
+    label: string,
+  ): Promise<number | null> {
+    const events = await this.octokit.paginate(this.octokit.issues.listEvents, {
+      owner: repo.owner,
+      repo: repo.name,
+      issue_number: issueNumber,
+      per_page: 100,
+    });
+    let latest = 0;
+    for (const ev of events) {
+      const labelName = (ev as { label?: { name?: string } }).label?.name;
+      if (ev.event === 'labeled' && labelName === label) {
+        const ts = Date.parse(ev.created_at);
+        if (Number.isFinite(ts) && ts > latest) latest = ts;
+      }
+    }
+    return latest > 0 ? latest : null;
   }
 
   async markCapabilityBlocked(task: QueuedTask, missing: string[]): Promise<void> {

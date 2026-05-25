@@ -70,3 +70,7 @@ export const LABEL_IN_FLIGHT = 'in_flight';
 export const LABEL_SHIPPED = 'auto:shipped';
 export const LABEL_FAILED = 'auto:failed';
 export const LABEL_CAPABILITY_BLOCKED = 'blocked:missing-capability';
+export const LABEL_IFLEET_IN_PROGRESS = 'ifleet:in_progress';
+export const LABEL_IFLEET_DONE = 'ifleet:done';
+export const LABEL_IFLEET_COOLDOWN = 'ifleet:cooldown';
+export const COOLDOWN_MS = 30 * 60 * 1000;

@@ -23,7 +23,9 @@ import {
   resolveAuditIndexPath,
   setFindingsStatus,
   synthesizeAuditBrief,
+  type AuditIndex,
 } from '../audit-runner.js';
+import { dbReadIndex, dbUpdateFindingStatus } from '../../audit/audit-store.js';
 
 export interface InteractionDeps {
   router: ChannelRouter;
@@ -110,7 +112,7 @@ async function handleSlashCommand(
     return;
   }
   if (interaction.commandName === 'audit-status') {
-    await handleAuditStatus(interaction);
+    await handleAuditStatus(interaction, route);
     return;
   }
   if (interaction.commandName === 'audit') {
@@ -143,8 +145,11 @@ async function handleSlashCommand(
   }
 }
 
-async function handleAuditStatus(interaction: ChatInputCommandInteraction): Promise<void> {
-  const index = readAuditIndex(resolveAuditIndexPath());
+async function handleAuditStatus(
+  interaction: ChatInputCommandInteraction,
+  route: ChannelRoute,
+): Promise<void> {
+  const index = await loadAuditIndex(route.repo);
   if (!index) {
     await interaction.editReply('No audit findings yet — run `/audit-scan` from the CLI.');
     return;
@@ -160,6 +165,33 @@ async function handleAuditStatus(interaction: ChatInputCommandInteraction): Prom
     `Last scan: ${index.last_updated || '(unknown)'}`,
   ];
   await interaction.editReply(lines.join('\n'));
+}
+
+/**
+ * Repo key used by the audit_findings Supabase table — basename only
+ * (`IFleet`, not `weautomatehq1/IFleet`). The sync script (`pnpm audit:sync`)
+ * seeds rows with the basename, so the bot's reads must match.
+ */
+function repoKey(fullRepo: string): string {
+  const idx = fullRepo.lastIndexOf('/');
+  return idx === -1 ? fullRepo : fullRepo.slice(idx + 1);
+}
+
+/**
+ * Read the audit index, preferring Supabase (so VPS and Mac stay in sync)
+ * and falling back to the local file when the DB is unreachable or empty.
+ * Returns null when neither source has findings.
+ */
+async function loadAuditIndex(fullRepo: string): Promise<AuditIndex | null> {
+  try {
+    const dbIndex = await dbReadIndex(repoKey(fullRepo));
+    if (dbIndex && dbIndex.findings.length > 0) return dbIndex;
+  } catch (err) {
+    console.warn(
+      `[audit] dbReadIndex failed for ${fullRepo}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return readAuditIndex(resolveAuditIndexPath());
 }
 
 /**
@@ -185,8 +217,10 @@ async function handleAuditFix(
   // This read drives target selection only; markFindingsFixing / markFindingClosed
   // each re-read before mutating. Safe under the single-process IFleet daemon
   // (the only other writer, /audit-scan, is a separate CLI invoked by hand).
+  // Read prefers Supabase (synced from Mac via `pnpm audit:sync`) so the VPS
+  // sees the current findings even when its local index.json is stale.
   const indexPath = resolveAuditIndexPath();
-  const index = readAuditIndex(indexPath);
+  const index = await loadAuditIndex(route.repo);
   if (!index) {
     await interaction.editReply('No audit findings yet. Run /audit-scan first.');
     return;
@@ -230,11 +264,25 @@ async function handleAuditFix(
     return;
   }
 
-  // Mark fixing BEFORE dispatch (intent survives a mid-loop crash).
+  // Mark fixing BEFORE dispatch (intent survives a mid-loop crash). Update
+  // both the local file and Supabase so the two stores don't drift; Supabase
+  // failures are logged but don't block dispatch (the local file is the
+  // canonical source for the pipeline runner's close-out).
   markFindingsFixing(
     indexPath,
     targets.map((f) => f.id),
   );
+  for (const finding of targets) {
+    try {
+      await dbUpdateFindingStatus(finding.id, 'fixing');
+    } catch (err) {
+      console.warn(
+        `[audit] dbUpdateFindingStatus(fixing) failed for ${finding.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   const queued: string[] = [];
   const failed: string[] = [];
@@ -263,7 +311,20 @@ async function handleAuditFix(
   }
 
   // Revert anything that failed to queue so it stays visible to /audit-fix.
-  if (failed.length > 0) setFindingsStatus(indexPath, failed, 'open');
+  if (failed.length > 0) {
+    setFindingsStatus(indexPath, failed, 'open');
+    for (const id of failed) {
+      try {
+        await dbUpdateFindingStatus(id, 'open');
+      } catch (err) {
+        console.warn(
+          `[audit] dbUpdateFindingStatus(open) failed for ${id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
 
   await interaction.editReply(formatAuditFixReply(auto, rawArg, queued, failed, lastAck));
 }
