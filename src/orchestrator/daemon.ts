@@ -33,12 +33,6 @@ import { promisify } from 'node:util';
 import type { Client } from 'discord.js';
 import { Octokit } from '@octokit/rest';
 import { VerifierController, type TaskRunContext } from '../agents/verifier/controller.js';
-import {
-  handleAuditAutopilot,
-  handleAuditFix,
-  handleAuditScan,
-  handleAuditStatus,
-} from '../audit/audit-handler.js';
 import { loadReposConfig } from '../config/repos.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
@@ -247,29 +241,29 @@ async function main(): Promise<void> {
     onApprove: async (taskId) => {
       approvalGate.resolve(taskId, 'approve');
     },
-    onAuditScan: async (cmd) => {
-      if (!cmd.channelId) { console.warn('[daemon] audit_scan missing channelId — skipping'); return; }
-      void handleAuditScan(cmd.channelId, { router, client }).catch((err) =>
-        console.warn('[daemon] handleAuditScan failed:', err),
+    onVerify: async (taskId) => {
+      void verifierController.verifyManual(taskId as TaskId).catch((err) =>
+        console.warn('[daemon] verifyManual failed:', err),
       );
     },
-    onAuditFix: async (cmd) => {
-      if (!cmd.channelId) { console.warn('[daemon] audit_fix missing channelId — skipping'); return; }
-      void handleAuditFix(cmd.channelId, { router, client }).catch((err) =>
-        console.warn('[daemon] handleAuditFix failed:', err),
-      );
-    },
-    onAuditAutopilot: async (cmd) => {
-      if (!cmd.channelId) { console.warn('[daemon] audit_autopilot missing channelId — skipping'); return; }
-      void handleAuditAutopilot(cmd.channelId, { router, client }).catch((err) =>
-        console.warn('[daemon] handleAuditAutopilot failed:', err),
-      );
-    },
-    onAuditStatus: async (cmd) => {
-      if (!cmd.channelId) { console.warn('[daemon] audit_status missing channelId — skipping'); return; }
-      void handleAuditStatus(cmd.channelId, { router, client }).catch((err) =>
-        console.warn('[daemon] handleAuditStatus failed:', err),
-      );
+    onForcePr: async (taskId, reason) => {
+      // Operator override: log the deliberate bypass into the events table so
+      // observability can render the action. Verifier state is not mutated —
+      // the verifier_runs row stays `failed`; this row is the audit trail.
+      try {
+        const task = orchestratorStore.loadTask(taskId as TaskId);
+        if (task) {
+          orchestratorStore.appendEvent({
+            ts: Date.now(),
+            sprintId: task.sprintId,
+            taskId: task.id,
+            kind: 'verifier.force_pr',
+            payload: { reason: reason ?? null },
+          });
+        }
+      } catch (err) {
+        console.warn('[daemon] onForcePr append failed:', err);
+      }
     },
     onCancel: async (taskId, reason) => {
       // Mark as failed first so the picked-up state flips back before the
@@ -395,8 +389,20 @@ function wireSprintCompletion(
     if (event.sprintId !== sprintId) return;
 
     if (event.kind === 'task.assigned') {
-      if (out && task.source.kind === 'discord' && task.source.threadId) {
-        void out.postProgress(task.source.threadId, '🟡 picked up — architect starting').catch(() => {});
+      // Re-read the task from the store: the closure captured the original
+      // QueuedTask before discordSource.ingest() opened a thread, so its
+      // threadId may be stale (null on the snapshot, populated on the row).
+      // Without this re-read, the 🟡 picked-up ping is silently skipped for
+      // every task whose thread was created after ingest.
+      if (out) {
+        const current = store.getById(task.id);
+        const threadId =
+          current && current.source.kind === 'discord' ? current.source.threadId : undefined;
+        if (threadId) {
+          void out
+            .postProgress(threadId, '🟡 picked up — architect starting')
+            .catch(() => {});
+        }
       }
       return;
     }
@@ -705,3 +711,7 @@ export {
 // because the daemon's tick loop hands typed TaskIds to submitSprint in
 // future iterations.
 void newTaskId;
+// `lastTotalTokens` is captured for parity with the markCompleted signature
+// even though sprint.completed events do not surface it directly; suppress
+// unused-variable lints while the totalTokens-on-completion wiring lands.
+void ((): void => undefined);

@@ -72,7 +72,12 @@ ABSOLUTE RULES — violating any of these aborts the task:
 - Stay within the plan. If the plan is wrong, stop and report — do not improvise.
 
 Follow the architect's plan. Make all required file changes using Read/Edit/Write tools only.
-When done, all changes should be present in the working tree as modified or new files.`;
+When done, all changes should be present in the working tree as modified or new files.
+
+AUDIT-FIX PRE-CHECK (applies when the brief contains [audit-fix:...]):
+Before making any edits, verify with Read/Glob/Grep that the issue described in the brief still exists. If the fix is already implemented in the current codebase (constraint already enforced, guard already present, validation already in place), make no changes and output the single line:
+  NO_CHANGES_NEEDED
+The pipeline will detect this signal and close the finding without falsely attributing a PR. Do not emit this marker for non-audit briefs.`;
 
 export const REVIEWER_SYSTEM_PROMPT = `${DIFF_REVIEWER_PERSONA}
 

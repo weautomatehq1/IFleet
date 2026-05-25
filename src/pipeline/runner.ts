@@ -27,6 +27,13 @@ import type {
 
 const DEFAULT_REVIEWER_MAX_ROUNDS = 2;
 
+/**
+ * Editor's audit-fix pre-check sentinel: a single `NO_CHANGES_NEEDED` line in
+ * the output indicates the editor verified the fix is already in place. The
+ * runner short-circuits to status=already_resolved when this matches.
+ */
+const NO_CHANGES_NEEDED_RE = /(^|\n)\s*NO_CHANGES_NEEDED\s*($|\n)/;
+
 export class DefaultPipelineRunner implements PipelineRunner {
   async run(input: PipelineInput): Promise<PipelineResult> {
     const attempts: AttemptRecord[] = [];
@@ -100,7 +107,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       }
       if (architect.plan.trim() === 'ALREADY_RESOLVED') {
         console.warn(`[pipeline] architect signalled ALREADY_RESOLVED — closing finding without editor`);
-        maybeCloseAuditFinding(input, 'already-resolved');
+        maybeCloseAuditFinding(input, null);
         return alreadyResolved(attempts);
       }
       if (!architect.approved) {
@@ -217,11 +224,12 @@ export class DefaultPipelineRunner implements PipelineRunner {
       // typically a silent tool-use failure in `claude -p` print mode (often
       // haiku). Bail before the reviewer burns tokens on "no diff provided".
       if (!diff.trim()) {
-        // Distinguish: substantial output = Claude understood the task and determined
-        // no changes were needed (already resolved). Short/empty output = silent
-        // tool-use failure (claude -p dropped its edits without explanation).
-        if (editor.attempt.output.trim().length > 200) {
-          maybeCloseAuditFinding(input, 'already-resolved');
+        // Structured signal: the editor's audit-fix pre-check emits the
+        // single line `NO_CHANGES_NEEDED` when the fix is already in place.
+        // Anything else with no diff is a silent tool-use failure (claude -p
+        // dropped its edits without explanation).
+        if (NO_CHANGES_NEEDED_RE.test(editor.attempt.output)) {
+          maybeCloseAuditFinding(input, null);
           return alreadyResolved(attempts);
         }
         return failed(attempts, 'editor produced no diff — possible silent tool-use failure');
@@ -370,11 +378,13 @@ export class DefaultPipelineRunner implements PipelineRunner {
           roundCount: roundsRun,
         });
       }
+      const totalTokens = sumTokens(attempts);
       return {
         status: 'blocked_by_reviewer',
         attempts,
         planSummary,
         reviewSummary,
+        ...(totalTokens !== undefined && { totalTokens }),
       };
     }
 
@@ -405,28 +415,28 @@ export class DefaultPipelineRunner implements PipelineRunner {
     // never let it fail an otherwise-successful pipeline run.
     maybeCloseAuditFinding(input, opened.url);
 
-    const totalTokens = attempts.reduce((sum, a) => sum + (a.totalTokens ?? 0), 0);
+    const totalTokens = sumTokens(attempts);
     const result: PipelineResult = {
       status: 'pr_opened',
       prUrl: opened.url,
       attempts,
       planSummary,
       reviewSummary,
-      ...(totalTokens > 0 && { totalTokens }),
+      ...(totalTokens !== undefined && { totalTokens }),
     };
     await logCosts(input, attempts);
     return result;
   }
 }
 
-function maybeCloseAuditFinding(input: PipelineInput, prUrl: string): void {
+function maybeCloseAuditFinding(input: PipelineInput, prUrl: string | null): void {
   if (!input.repoRoot) return;
   const findingId = extractAuditFindingId(input.task.body);
   if (!findingId) return;
   try {
     const closed = markFindingClosed(resolveAuditIndexPath(input.repoRoot), findingId, prUrl);
     if (closed) {
-      console.warn(`[pipeline] audit finding ${findingId} marked closed → ${prUrl}`);
+      console.warn(`[pipeline] audit finding ${findingId} marked closed → ${prUrl ?? '(no PR — already resolved)'}`);
     }
   } catch (err) {
     console.warn(
@@ -466,16 +476,43 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
   }
 }
 
+/**
+ * Sum input+output tokens across every attempt in a pipeline run. Returns
+ * `undefined` when the workers did not surface token counts (treat as
+ * "unknown", not "free") so downstream observability can distinguish a real
+ * zero from missing data.
+ */
+function sumTokens(attempts: AttemptRecord[]): number | undefined {
+  const total = attempts.reduce((sum, a) => sum + (a.totalTokens ?? 0), 0);
+  return total > 0 ? total : undefined;
+}
+
 function alreadyResolved(attempts: AttemptRecord[]): PipelineResult {
-  return { status: 'already_resolved', attempts };
+  const totalTokens = sumTokens(attempts);
+  return {
+    status: 'already_resolved',
+    attempts,
+    ...(totalTokens !== undefined && { totalTokens }),
+  };
 }
 
 function failed(attempts: AttemptRecord[], reason: string): PipelineResult {
-  return { status: 'failed', attempts, failureReason: reason };
+  const totalTokens = sumTokens(attempts);
+  return {
+    status: 'failed',
+    attempts,
+    failureReason: reason,
+    ...(totalTokens !== undefined && { totalTokens }),
+  };
 }
 
 function cancelled(attempts: AttemptRecord[]): PipelineResult {
-  return { status: 'cancelled', attempts };
+  const totalTokens = sumTokens(attempts);
+  return {
+    status: 'cancelled',
+    attempts,
+    ...(totalTokens !== undefined && { totalTokens }),
+  };
 }
 
 function augmentTaskWithVetoReasons(

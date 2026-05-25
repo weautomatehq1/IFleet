@@ -32,11 +32,7 @@ export type ControlCommand =
    * `failed`, but a `force_pr_at` audit row goes into events). Triggered by
    * the [Force-PR] button on a failure surface.
    */
-  | { type: 'force_pr'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string }
-  | { type: 'audit_scan';      source?: DiscordCommandSource; idempotencyKey?: string }
-  | { type: 'audit_fix';       source?: DiscordCommandSource; idempotencyKey?: string }
-  | { type: 'audit_autopilot'; source?: DiscordCommandSource; idempotencyKey?: string }
-  | { type: 'audit_status';    source?: DiscordCommandSource; idempotencyKey?: string };
+  | { type: 'force_pr'; taskId: string; reason?: string; source?: DiscordCommandSource; idempotencyKey?: string };
 
 export interface DiscordCommandSource {
   kind: 'discord';
