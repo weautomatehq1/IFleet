@@ -100,10 +100,28 @@ async function handleSlashCommand(
     userLabel: interaction.user.username,
   };
 
-  // `/audit-fix` is multi-shaped (list = no command, fix = one, auto = many),
-  // so it cannot flow through the single-command buildCommandFromSlash path.
+  // Audit commands are handled inline against `.audits/index.json` via
+  // `audit-runner.ts`; they never reach the control plane. `/audit-fix` is
+  // multi-shaped (list / one / auto), `/audit-status` is read-only, and
+  // `/audit-autopilot` is `/audit-fix auto` with no target arg. `/audit`
+  // (scan) is intentionally a no-op — scans run from the Claude Code CLI.
   if (interaction.commandName === 'audit-fix') {
     await handleAuditFix(interaction, route, source, deps);
+    return;
+  }
+  if (interaction.commandName === 'audit-status') {
+    await handleAuditStatus(interaction);
+    return;
+  }
+  if (interaction.commandName === 'audit') {
+    await interaction.editReply(
+      'Audit scans run from the Claude Code CLI (`/audit-scan`). ' +
+        'Once findings land in `.audits/index.json`, use `/audit-fix` to dispatch them.',
+    );
+    return;
+  }
+  if (interaction.commandName === 'audit-autopilot') {
+    await handleAuditFix(interaction, route, source, deps, { forceAuto: true });
     return;
   }
 
@@ -125,6 +143,25 @@ async function handleSlashCommand(
   }
 }
 
+async function handleAuditStatus(interaction: ChatInputCommandInteraction): Promise<void> {
+  const index = readAuditIndex(resolveAuditIndexPath());
+  if (!index) {
+    await interaction.editReply('No audit findings yet — run `/audit-scan` from the CLI.');
+    return;
+  }
+  const open = openFindings(index);
+  const sev = index.by_severity ?? {};
+  const lines = [
+    `**Audit status** — ${index.repo || 'repo'}`,
+    `Open: ${open.length}`,
+    `• CRITICAL: ${sev['CRITICAL'] ?? 0}`,
+    `• IMPORTANT: ${sev['IMPORTANT'] ?? 0}`,
+    `• COSMETIC: ${sev['COSMETIC'] ?? 0}`,
+    `Last scan: ${index.last_updated || '(unknown)'}`,
+  ];
+  await interaction.editReply(lines.join('\n'));
+}
+
 /**
  * Handle `/audit-fix`. Three modes, distinguished by the `target` option:
  *  - empty / `list` — read `.audits/index.json` and reply with open findings;
@@ -134,12 +171,16 @@ async function handleSlashCommand(
  *
  * Findings are marked `fixing` before dispatch so a crash mid-loop does not
  * lose the intent; any that fail to queue are reverted to `open`.
+ *
+ * `opts.forceAuto` lets `/audit-autopilot` reuse this dispatch path without
+ * exposing the `target` option in its slash-command schema.
  */
 async function handleAuditFix(
   interaction: ChatInputCommandInteraction,
   route: ChannelRoute,
   source: DiscordCommandSource,
   deps: InteractionDeps,
+  opts: { forceAuto?: boolean } = {},
 ): Promise<void> {
   // This read drives target selection only; markFindingsFixing / markFindingClosed
   // each re-read before mutating. Safe under the single-process IFleet daemon
@@ -151,7 +192,9 @@ async function handleAuditFix(
     return;
   }
 
-  const rawArg = interaction.options.getString('target')?.trim() ?? '';
+  const rawArg = opts.forceAuto
+    ? 'auto'
+    : interaction.options.getString('target')?.trim() ?? '';
   const lowerArg = rawArg.toLowerCase();
 
   // List mode — read-only.
@@ -161,7 +204,9 @@ async function handleAuditFix(
   }
 
   const auto = lowerArg === 'auto';
-  const targets = auto ? openFindings(index) : index.findings.filter((f) => f.id === rawArg);
+  const targets = auto
+    ? openFindings(index)
+    : index.findings.filter((f) => f.id === rawArg);
 
   if (auto && targets.length === 0) {
     await interaction.editReply('No open audit findings to fix.');
@@ -173,7 +218,12 @@ async function handleAuditFix(
     );
     return;
   }
-  if (!auto && targets[0] && targets[0].status !== 'open') {
+  if (
+    !auto &&
+    targets[0] &&
+    targets[0].status !== 'open' &&
+    targets[0].status !== 'reopened'
+  ) {
     await interaction.editReply(
       `Finding \`${rawArg}\` is \`${targets[0].status}\`, not open — nothing to dispatch.`,
     );
@@ -333,12 +383,10 @@ export function buildCommandFromSlash(
       const taskId = interaction.options.getString('taskid', true);
       return { type: 'approve', taskId, source };
     }
-    case 'audit':
-      return { type: 'audit_scan', source };
-    case 'audit-autopilot':
-      return { type: 'audit_autopilot', source };
-    case 'audit-status':
-      return { type: 'audit_status', source };
+    case 'verify': {
+      const taskId = interaction.options.getString('taskid', true);
+      return { type: 'verify', taskId, source };
+    }
     default:
       return null;
   }
@@ -364,6 +412,10 @@ function formatAckReply(
       return `✔ Cancel dispatched for \`${command.taskId}\`.`;
     case 'approve':
       return `✔ Approval dispatched for \`${command.taskId}\`.`;
+    case 'verify':
+      return `✔ Verifier rerun dispatched for \`${command.taskId}\`.`;
+    case 'force_pr':
+      return `✔ Force-PR dispatched for \`${command.taskId}\`.`;
     case 'run':
       return `✔ Run dispatched.`;
     default:

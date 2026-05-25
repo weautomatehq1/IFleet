@@ -127,6 +127,10 @@ function unifiedToPipelineTask(task: UnifiedQueuedTask): QueuedTask {
     body: task.brief,
     autonomy,
     labels: [],
+    // Propagate per-task mode so the architect/editor pick the mode-specific
+    // prompt template — without this, an explicit `mode:ralph` on a
+    // unified-shape brief silently degraded to the standard prompt.
+    ...(task.mode ? { mode: task.mode } : {}),
   };
 }
 

@@ -125,10 +125,16 @@ export function writeAuditIndex(indexPath: string, index: AuditIndex): void {
 // Queries
 // ---------------------------------------------------------------------------
 
-/** Findings still actionable (`status === 'open'`), worst severity first. */
+/**
+ * Findings still actionable, worst severity first. `reopened` findings come
+ * from /audit-scan flipping a previously-closed item back when its fingerprint
+ * resurfaces; they're as dispatch-eligible as fresh `open` items and the
+ * caller path (formatFindingsList, /audit-fix auto, interaction-create's
+ * fix-one guard) must treat them identically.
+ */
 export function openFindings(index: AuditIndex): AuditFinding[] {
   return index.findings
-    .filter((f) => f.status === 'open')
+    .filter((f) => f.status === 'open' || f.status === 'reopened')
     .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
 }
 
@@ -240,11 +246,16 @@ export function markFindingsFixing(indexPath: string, ids: readonly string[]): n
  * Mark a finding `closed` and record the PR that closed it. Returns `false`
  * (and logs a warning) when the index or the finding is missing — never
  * throws, so a pipeline close-out can call this without a guard.
+ *
+ * `prUrl` may be `null` for non-PR closures (e.g. the editor/architect short
+ * -circuited with NO_CHANGES_NEEDED / ALREADY_RESOLVED). The previous form
+ * stored the literal string `'already-resolved'` into `closing_pr`, which
+ * corrupted the rollup downstream.
  */
 export function markFindingClosed(
   indexPath: string,
   findingId: string,
-  prUrl: string,
+  prUrl: string | null,
 ): boolean {
   const index = readAuditIndex(indexPath);
   if (!index) {
