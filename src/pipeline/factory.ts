@@ -170,7 +170,13 @@ export function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
         result: async () => {
           const r = await workerHandle.result;
           await eventLoop;
-          const baseResult = { ok: r.ok, output: r.text, sessionId: r.sessionId, rateLimitHits };
+          const baseResult = {
+            ok: r.ok,
+            output: r.text,
+            sessionId: r.sessionId,
+            rateLimitHits,
+            ...(r.rateLimited ? { rateLimited: true as const } : {}),
+          };
           if (typeof r.inputTokens === 'number' && typeof r.outputTokens === 'number') {
             return { ...baseResult, totalTokens: r.inputTokens + r.outputTokens };
           }

@@ -177,6 +177,64 @@ test('claude adapter: non-zero exit rejects result with stderr tail', async () =
   });
 });
 
+test('claude adapter: 429 rate limit + non-zero exit resolves as rateLimited (not a crash)', async () => {
+  // Mirrors the real CLI behaviour: it emits a rate_limit_event + an error
+  // result, then exits 1. That must NOT be treated as a WorkerCrashError —
+  // it's a transient usage cap, and the task should be re-queued, not failed.
+  const rateLimitEventLine = JSON.stringify({
+    type: 'rate_limit_event',
+    rate_limit_info: { status: 'rejected', resetsAt: 1779739200, rateLimitType: 'five_hour' },
+  });
+  const rateLimitResultLine = JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    api_error_status: 429,
+    result: "You've hit your limit · resets 8pm (UTC)",
+  });
+  const fake = createFakeSpawn({
+    stdoutLines: [initLine, rateLimitEventLine, rateLimitResultLine],
+    exitCode: 1,
+  });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+
+  // Resolves (does not reject) because a rate limit is not a crash.
+  const result = await handle.result;
+  assert.equal(result.ok, false);
+  assert.equal(result.rateLimited, true);
+  assert.equal(result.rateLimitResetsAt, 1779739200 * 1000);
+});
+
+test('claude adapter: rate_limit_event surfaces a rate_limit worker event', async () => {
+  const rateLimitEventLine = JSON.stringify({
+    type: 'rate_limit_event',
+    rate_limit_info: { status: 'rejected', resetsAt: 1779739200, rateLimitType: 'five_hour' },
+  });
+  const fake = createFakeSpawn({
+    stdoutLines: [initLine, rateLimitEventLine, resultLine],
+    exitCode: 0,
+  });
+  const adapter = createClaudeAdapter({ spawnImpl: fake.spawn });
+  const handle = adapter.spawn({
+    taskId: 't',
+    brief: 'do',
+    model: 'claude-opus-4-7',
+    workingDir: process.cwd(),
+  });
+  const events = await collect(handle.events);
+  await handle.result;
+
+  const rl = events.find((e) => e.kind === 'rate_limit');
+  assert.ok(rl && rl.kind === 'rate_limit', 'should emit a rate_limit event');
+  assert.equal(rl.category, 'rate_limit');
+});
+
 test('claude adapter: reassembles stream-json across stdout chunks (incremental parse)', async () => {
   // Realistic streamed session split mid-line so the line reader has to
   // reassemble. If incremental parsing regressed (e.g. someone replaced the

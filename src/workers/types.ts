@@ -63,6 +63,15 @@ export interface WorkerResult {
   inputTokens?: number;
   outputTokens?: number;
   durationMs: number;
+  /**
+   * True when the run ended because the account hit a usage/rate limit (HTTP
+   * 429). The CLI exits non-zero in this case, but it is NOT a worker crash —
+   * the task should be re-queued for a later window, not marked permanently
+   * failed nor escalated. See spawn-runner `classifyExit`.
+   */
+  rateLimited?: boolean;
+  /** Unix epoch (ms) when the rate limit is expected to reset, if known. */
+  rateLimitResetsAt?: number;
 }
 
 export class WorkerCrashError extends Error {

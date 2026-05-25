@@ -7,6 +7,7 @@ import {
   type SpawnOpts,
   type WorkerAdapter,
   type WorkerEvent,
+  type WorkerResult,
 } from './types.ts';
 
 const WORKER_INSTRUCTION =
@@ -36,6 +37,8 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
       let inputTokens: number | undefined;
       let outputTokens: number | undefined;
       let finalText = '';
+      let rateLimited = false;
+      let rateLimitResetsAt: number | undefined;
 
       const handle = runStreaming({
         command: binary,
@@ -56,6 +59,9 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
           }, (tokens) => {
             inputTokens = tokens.inputTokens;
             outputTokens = tokens.outputTokens;
+          }, (resetsAt) => {
+            rateLimited = true;
+            if (typeof resetsAt === 'number') rateLimitResetsAt = resetsAt;
           });
         },
         finalize: ({ startedAt, endedAt, sessionId: capturedSessionId, stderrTail }) => {
@@ -69,6 +75,24 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
             outputTokens,
             durationMs: endedAt - startedAt,
           };
+        },
+        // A 429 makes the CLI exit non-zero AFTER emitting a rate-limit event.
+        // Reclassify that as a result (ok:false, rateLimited:true) so the
+        // pipeline can re-queue the task instead of treating it as a crash.
+        classifyExit: ({ startedAt, endedAt, sessionId: capturedSessionId }) => {
+          if (!rateLimited) return undefined;
+          const result: WorkerResult = {
+            ok: false,
+            text: finalText !== '' ? finalText : textBuffer,
+            sessionId: capturedSessionId !== '' ? capturedSessionId : sessionId,
+            totalCostUsd,
+            inputTokens,
+            outputTokens,
+            durationMs: endedAt - startedAt,
+            rateLimited: true,
+          };
+          if (rateLimitResetsAt !== undefined) result.rateLimitResetsAt = rateLimitResetsAt;
+          return result;
         },
       });
 
@@ -144,6 +168,13 @@ interface ClaudeStreamEvent {
   retry_delay_ms?: number;
   error_status?: number;
   error?: string;
+  // Terminal rate-limit signalling (CLI emits these then exits non-zero):
+  api_error_status?: number;
+  rate_limit_info?: {
+    status?: string;
+    resetsAt?: number;
+    rateLimitType?: string;
+  };
 }
 
 function parseClaudeEvent(
@@ -153,11 +184,26 @@ function parseClaudeEvent(
   onCost: (cost: number | undefined) => void,
   onFinalText: (text: string) => void,
   onTokens?: (tokens: { inputTokens?: number; outputTokens?: number }) => void,
+  onRateLimit?: (resetsAt: number | undefined) => void,
 ): void {
   if (typeof raw !== 'object' || raw === null) return;
   const evt = raw as ClaudeStreamEvent;
   const type = evt.type;
   if (type === undefined) return;
+
+  // Terminal usage/rate-limit rejection — the CLI emits this then exits
+  // non-zero. `resetsAt` is epoch seconds; normalize to ms.
+  if (type === 'rate_limit_event' && evt.rate_limit_info?.status === 'rejected') {
+    const resetsSec = evt.rate_limit_info.resetsAt;
+    const resetsMs = typeof resetsSec === 'number' ? resetsSec * 1000 : undefined;
+    emit({
+      kind: 'rate_limit',
+      retryDelayMs: resetsMs !== undefined ? Math.max(0, resetsMs - Date.now()) : 0,
+      category: 'rate_limit',
+    });
+    onRateLimit?.(resetsMs);
+    return;
+  }
 
   if (type === 'system' && evt.subtype === 'init') {
     if (typeof evt.session_id === 'string') {
@@ -219,6 +265,12 @@ function parseClaudeEvent(
         inputTokens: typeof evt.usage.input_tokens === 'number' ? evt.usage.input_tokens : undefined,
         outputTokens: typeof evt.usage.output_tokens === 'number' ? evt.usage.output_tokens : undefined,
       });
+    }
+    // A result flagged as a 429 (e.g. "You've hit your limit") is a rate
+    // limit, not a successful turn — surface it so the exit is reclassified.
+    if (evt.is_error === true && evt.api_error_status === 429) {
+      emit({ kind: 'rate_limit', retryDelayMs: 0, category: 'rate_limit', errorStatus: 429 });
+      onRateLimit?.(undefined);
     }
     return;
   }
