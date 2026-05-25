@@ -11,6 +11,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { isMainModule } from './lib/is-main-module.js';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -344,7 +345,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err: unknown) => {
+    console.error('Fatal:', err);
+    process.exit(1);
+  });
+}

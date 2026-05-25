@@ -1,8 +1,8 @@
 # IFleet — Architecture
 
-> Status: v0 outline. Full spec being drafted in conversation; this file
-> will be expanded with file paths, function signatures, and exact tool
-> versions once the design is locked.
+> Status: implemented. This document describes the live system (M4). The
+> "Source layout (target)" section at the bottom predates the build and may
+> drift from the current tree — `src/` is the source of truth.
 
 ## Goal
 

@@ -8,6 +8,7 @@
  *   2 — config error (channels.json missing/invalid)
  */
 import { resolve } from 'node:path';
+import { isMainModule } from './lib/is-main-module.js';
 import process from 'node:process';
 import { FileChannelRouter } from '../src/repos/router.js';
 import { GitRepoManager } from '../src/repos/manager.js';
@@ -52,7 +53,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(2);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(2);
+  });
+}
