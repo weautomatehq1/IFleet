@@ -1,7 +1,5 @@
 # Dependencies
-node_modules
 node_modules/
-node_modules
 
 # Build artifacts
 dist/
@@ -54,6 +52,3 @@ secrets/
 # Per-repo verify-env files (contain PATs/tokens, never committed)
 .ifleet/verify-env/*
 !.ifleet/verify-env/.gitkeep
-
-# Audit findings (local only, never committed)
-.audits/
