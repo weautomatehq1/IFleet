@@ -25,6 +25,9 @@ try {
 }
 
 const { repo, findings } = parsed;
+if (!repo) {
+  console.warn(`[audit-sync] index.json "repo" field is empty or missing — upsert may target wrong repo`);
+}
 const active = findings.filter((f) => f.status !== 'closed');
 
 console.log(`Syncing ${active.length} active findings for repo "${repo}" to Supabase…`);

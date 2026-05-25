@@ -278,9 +278,9 @@ export function markFindingClosed(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** `open_findings` / `by_severity` track every finding that is not closed. */
+/** `open_findings` / `by_severity` count only `open` and `reopened` findings — matching `openFindings()`. */
 function recomputeCounts(index: AuditIndex): void {
-  const active = index.findings.filter((f) => f.status !== 'closed');
+  const active = index.findings.filter((f) => f.status === 'open' || f.status === 'reopened');
   index.open_findings = active.length;
   const by: Record<string, number> = { CRITICAL: 0, IMPORTANT: 0, COSMETIC: 0 };
   for (const f of active) by[f.severity] = (by[f.severity] ?? 0) + 1;
