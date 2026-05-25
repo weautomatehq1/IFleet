@@ -6,6 +6,7 @@
 //                 summary to #ifleet (channel 1504120127791042631)
 
 import { execFile } from 'node:child_process';
+import { isMainModule } from './lib/is-main-module.js';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
@@ -109,7 +110,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('[audit-ritual] fatal:', err);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[audit-ritual] fatal:', err);
+    process.exit(1);
+  });
+}

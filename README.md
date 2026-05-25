@@ -12,7 +12,12 @@ ship 5–15 PRs per night without sitting in front of a terminal.
 
 ## Status
 
-V0 — scaffolding only. Architecture spec lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Operational. The control plane, worker pipeline, GitHub queue, Discord control
+surface, audit loop and observability stack are implemented (~25k LOC) and run
+on a PM2-managed VPS. Architecture overview in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); day-to-day operation in
+[`docs/RUNNING.md`](docs/RUNNING.md) and [`docs/LAUNCH.md`](docs/LAUNCH.md).
+Cross-repo milestones live in `weautomatehq1/factory/ROADMAP.md`.
 
 ## Stack
 
@@ -26,7 +31,15 @@ V0 — scaffolding only. Architecture spec lives in [`docs/ARCHITECTURE.md`](doc
 
 ## Quick start
 
-Not ready yet. Repo is currently scaffolding.
+```
+pnpm install            # Node 20+, pnpm 10
+pnpm typecheck          # tsc --noEmit
+pnpm test               # node:test + vitest
+```
+
+Running the fleet (env, PM2 services, Discord control) is documented in
+[`docs/RUNNING.md`](docs/RUNNING.md). Launch sequence in
+[`docs/LAUNCH.md`](docs/LAUNCH.md).
 
 ## Layout
 

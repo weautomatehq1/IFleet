@@ -31,6 +31,7 @@
  */
 
 import { execFile, spawn as spawnChild } from 'node:child_process';
+import { isMainModule } from './lib/is-main-module.js';
 import { promisify } from 'node:util';
 import { symlinkSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, openSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -580,7 +581,9 @@ async function runDispatch(): Promise<void> {
   log(`Detached pipeline worker (PID ${worker.pid ?? '?'}) for #${rawTask.issueNumber} — logs → ${logFile} — scheduler exiting`);
 }
 
-main().catch((err) => {
-  console.error('[smoke] Fatal:', err);
-  process.exitCode = 1;
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[smoke] Fatal:', err);
+    process.exitCode = 1;
+  });
+}

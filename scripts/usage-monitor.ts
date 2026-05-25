@@ -15,6 +15,7 @@
 //   CCUSAGE_USAGE_DIR          — where to write .ifleet/usage/<date>.json rows
 
 import { execFile } from 'node:child_process';
+import { isMainModule } from './lib/is-main-module.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -281,7 +282,9 @@ async function main(): Promise<void> {
   await writeUsageRow(analysis, USAGE_DIR, analysis.alertFired);
 }
 
-main().catch((err) => {
-  console.error('[usage-monitor] fatal:', err);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[usage-monitor] fatal:', err);
+    process.exit(1);
+  });
+}

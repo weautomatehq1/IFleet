@@ -6,6 +6,7 @@
 // to stderr. See docs/MCP.md for the full reasoning.
 
 import { Octokit } from '@octokit/rest';
+import { isMainModule } from './lib/is-main-module.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { DEFAULT_REPO_ID } from '../src/config/repos.js';
 import { makeOctokitAdapter, type RestClient } from '../src/mcp/octokit.js';
@@ -32,7 +33,9 @@ async function main(): Promise<void> {
   process.stderr.write(`[mcp-server] ready (defaultRepo=${defaultRepo})\n`);
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[mcp-server] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`[mcp-server] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}

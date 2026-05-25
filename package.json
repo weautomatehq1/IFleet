@@ -29,9 +29,9 @@
     "validate-claims": "node --import tsx scripts/validate-claims.ts",
     "audit:sync": "node --import tsx scripts/sync-audit-findings.ts",
     "dead-code": "ts-prune --ignore '(index\\.ts|__tests__|fixtures)'",
-    "fleet:pause": "ssh root@${VPS_HOST:-187.124.77.142} 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
-    "fleet:resume": "ssh root@${VPS_HOST:-187.124.77.142} 'rm -f /root/IFleet/.omc/PAUSED && echo \"fleet resumed\"'",
-    "fleet:status": "ssh root@${VPS_HOST:-187.124.77.142} 'pm2 list --no-color && echo && (test -f /root/IFleet/.omc/PAUSED && echo \"[PAUSED]\" || echo \"[RUNNING]\")'",
+    "fleet:pause": "ssh root@${VPS_HOST:?Set VPS_HOST in your shell, e.g. export VPS_HOST=1.2.3.4} 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
+    "fleet:resume": "ssh root@${VPS_HOST:?Set VPS_HOST in your shell, e.g. export VPS_HOST=1.2.3.4} 'rm -f /root/IFleet/.omc/PAUSED && echo \"fleet resumed\"'",
+    "fleet:status": "ssh root@${VPS_HOST:?Set VPS_HOST in your shell, e.g. export VPS_HOST=1.2.3.4} 'pm2 list --no-color && echo && (test -f /root/IFleet/.omc/PAUSED && echo \"[PAUSED]\" || echo \"[RUNNING]\")'",
     "prepare": "husky"
   },
   "dependencies": {

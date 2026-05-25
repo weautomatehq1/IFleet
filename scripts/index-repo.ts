@@ -14,6 +14,7 @@
  */
 
 import 'dotenv/config';
+import { isMainModule } from './lib/is-main-module.js';
 import { execFileSync } from 'node:child_process';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve, relative, join } from 'node:path';
@@ -96,7 +97,9 @@ async function walkTypeScript(root: string): Promise<string[]> {
   return out.sort();
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exitCode = 1;
-});
+if (isMainModule(import.meta.url)) {
+  main().catch(err => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

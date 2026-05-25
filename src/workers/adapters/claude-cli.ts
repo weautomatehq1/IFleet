@@ -155,7 +155,6 @@ function loadWorkerConfig(configPath: string, workerId: string): WorkerConfig | 
 
 async function drain(events: AsyncIterable<WorkerEvent>): Promise<void> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     for await (const _evt of events) {
       // intentionally empty — drain only.
     }
