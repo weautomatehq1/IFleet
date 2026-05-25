@@ -34,7 +34,17 @@ fi
 node -v
 npm -v
 
-# ---- 3. PM2 + logrotate ------------------------------------------------------
+# ---- 3. pnpm (matches packageManager field in package.json) -----------------
+# NOTE: if packageManager in package.json is updated, update the version here in tandem.
+PNPM_REQUIRED="10.33.2"
+PNPM_INSTALLED="$(pnpm --version 2>/dev/null || true)"
+if [[ "$PNPM_INSTALLED" != "$PNPM_REQUIRED" ]]; then
+  log "Installing pnpm@${PNPM_REQUIRED} (installed: '${PNPM_INSTALLED:-none}')"
+  npm install -g "pnpm@${PNPM_REQUIRED}"
+fi
+pnpm --version
+
+# ---- 4. PM2 + logrotate ------------------------------------------------------
 log "Installing PM2 + pm2-logrotate"
 npm install -g pm2
 pm2 install pm2-logrotate || true
@@ -42,7 +52,7 @@ pm2 set pm2-logrotate:max_size 20M
 pm2 set pm2-logrotate:retain 14
 pm2 set pm2-logrotate:compress true
 
-# ---- 4. Claude Code CLI ------------------------------------------------------
+# ---- 5. Claude Code CLI ------------------------------------------------------
 if ! command -v claude >/dev/null 2>&1; then
   log "Installing Claude Code CLI"
   # Official Linux install — pin a known version if needed
@@ -54,12 +64,12 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 claude --version || log "WARN: claude --version failed, verify install manually"
 
-# ---- 5. Directory layout -----------------------------------------------------
+# ---- 6. Directory layout -----------------------------------------------------
 log "Creating /opt/ifleet directory tree"
 mkdir -p "$REPO_DIR"/{state,repos,logs}
 mkdir -p /var/log/pm2
 
-# ---- 6. /etc/environment template (only if missing) --------------------------
+# ---- 7. /etc/environment template (only if missing) --------------------------
 if ! grep -q '^IFLEET_HMAC_SECRET=' /etc/environment 2>/dev/null; then
   log "Seeding /etc/environment template (placeholders — FILL THEM IN)"
   cat >> /etc/environment <<'EOF'
@@ -78,7 +88,7 @@ EOF
   log "EDIT /etc/environment NOW. Then \`source /etc/environment\` and re-login."
 fi
 
-# ---- 7. PM2 startup (systemd) -----------------------------------------------
+# ---- 8. PM2 startup (systemd) -----------------------------------------------
 log "Registering PM2 with systemd"
 pm2 startup systemd -u root --hp /root | tee /tmp/pm2-startup.txt
 PM2_CMD=$(grep -E '^sudo env ' /tmp/pm2-startup.txt || true)
@@ -87,7 +97,7 @@ if [[ -n "$PM2_CMD" ]]; then
   eval "$PM2_CMD"
 fi
 
-# ---- 8. nginx site -----------------------------------------------------------
+# ---- 9. nginx site -----------------------------------------------------------
 if [[ -f "$REPO_DIR/nginx/ifleet-control.conf" ]]; then
   log "Installing nginx site $DOMAIN"
   cp "$REPO_DIR/nginx/ifleet-control.conf" /etc/nginx/sites-available/ifleet-control
@@ -99,14 +109,14 @@ else
   log "WARN: $REPO_DIR/nginx/ifleet-control.conf missing — skip nginx step (run deploy.sh first)"
 fi
 
-# ---- 9. firewall (open 80/443/22 only) ---------------------------------------
+# ---- 10. firewall (open 80/443/22 only) ---------------------------------------
 log "Configuring ufw"
 ufw allow 22/tcp || true
 ufw allow 80/tcp || true
 ufw allow 443/tcp || true
 yes | ufw enable || true
 
-# ---- 10. TLS via certbot ----------------------------------------------------
+# ---- 11. TLS via certbot ----------------------------------------------------
 if ! command -v certbot >/dev/null 2>&1; then
   apt-get install -y certbot python3-certbot-nginx
 fi

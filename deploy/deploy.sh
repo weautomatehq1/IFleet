@@ -22,8 +22,8 @@ cd "$LOCAL_REPO"
 
 # ---- 1. Local build ---------------------------------------------------------
 if [[ "${SKIP_BUILD:-}" != "1" ]]; then
-  log "Installing local deps (npm ci)"
-  npm ci
+  log "Installing local deps (pnpm install --frozen-lockfile)"
+  pnpm install --frozen-lockfile
 
   log "Building TypeScript → dist/"
   npx tsc -p tsconfig.build.json
@@ -57,7 +57,7 @@ log "Installing prod deps on VPS + reloading PM2"
 ssh "$VPS" bash <<EOF
 set -euo pipefail
 cd "$REMOTE_DIR"
-npm ci --omit=dev
+pnpm install --frozen-lockfile --prod
 pm2 reload ecosystem.config.cjs --env production --update-env
 pm2 save
 EOF
