@@ -276,8 +276,8 @@ async function handleAuditFix(
     try {
       await dbUpdateFindingStatus(finding.id, 'fixing');
     } catch (err) {
-      console.warn(
-        `[audit] dbUpdateFindingStatus(fixing) failed for ${finding.id}: ${
+      console.error(
+        `[audit-sync] dbUpdateFindingStatus(fixing) failed for ${finding.id}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -317,8 +317,8 @@ async function handleAuditFix(
       try {
         await dbUpdateFindingStatus(id, 'open');
       } catch (err) {
-        console.warn(
-          `[audit] dbUpdateFindingStatus(open) failed for ${id}: ${
+        console.error(
+          `[audit-sync] dbUpdateFindingStatus(open) failed for ${id}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
