@@ -32,6 +32,8 @@ export interface TraceOutput {
   ok: boolean;
   exitCode: number;
   totalCostUsd?: number | undefined;
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
   durationMs?: number | undefined;
   error?: string | undefined;
   outputText?: string | undefined;
@@ -109,12 +111,23 @@ export function startTrace(input: TraceInput): LangfuseTrace {
   return {
     end(output: TraceOutput): void {
       try {
+        const hasTokens =
+          output.inputTokens !== undefined || output.outputTokens !== undefined;
+        const inputT = output.inputTokens ?? 0;
+        const outputT = output.outputTokens ?? 0;
         generation.end({
           output: output.outputText ?? '',
           level: output.ok ? 'DEFAULT' : 'ERROR',
           statusMessage: output.error,
-          usageDetails: output.totalCostUsd !== undefined
-            ? { totalCostUsd: output.totalCostUsd }
+          usageDetails: hasTokens
+            ? {
+                input_tokens: inputT,
+                output_tokens: outputT,
+                total_tokens: inputT + outputT,
+              }
+            : undefined,
+          costDetails: output.totalCostUsd !== undefined
+            ? { total: output.totalCostUsd }
             : undefined,
         });
         trace.update({
