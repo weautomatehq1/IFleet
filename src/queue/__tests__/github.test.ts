@@ -239,7 +239,7 @@ describe('GitHubQueue lifecycle', () => {
     assert.match(state.comments[0]?.body ?? '', /PR: https:\/\/github.com\/x\/y\/pull\/1/);
   });
 
-  it('markFailed records reason', async () => {
+  it('markFailed records reason and bumps retry counter to 1', async () => {
     const state = makeState([
       {
         number: 42,
@@ -252,9 +252,34 @@ describe('GitHubQueue lifecycle', () => {
     ]);
     const q = makeQueue(state);
     await q.markFailed(makeTask(), 'CI red');
-    assert.deepEqual(state.addedLabels[0]?.labels, ['auto:failed', 'ifleet:cooldown']);
+    assert.deepEqual(state.addedLabels[0]?.labels, ['auto:failed', 'ifleet:cooldown', 'ifleet:retry:1']);
     assert.match(state.comments[0]?.body ?? '', /Failed: CI red/);
-    assert.match(state.comments[0]?.body ?? '', /cooldown \d+m before retry/);
+    assert.match(state.comments[0]?.body ?? '', /retry 1\/2/);
+  });
+
+  it('markFailed at the retry cap marks ifleet:chronic-fail and disables auto-retry', async () => {
+    const state = makeState([
+      {
+        number: 42,
+        title: 't',
+        labels: ['auto:ship', 'in_flight', 'ifleet:retry:1'],
+        created_at: '2026-05-01T00:00:00Z',
+        html_url: 'u',
+        node_id: 'nid',
+      },
+    ]);
+    const q = makeQueue(state);
+    const task = makeTask({ labels: ['auto:ship', 'in_flight', 'ifleet:retry:1'] });
+    await q.markFailed(task, 'second CI red');
+    // Bumps retry:1 → retry:2, adds chronic-fail since 2 >= MAX_AUTO_RETRIES.
+    assert.deepEqual(
+      state.addedLabels[0]?.labels,
+      ['auto:failed', 'ifleet:cooldown', 'ifleet:retry:2', 'ifleet:chronic-fail'],
+    );
+    const removed = state.removedLabels.map((r) => r.name);
+    assert.ok(removed.includes('ifleet:retry:1'), 'prior retry label removed');
+    assert.match(state.comments[0]?.body ?? '', /chronic-fail/);
+    assert.match(state.comments[0]?.body ?? '', /auto-retry disabled/);
   });
 
   it('markCapabilityBlocked removes in_flight, adds blocked label, posts comment', async () => {

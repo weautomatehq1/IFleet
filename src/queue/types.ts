@@ -73,4 +73,13 @@ export const LABEL_CAPABILITY_BLOCKED = 'blocked:missing-capability';
 export const LABEL_IFLEET_IN_PROGRESS = 'ifleet:in_progress';
 export const LABEL_IFLEET_DONE = 'ifleet:done';
 export const LABEL_IFLEET_COOLDOWN = 'ifleet:cooldown';
+export const LABEL_IFLEET_CHRONIC_FAIL = 'ifleet:chronic-fail';
+export const LABEL_RETRY_PREFIX = 'ifleet:retry:';
 export const COOLDOWN_MS = 30 * 60 * 1000;
+/**
+ * Maximum number of times sweepCooldowns will auto-restore `auto:ship` after
+ * failures. After this many retries the issue is tagged with
+ * `LABEL_IFLEET_CHRONIC_FAIL` and skipped by future sweeps (no more auto-retry).
+ * Human operators must remove the label by hand to re-enable retries.
+ */
+export const MAX_AUTO_RETRIES = 2;
