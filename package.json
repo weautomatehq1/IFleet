@@ -27,6 +27,7 @@
     "graph:migrate": "node --import tsx scripts/kg/migrate.ts",
     "graph:index": "node --import tsx scripts/index-repo.ts",
     "validate-claims": "node --import tsx scripts/validate-claims.ts",
+    "audit:sync": "node --import tsx scripts/sync-audit-findings.ts",
     "dead-code": "ts-prune --ignore '(index\\.ts|__tests__|fixtures)'",
     "fleet:pause": "ssh root@${VPS_HOST:-187.124.77.142} 'touch /root/IFleet/.omc/PAUSED && echo \"fleet paused\"'",
     "fleet:resume": "ssh root@${VPS_HOST:-187.124.77.142} 'rm -f /root/IFleet/.omc/PAUSED && echo \"fleet resumed\"'",

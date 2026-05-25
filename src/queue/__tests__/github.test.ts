@@ -210,7 +210,11 @@ describe('GitHubQueue lifecycle', () => {
     ]);
     const q = makeQueue(state);
     await q.markPicked(makeTask(), 'worker-1');
-    assert.deepEqual(state.addedLabels[0]?.labels, ['in_flight']);
+    // markPicked removes `auto:ship` so a crash mid-pipeline can't re-queue
+    // the same issue on the next cron tick (the bug that burned tokens on
+    // #70/#72/#75). `ifleet:in_progress` is the new state marker.
+    assert.deepEqual(state.removedLabels[0], { issue: 42, name: 'auto:ship' });
+    assert.deepEqual(state.addedLabels[0]?.labels, ['in_flight', 'ifleet:in_progress']);
     const comment = state.comments[0]?.body ?? '';
     assert.match(comment, /Picked up by `worker-1`/);
     assert.match(comment, /2026-05-12T12:00:00\.000Z/);
@@ -230,7 +234,8 @@ describe('GitHubQueue lifecycle', () => {
     const q = makeQueue(state);
     await q.markCompleted(makeTask(), 'https://github.com/x/y/pull/1');
     assert.deepEqual(state.removedLabels[0], { issue: 42, name: 'in_flight' });
-    assert.deepEqual(state.addedLabels[0]?.labels, ['auto:shipped']);
+    assert.deepEqual(state.removedLabels[1], { issue: 42, name: 'ifleet:in_progress' });
+    assert.deepEqual(state.addedLabels[0]?.labels, ['auto:shipped', 'ifleet:done']);
     assert.match(state.comments[0]?.body ?? '', /PR: https:\/\/github.com\/x\/y\/pull\/1/);
   });
 
@@ -247,8 +252,9 @@ describe('GitHubQueue lifecycle', () => {
     ]);
     const q = makeQueue(state);
     await q.markFailed(makeTask(), 'CI red');
-    assert.deepEqual(state.addedLabels[0]?.labels, ['auto:failed']);
+    assert.deepEqual(state.addedLabels[0]?.labels, ['auto:failed', 'ifleet:cooldown']);
     assert.match(state.comments[0]?.body ?? '', /Failed: CI red/);
+    assert.match(state.comments[0]?.body ?? '', /cooldown \d+m before retry/);
   });
 
   it('markCapabilityBlocked removes in_flight, adds blocked label, posts comment', async () => {

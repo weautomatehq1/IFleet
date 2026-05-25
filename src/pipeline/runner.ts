@@ -15,6 +15,7 @@ import {
   markFindingClosed,
   resolveAuditIndexPath,
 } from '../discord/audit-runner.js';
+import { dbUpdateFindingStatus } from '../audit/audit-store.js';
 import type {
   AttemptRecord,
   PipelineInput,
@@ -445,6 +446,19 @@ function maybeCloseAuditFinding(input: PipelineInput, prUrl: string | null): voi
       }`,
     );
   }
+  // Mirror the close into Supabase so the VPS /audit-status reflects reality
+  // even when the local index.json on this worker drifts (the file is
+  // worktree-scoped). Best-effort: a DB failure does not unwind the file write.
+  void dbUpdateFindingStatus(findingId, 'closed', {
+    closed_at: new Date().toISOString(),
+    ...(prUrl ? { closing_pr: prUrl } : {}),
+  }).catch((err) => {
+    console.warn(
+      `[pipeline] dbUpdateFindingStatus(closed) failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  });
 }
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {

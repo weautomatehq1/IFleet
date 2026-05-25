@@ -499,6 +499,20 @@ async function runDispatch(): Promise<void> {
     repos: Object.values(reposMap),
   });
 
+  // Restore `auto:ship` on any issues that have served their 30-min cooldown
+  // after a prior failure (see GitHubQueue.markFailed). Runs before pickNext
+  // so a freshly-restored issue can be picked up this same tick.
+  if (!dryRun) {
+    try {
+      const sweep = await queue.sweepCooldowns();
+      if (sweep.restored > 0 || sweep.remaining > 0) {
+        log(`Cooldown sweep: restored=${sweep.restored} remaining=${sweep.remaining}`);
+      }
+    } catch (err) {
+      log(`Cooldown sweep failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   log('Picking next issue...');
   const rawTask = await queue.pickNext();
   if (!rawTask) {
