@@ -81,7 +81,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
 
     const workerPool = buildWorkerPool(worker);
-    const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels });
+    const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
     const abortController = new AbortController();
 
     const issues: IssueCommenter = createIssueCommenter(opts.octokit, repoOwner, repoName);
