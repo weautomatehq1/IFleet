@@ -76,8 +76,6 @@ module.exports = {
       },
       out_file: `${logDir}/control-plane-out.log`,
       error_file: `${logDir}/control-plane-error.log`,
-      out_file: `${logDir}/control-plane-out.log`,
-      error_file: `${logDir}/control-plane-error.log`,
     },
     {
       name: 'ifleet',
@@ -97,8 +95,6 @@ module.exports = {
         CONTROL_PLANE_PORT: process.env.IFLEET_DAEMON_PORT ?? '3002',
         IFLEET_ROLE: 'daemon',
       },
-      out_file: `${logDir}/ifleet-out.log`,
-      error_file: `${logDir}/ifleet-error.log`,
       out_file: `${logDir}/ifleet-out.log`,
       error_file: `${logDir}/ifleet-error.log`,
     },
@@ -121,8 +117,6 @@ module.exports = {
       },
       out_file: `${logDir}/ifleet-mcp-out.log`,
       error_file: `${logDir}/ifleet-mcp-error.log`,
-      out_file: `${logDir}/ifleet-mcp-out.log`,
-      error_file: `${logDir}/ifleet-mcp-error.log`,
     },
     {
       // Doctor self-heal cadence (periodic Haiku scan + morning learnings
@@ -143,8 +137,6 @@ module.exports = {
       },
       out_file: `${logDir}/doctor-scan-out.log`,
       error_file: `${logDir}/doctor-scan-error.log`,
-      out_file: `${logDir}/doctor-scan-out.log`,
-      error_file: `${logDir}/doctor-scan-error.log`,
     },
     {
       // ifleet-standup — 9am daily standup post to #ifleet.
@@ -161,8 +153,6 @@ module.exports = {
         ...baseEnv,
         IFLEET_ROLE: 'standup',
       },
-      out_file: `${logDir}/ifleet-standup-out.log`,
-      error_file: `${logDir}/ifleet-standup-error.log`,
       out_file: `${logDir}/ifleet-standup-out.log`,
       error_file: `${logDir}/ifleet-standup-error.log`,
     },
@@ -187,8 +177,6 @@ module.exports = {
       },
       out_file: `${logDir}/ifleet-canary-out.log`,
       error_file: `${logDir}/ifleet-canary-error.log`,
-      out_file: `${logDir}/ifleet-canary-out.log`,
-      error_file: `${logDir}/ifleet-canary-error.log`,
     },
     {
       // ifleet-retro — Sunday 8pm weekly retro post to #ifleet-ops.
@@ -207,15 +195,13 @@ module.exports = {
       },
       out_file: `${logDir}/ifleet-retro-out.log`,
       error_file: `${logDir}/ifleet-retro-error.log`,
-      out_file: `${logDir}/ifleet-retro-out.log`,
-      error_file: `${logDir}/ifleet-retro-error.log`,
     },
     {
       // ifleet-audit-nightly — 4am UTC (midnight ET) daily audit run.
       // Autopilot mode: scans IFleet, factory, and audit-elevation repos.
       // One-shot cron (autorestart: false).
       name: 'ifleet-audit-nightly',
-      script: 'src/agents/rituals/standup.ts',
+      script: 'scripts/audit-ritual.ts',
       interpreter: 'node',
       interpreter_args: '--import tsx',
       autorestart: false,
@@ -229,15 +215,13 @@ module.exports = {
       },
       out_file: `${logDir}/ifleet-audit-nightly-out.log`,
       error_file: `${logDir}/ifleet-audit-nightly-error.log`,
-      out_file: `${logDir}/ifleet-audit-nightly-out.log`,
-      error_file: `${logDir}/ifleet-audit-nightly-error.log`,
     },
     {
       // ifleet-audit-morning — 11am UTC (7am ET) daily audit morning report.
       // Morning report mode: summary and incident digest.
       // One-shot cron (autorestart: false).
       name: 'ifleet-audit-morning',
-      script: 'src/agents/rituals/standup.ts',
+      script: 'scripts/audit-ritual.ts',
       interpreter: 'node',
       interpreter_args: '--import tsx',
       autorestart: false,
@@ -249,8 +233,6 @@ module.exports = {
         AUDIT_MODE: 'morning-report',
         AUDIT_REPOS: 'IFleet,factory,audit-elevation',
       },
-      out_file: `${logDir}/ifleet-audit-morning-out.log`,
-      error_file: `${logDir}/ifleet-audit-morning-error.log`,
       out_file: `${logDir}/ifleet-audit-morning-out.log`,
       error_file: `${logDir}/ifleet-audit-morning-error.log`,
     },
