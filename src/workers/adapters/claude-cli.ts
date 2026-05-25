@@ -95,6 +95,8 @@ export function createClaudeCliAdapter(opts: ClaudeCliAdapterOptions = {}): Work
             ok: result.ok,
             exitCode: spawnResult.exitCode,
             totalCostUsd: result.totalCostUsd,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
             durationMs: Date.now() - traceStartedAt,
             outputText: result.text,
           });
