@@ -28,8 +28,19 @@ const execFileAsync = promisify(execFile);
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN ?? '';
 const DISCORD_CHANNEL_ID =
   process.env.CCUSAGE_DISCORD_CHANNEL ?? '1504120127791042631';
-const BLOCK_CAP = Number(process.env.IFLEET_BLOCK_CAP ?? '1000');
-const WEEKLY_CAP = Number(process.env.IFLEET_WEEKLY_CAP ?? '20000');
+// Max entries per 5-hour block (Claude API billing window). Configurable via
+// CCUSAGE_BLOCK_CAP; legacy IFLEET_BLOCK_CAP kept as fallback so VPS configs
+// that pre-date the rename keep working. Default 1000.
+const BLOCK_CAP = parseInt(
+  process.env.CCUSAGE_BLOCK_CAP ?? process.env.IFLEET_BLOCK_CAP ?? '1000',
+  10,
+);
+// Max entries per 7-day window (Claude API billing cycle). Same dual-name
+// pattern as BLOCK_CAP. Default 20000.
+const WEEKLY_CAP = parseInt(
+  process.env.CCUSAGE_WEEKLY_CAP ?? process.env.IFLEET_WEEKLY_CAP ?? '20000',
+  10,
+);
 const ALERT_THRESHOLD = parseFloat(process.env.CCUSAGE_ALERT_THRESHOLD ?? '0.8');
 
 // Where .ifleet/usage/<date>.json rows are written. Defaults to the repo root
