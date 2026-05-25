@@ -26,7 +26,9 @@ const execFileAsync = promisify(execFile);
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN ?? '';
 const DISCORD_CHANNEL_ID =
   process.env.CCUSAGE_DISCORD_CHANNEL ?? '1504120127791042631';
+// Max entries per 5-hour block, configurable via CCUSAGE_BLOCK_CAP
 const BLOCK_CAP = parseInt(process.env.CCUSAGE_BLOCK_CAP ?? '1000', 10);
+// Max entries per 7-day window, configurable via CCUSAGE_WEEKLY_CAP
 const WEEKLY_CAP = parseInt(process.env.CCUSAGE_WEEKLY_CAP ?? '20000', 10);
 const ALERT_THRESHOLD = parseFloat(process.env.CCUSAGE_ALERT_THRESHOLD ?? '0.8');
 
@@ -83,6 +85,7 @@ export interface UsageSnapshot {
 // ---- ccusage ---------------------------------------------------------------
 
 export async function fetchCcusageBlocks(): Promise<CcusageOutput> {
+  // Use npx for runtime reliability — ensures correct ccusage version via package.json
   const { stdout } = await execFileAsync('npx', ['--yes', 'ccusage', 'blocks', '--json'], {
     timeout: 30_000,
   });
