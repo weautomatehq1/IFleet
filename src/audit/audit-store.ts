@@ -22,6 +22,7 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
   try {
     await client.query('BEGIN');
     for (const f of findings) {
+      const openedAt = f.opened_at || new Date().toISOString();
       await client.query(
         `INSERT INTO audit_findings
            (id, repo, severity, category, title, detail, file_globs, fix_sketch,
@@ -35,7 +36,7 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
         [
           f.id, repo, f.severity, f.category, f.title, f.detail,
           f.file_globs, f.fix_sketch, f.parallel_safe, f.fingerprint,
-          f.status, f.opened_at, f.closed_at, f.closing_pr,
+          f.status, openedAt, f.closed_at, f.closing_pr,
         ],
       );
     }
