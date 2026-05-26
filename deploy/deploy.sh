@@ -21,6 +21,9 @@ fail() { printf '\n\033[1;31m[deploy]\033[0m %s\n' "$*" >&2; exit 1; }
 cd "$LOCAL_REPO"
 
 # ---- 1. Local build ---------------------------------------------------------
+# Note: commit 2ab0228's message said "npm ci" but the actual change went the
+# opposite direction (npm ci → pnpm install --frozen-lockfile). pnpm is the
+# canonical package manager here per package.json's packageManager field.
 if [[ "${SKIP_BUILD:-}" != "1" ]]; then
   log "Installing local deps (pnpm install --frozen-lockfile)"
   pnpm install --frozen-lockfile

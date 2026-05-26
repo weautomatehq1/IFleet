@@ -52,3 +52,11 @@ secrets/
 # Per-repo verify-env files (contain PATs/tokens, never committed)
 .ifleet/verify-env/*
 !.ifleet/verify-env/.gitkeep
+
+# Operational handoff scratch — not committed docs. Existing ones stay in
+# git history; this prevents new ones from sneaking in.
+docs/handoff-*.md
+
+# pnpm is the authoritative lockfile (pnpm-lock.yaml). package-lock.json is
+# accidentally generated when someone runs `npm install` in this repo.
+package-lock.json
