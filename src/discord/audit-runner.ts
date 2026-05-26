@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path';
 import {
   AUDIT_STATUSES,
   emptyBySeverity,
+  isTerminalAuditStatus,
   type AuditFinding,
   type AuditIndex,
   type AuditSeverity,
@@ -202,8 +203,15 @@ export function formatFindingsList(index: AuditIndex): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Set `status` on the given findings (skipping any already `closed`). Returns
- * the number of findings actually updated. No-op when the index is missing.
+ * Set `status` on the given findings (skipping any already in a terminal
+ * state — `closed`, `fixed`, or `stale`). Returns the number of findings
+ * actually updated. No-op when the index is missing.
+ *
+ * Without the full terminal-state guard, a finding reconciled to `fixed` by
+ * `reconcileMergedPRs` in audit-ritual.ts would silently regress to `fixing`
+ * on the next `/audit-fix auto` dispatch, re-opening work that was already
+ * done. The set of terminal statuses lives in `TERMINAL_AUDIT_STATUSES` so
+ * the rule is identical to the SQL dedup guard in audit-store.ts.
  */
 export function setFindingsStatus(
   indexPath: string,
@@ -215,7 +223,11 @@ export function setFindingsStatus(
   const wanted = new Set(ids);
   let updated = 0;
   for (const finding of index.findings) {
-    if (wanted.has(finding.id) && finding.status !== 'closed' && finding.status !== status) {
+    if (
+      wanted.has(finding.id) &&
+      !isTerminalAuditStatus(finding.status) &&
+      finding.status !== status
+    ) {
       finding.status = status;
       updated++;
     }
