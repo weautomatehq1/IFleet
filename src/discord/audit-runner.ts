@@ -51,12 +51,15 @@ const AUDIT_STATUSES: readonly AuditStatus[] = [
   'closed',
 ];
 
+// Audit finding ID prefix — all findings in .audits/index.json start with this
+const AUDIT_ID_PREFIX = 'AUDIT-';
+
 /**
  * Regex that recognises an audit-fix task. `/audit-fix` prefixes every
  * synthesized brief with `[audit-fix:<finding id>]`; the pipeline runner uses
  * this to know a completed task should close a finding in `index.json`.
  */
-export const AUDIT_FIX_GOAL_RE = /\[audit-fix:(AUDIT-[^\]]+)\]/;
+export const AUDIT_FIX_GOAL_RE = new RegExp(`\\[audit-fix:(${AUDIT_ID_PREFIX}[^\\]]+)\\]`);
 
 // ---------------------------------------------------------------------------
 // Path resolution
