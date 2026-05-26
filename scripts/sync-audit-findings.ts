@@ -35,3 +35,6 @@ console.log(`Syncing ${active.length} active findings for repo "${repo}" to Supa
 await dbUpsertFindings(active, repo);
 
 console.log(`Done. ${active.length} findings upserted (duplicates skipped by fingerprint).`);
+
+// pg pool keeps the event loop alive; exit explicitly so the script doesn't hang.
+process.exit(0);
