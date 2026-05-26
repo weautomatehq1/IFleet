@@ -250,7 +250,7 @@ export class DiscordOutAdapter implements DiscordOut {
   }
 
   async postChannelMessage(channelId: string, message: string): Promise<void> {
-    if (!channelId) return;
+    if (!channelId || !message) return;
     try {
       const channel = (await this.client.channels.fetch(channelId)) as TextChannel | null;
       if (!channel || !channel.isTextBased()) throw new Error(`channel ${channelId} not fetchable or not text-based`);
