@@ -27,11 +27,16 @@ const AUDIT_REPOS = (process.env['AUDIT_REPOS'] ?? 'IFleet')
   .filter(Boolean);
 
 // Resolve claude binary: env override wins, then PATH lookup, then VPS default.
+// The VPS default is `/usr/local/bin/claude` because `deploy/install-vps.sh`
+// symlinks `~/.local/bin/claude → /usr/local/bin/claude` and sets that path in
+// `/etc/environment`. The prior default of `/usr/bin/claude` ENOENT'd on the
+// VPS whenever PM2 launched without CLAUDE_BIN inherited.
+// Closes AUDIT-IFleet-c7798975.
 const CLAUDE_BIN = process.env['CLAUDE_BIN'] ?? (() => {
   try {
     return execSync('which claude', { encoding: 'utf8' }).trim();
   } catch {
-    return '/usr/bin/claude';
+    return '/usr/local/bin/claude';
   }
 })();
 

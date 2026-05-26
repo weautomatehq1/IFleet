@@ -75,7 +75,7 @@ ssh root@187.124.77.142 "pm2 delete ifleet-audit-nightly ifleet-audit-morning if
 | `src/orchestrator/daemon.ts` | Pipeline loop — Fix 2 here |
 | `src/discord/handlers/interaction-create.ts` | New home for audit handlers — Fix 3 here |
 | `src/audit/audit-store.ts` | Supabase store — keep, re-wire |
-| `src/audit/migrations/001_audit_findings.sql` | Already applied to Supabase — add unique index |
+| `deploy/postgres/0002-audit-findings.sql` | Run via `pnpm graph:migrate` — covered by the standard runner |
 | `config/channels.json` | Channel → repo → codeowners mapping |
 | `/opt/ifleet/.env` | VPS env — `IFLEET_KG_DATABASE_URL` now set |
 
