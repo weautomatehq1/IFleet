@@ -16,7 +16,7 @@
       "repo": "weautomatehq1/IFleet",
       "defaultBranch": "main",
       "defaultModel": "opus",
-      "allowedUserIds": ["1503477896402960405"],
+      "allowedUserIds": ["1503477896402960405", "1486139442195464373"],
       "codeowners": ["@monstersebas1"]
     }
   ]
