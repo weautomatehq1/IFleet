@@ -35,7 +35,7 @@ function toGitHubRepo(repo: string): string {
 }
 
 // Matches canonical audit finding IDs: AUDIT-<Repo>-<8hexchars>
-const AUDIT_ID_RE = /\bAUDIT-[A-Za-z][A-Za-z0-9]*-[0-9a-f]{8}\b/g;
+export const AUDIT_ID_RE = /\bAUDIT-[A-Za-z][A-Za-z0-9]*-[0-9a-f]{8}\b/g;
 
 // Lazily resolved at first call — keeps the module importable even when the
 // claude binary isn't on PATH (e.g. test environments, import-time analysis).
@@ -71,7 +71,7 @@ export function resolveRepoPath(repo: string): string {
  * The gh query is scoped per-repo so that a PR in repo A never closes a
  * finding that belongs to repo B.
  */
-async function reconcileMergedPRs(repos: string[]): Promise<void> {
+export async function reconcileMergedPRs(repos: string[]): Promise<void> {
   const sinceDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   for (const repo of repos) {
