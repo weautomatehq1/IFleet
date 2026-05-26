@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS audit_findings (
   opened_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   closed_at     TIMESTAMPTZ,
   closing_pr    TEXT,
-  scan_id       TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
