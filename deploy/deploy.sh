@@ -57,7 +57,7 @@ log "Installing prod deps on VPS + reloading PM2"
 ssh "$VPS" bash <<EOF
 set -euo pipefail
 cd "$REMOTE_DIR"
-pnpm install --frozen-lockfile --prod
+pnpm install --frozen-lockfile
 pm2 reload ecosystem.config.cjs --env production --update-env
 pm2 save
 EOF
