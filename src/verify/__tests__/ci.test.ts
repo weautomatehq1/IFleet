@@ -28,10 +28,10 @@ beforeEach(() => {
 });
 
 describe('runCiKind', () => {
-  it('invokes npm run <script> with the worktree as cwd and no shell', async () => {
+  it('invokes pnpm run <script> with the worktree as cwd and no shell', async () => {
     const child = createFakeChild();
     spawnMock.mockImplementation((cmd: string, args: string[], opts: { cwd: string; shell: boolean }) => {
-      expect(cmd).toBe('npm');
+      expect(cmd).toBe('pnpm');
       expect(args.slice(0, 3)).toEqual(['run', 'typecheck', '--silent']);
       expect(opts.cwd).toBe('/tmp/wt');
       expect(opts.shell).toBe(false);

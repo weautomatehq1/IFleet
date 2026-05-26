@@ -4,12 +4,15 @@ import type { VerifyConfig, VerifyKind, VerifyKindResult } from './types.js';
 
 type CiKind = Extract<VerifyKind, 'typecheck' | 'lint' | 'test'>;
 
-const NPM_SCRIPT: Record<CiKind, string> = {
+const PNPM_SCRIPT: Record<CiKind, string> = {
   typecheck: 'typecheck',
   lint: 'lint',
   test: 'test',
 };
 
+// IFleet is a pnpm workspace; npm reads package-lock.json (we ship
+// pnpm-lock.yaml) and would either install the wrong dep tree or fail. Closes
+// AUDIT-IFleet-7a4b40d2.
 export async function runCiKind(
   worktreePath: string,
   kind: CiKind,
@@ -17,8 +20,8 @@ export async function runCiKind(
 ): Promise<VerifyKindResult> {
   const cfg = config ?? loadVerifyConfig(worktreePath);
   const timeoutMs = cfg.timeouts[kind];
-  const script = NPM_SCRIPT[kind];
-  const result: SpawnResult = await runProcess('npm', ['run', script, '--silent'], {
+  const script = PNPM_SCRIPT[kind];
+  const result: SpawnResult = await runProcess('pnpm', ['run', script, '--silent'], {
     cwd: worktreePath,
     timeoutMs,
   });
