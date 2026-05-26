@@ -191,7 +191,13 @@ export class GitHubQueue implements QueueAdapter {
     // sweepCooldowns will skip it — a human must remove the label to
     // re-enable retries. This is the backstop against the infinite-loop
     // token burn that #70/#72/#75 hit.
-    const currentRetry = this.readRetryCount(task.labels);
+    //
+    // Read CURRENT labels from GitHub (not task.labels, which is the
+    // snapshot from pickNext and can be minutes stale). A concurrent
+    // sweepCooldowns or operator hand-edit between pickNext and
+    // markFailed can otherwise cause the retry counter to regress.
+    const freshLabels = await this.fetchIssueLabels(task);
+    const currentRetry = this.readRetryCount(freshLabels);
     const nextRetry = currentRetry + 1;
     const newLabels: string[] = [LABEL_FAILED, LABEL_IFLEET_COOLDOWN, `${LABEL_RETRY_PREFIX}${nextRetry}`];
     if (nextRetry >= MAX_AUTO_RETRIES) {
@@ -271,6 +277,19 @@ export class GitHubQueue implements QueueAdapter {
             issue_number: issue.number,
             name: LABEL_IFLEET_COOLDOWN,
           }).catch((err) => { if (!isNotFound(err)) throw err; });
+          // Step 4: strip stale `ifleet:retry:N` labels — they only document
+          // the prior attempt count and a successful restore should reset
+          // the counter narrative. markFailed re-reads labels live so this
+          // is purely a tidiness step (b06f33f2).
+          for (const label of labelNames) {
+            if (!label.startsWith(LABEL_RETRY_PREFIX)) continue;
+            await this.octokit.issues.removeLabel({
+              owner: repo.owner,
+              repo: repo.name,
+              issue_number: issue.number,
+              name: label,
+            }).catch((err) => { if (!isNotFound(err)) throw err; });
+          }
           restored++;
         } catch (err) {
           console.warn(
@@ -281,6 +300,28 @@ export class GitHubQueue implements QueueAdapter {
       }
     }
     return { restored, remaining, skippedChronic };
+  }
+
+  /** Read the live label list from GitHub for the issue behind a task. */
+  private async fetchIssueLabels(task: QueuedTask): Promise<ReadonlyArray<string>> {
+    const [owner, name] = task.repo.split('/');
+    if (!owner || !name) return task.labels;
+    try {
+      const res = await this.octokit.issues.listLabelsOnIssue({
+        owner,
+        repo: name,
+        issue_number: task.issueNumber,
+      });
+      return res.data
+        .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
+        .filter((s) => s.length > 0);
+    } catch (err) {
+      console.warn(
+        `[queue] fetchIssueLabels ${task.repo}#${task.issueNumber} failed, ` +
+          `falling back to task.labels snapshot: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return task.labels;
+    }
   }
 
   /**

@@ -395,7 +395,13 @@ export function startOrchestrator(opts: StartOrchestratorOpts): Orchestrator {
 
 function parseBudgetEnv(): number | undefined {
   const raw = process.env['BUDGET_USD'];
-  if (!raw) return undefined;
+  if (!raw) {
+    console.warn(
+      '[orchestrator] BUDGET_USD unset — per-sprint budget guard disabled. ' +
+        'This is intentional on Max-plan sessions but silently dangerous on metered runs.',
+    );
+    return undefined;
+  }
   const val = Number(raw);
   return Number.isFinite(val) && val > 0 ? val : undefined;
 }

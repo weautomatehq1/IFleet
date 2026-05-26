@@ -15,6 +15,7 @@
 //   CCUSAGE_USAGE_DIR          — where to write .ifleet/usage/<date>.json rows
 
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { isMainModule } from './lib/is-main-module.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -84,9 +85,24 @@ export interface UsageSnapshot {
 // ---- ccusage ---------------------------------------------------------------
 
 export async function fetchCcusageBlocks(): Promise<CcusageOutput> {
-  const { stdout } = await execFileAsync('npx', ['--yes', 'ccusage', 'blocks', '--json'], {
-    timeout: 30_000,
-  });
+  // Prefer the locally-installed binary (devDependency) so we don't pay the
+  // network round-trip and don't depend on whichever npm version `npx`
+  // resolves at runtime. Fall back to `npx --yes ccusage` for environments
+  // where ccusage was not installed locally (e.g. fresh clones running
+  // this script before pnpm install). Supply-chain risk is the same as the
+  // package manager — pinning to the local install at least pins the
+  // version to the lockfile.
+  const localBin = './node_modules/.bin/ccusage';
+  let cmd: string;
+  let args: string[];
+  if (existsSync(localBin)) {
+    cmd = localBin;
+    args = ['blocks', '--json'];
+  } else {
+    cmd = 'npx';
+    args = ['--yes', 'ccusage', 'blocks', '--json'];
+  }
+  const { stdout } = await execFileAsync(cmd, args, { timeout: 30_000 });
   return JSON.parse(stdout) as CcusageOutput;
 }
 
