@@ -69,6 +69,7 @@ interface TaskRow {
   picked_at: number | null;
   completed_at: number | null;
   priority: string;
+  attempts: number;
 }
 
 export interface ListFilter {
@@ -130,6 +131,16 @@ export class TaskStore {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!/duplicate column name: priority/i.test(message)) throw err;
+    }
+    // attempts column: tracks how many times recoverStale() reset this task.
+    // Once attempts >= MAX_ATTEMPTS the task is marked failed instead of
+    // re-queued, preventing infinite retry loops on permanently-failing tasks
+    // (AUDIT-IFleet-942cd45c).
+    try {
+      this.db.exec(`ALTER TABLE tasks ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/duplicate column name: attempts/i.test(message)) throw err;
     }
     // pr_decisions table was added later; SCHEMA creates it on fresh DBs, this
     // migration covers existing DBs that pre-date the table.
@@ -245,19 +256,37 @@ export class TaskStore {
    * pickNext() which only consumes 'pending'.
    */
   recoverStale(maxAgeMs: number = DEFAULT_STALE_MS): number {
+    const maxAttempts = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
     const cutoff = Date.now() - maxAgeMs;
-    const result = this.db
+    const now = Date.now();
+    // Tasks that have hit the attempt cap are marked failed to prevent infinite
+    // retry loops on permanently-failing tasks (AUDIT-IFleet-942cd45c).
+    const failedResult = this.db
+      .prepare(
+        `UPDATE tasks
+            SET state = 'failed',
+                state_meta = json_object('reason', 'max-attempts', 'attempts', attempts, 'failed_at', @now),
+                completed_at = @now
+          WHERE state = 'in_flight'
+            AND picked_at IS NOT NULL
+            AND picked_at < @cutoff
+            AND attempts >= @maxAttempts`,
+      )
+      .run({ now, cutoff, maxAttempts });
+    // Remaining stale tasks (below cap) are reset to pending with incremented attempts.
+    const recoveredResult = this.db
       .prepare(
         `UPDATE tasks
             SET state = 'pending',
                 state_meta = json_object('recovered_at', @now, 'previous_state', 'in_flight'),
-                picked_at = NULL
+                picked_at = NULL,
+                attempts = attempts + 1
           WHERE state = 'in_flight'
             AND picked_at IS NOT NULL
             AND picked_at < @cutoff`,
       )
-      .run({ now: Date.now(), cutoff });
-    return result.changes;
+      .run({ now, cutoff });
+    return failedResult.changes + recoveredResult.changes;
   }
 
   updateState(taskId: string, state: TaskState, meta?: Record<string, unknown>): void {

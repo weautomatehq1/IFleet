@@ -78,14 +78,22 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     hmacSecret: secret,
     port,
     onSprintGoal: async (cmd) => {
-      if (!cmd.channelId || !cmd.messageId || !cmd.userId || !cmd.userLabel) {
-        throw new Error('sprint_goal from server requires discord source fields');
+      // messageId is optional — slash commands provide idempotencyKey instead.
+      // DiscordSource.ingest() requires either messageId or idempotencyKey for
+      // dedup; we validate that at least one is present here and let ingest()
+      // derive the idempotencyKey from messageId when it's the only one given
+      // (AUDIT-IFleet-4b7622ff).
+      if (!cmd.channelId || !cmd.userId || !cmd.userLabel) {
+        throw new Error('sprint_goal from server requires channelId, userId, userLabel');
+      }
+      if (!cmd.messageId && !cmd.idempotencyKey) {
+        throw new Error('sprint_goal from server requires either messageId or idempotencyKey');
       }
       const task = await discordSource.ingest(
         {
           goal: cmd.goal,
           channelId: cmd.channelId,
-          messageId: cmd.messageId,
+          ...(cmd.messageId ? { messageId: cmd.messageId } : {}),
           userId: cmd.userId,
           userLabel: cmd.userLabel,
           idempotencyKey: cmd.idempotencyKey,
