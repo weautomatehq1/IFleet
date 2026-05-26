@@ -33,7 +33,6 @@ function clip(raw: string): string {
 
 /** Strip ANSI color codes so regex patterns don't have to model escape sequences. */
 function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '');
 }
 

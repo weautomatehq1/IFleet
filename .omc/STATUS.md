@@ -2,6 +2,12 @@
 
 Last updated: 2026-05-19
 
+> ⚠️ The sections below are a 2026-05-19 snapshot and are stale. The fleet has
+> since shipped through M4 (latest on `main`: PR #211, 2026-05-25). For current
+> state see [`docs/handoff-2026-05-25-ifleet-fix.md`](../docs/handoff-2026-05-25-ifleet-fix.md)
+> and `weautomatehq1/factory/ROADMAP.md`. The "Up next" / "In flight" items here
+> are likely already resolved — verify against `git log` before trusting them.
+
 ---
 
 ## Done (recent)

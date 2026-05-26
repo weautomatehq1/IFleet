@@ -27,6 +27,7 @@
  */
 
 import type { Octokit } from '@octokit/rest';
+import { isMainModule } from './lib/is-main-module.js';
 import { createIssueCommenter } from '../src/queue/issue-commenter.ts';
 
 interface FakeReaction {
@@ -95,7 +96,9 @@ async function main(): Promise<void> {
   log('PASS — HITL reaction polling works');
 }
 
-main().catch((err) => {
-  console.error('[test-hitl] Fatal:', err);
-  process.exitCode = 1;
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[test-hitl] Fatal:', err);
+    process.exitCode = 1;
+  });
+}

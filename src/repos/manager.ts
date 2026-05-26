@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ChannelRoute } from '../contracts/channel-router.js';
 import { isGitDir, pathExists } from './fs-utils.js';
 
@@ -59,11 +59,11 @@ export class GitRepoManager implements RepoManager {
   }
 
   canonicalPath(route: ChannelRoute): string {
-    return `${route.workDir}/main`;
+    return join(route.workDir, 'main');
   }
 
   worktreePath(route: ChannelRoute, taskId: string): string {
-    return `${route.workDir}/worktrees/${taskId}`;
+    return join(route.workDir, 'worktrees', taskId);
   }
 
   branchName(taskId: string): string {
