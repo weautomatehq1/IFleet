@@ -42,7 +42,7 @@ const CLAUDE_BIN = process.env['CLAUDE_BIN'] ?? (() => {
 
 // Repos are expected to be siblings of the IFleet checkout.
 // IFleet itself resolves to IFLEET_REPO_ROOT (or cwd) to avoid duplication.
-function resolveRepoPath(repo: string): string {
+export function resolveRepoPath(repo: string): string {
   const ifleetRoot = process.env['IFLEET_REPO_ROOT'] ?? process.cwd();
   if (repo === 'IFleet') return ifleetRoot;
   const base = process.env['AUDIT_BASE_DIR'] ?? resolve(ifleetRoot, '..');

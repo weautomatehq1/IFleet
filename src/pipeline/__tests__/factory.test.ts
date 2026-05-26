@@ -3,6 +3,7 @@
 // non-zero *after* creating the PR, failing the whole task over a non-essential
 // step. normalizeReviewers strips the `@` so `gh` gets a bare login.
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { normalizeReviewers } from '../factory.js';
 import { classifyTask } from '../../classifier/index.js';
@@ -37,5 +38,17 @@ describe('AUDIT-IFleet-e8b8cbc4: classifyTask propagates mode from QueuedTask', 
       mode: 'ralph',
     });
     expect(decision.mode).toBe('ralph');
+  });
+});
+
+describe('AUDIT-IFleet-d3e66e4a: factory integration passes mode through to classifyTask', () => {
+  // The above classifier test would still pass if factory.ts dropped mode on the
+  // floor before invoking classifyTask. Lock the actual call site at the source
+  // level so future refactors can't silently regress the integration.
+  it('factory.ts calls classifyTask with mode: task.mode', () => {
+    const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
+    const call = src.match(/classifyTask\(\{[^}]*\}\)/);
+    expect(call, 'classifyTask call not found in factory.ts').not.toBeNull();
+    expect(call?.[0] ?? '').toMatch(/mode:\s*task\.mode/);
   });
 });

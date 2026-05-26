@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getLangfuseClient,
@@ -60,6 +61,28 @@ describe('startTrace', () => {
     });
     // Must not throw. End-of-life is a no-op when disabled.
     expect(() => trace.end({ ok: true, exitCode: 0 })).not.toThrow();
+  });
+
+  it('emits usageDetails with snake_case keys (input_tokens / output_tokens / total_tokens)', () => {
+    // Read the langfuse module source to assert the literal keys we send to
+    // the Langfuse SDK. The SDK expects snake_case keys for usageDetails per
+    // https://langfuse.com/docs/sdk/typescript/guide#usage. Asserting the
+    // shape at the source level avoids a flaky integration test against the
+    // singleton/network client.
+    const src = readFileSync(
+      new URL('../langfuse.ts', import.meta.url),
+      'utf-8',
+    );
+    // Find the usageDetails object literal.
+    const match = src.match(/usageDetails:[\s\S]{0,200}?\{([\s\S]{0,200}?)\}/);
+    expect(match, 'usageDetails block not found in langfuse.ts').not.toBeNull();
+    const block = match?.[1] ?? '';
+    expect(block).toContain('input_tokens');
+    expect(block).toContain('output_tokens');
+    expect(block).toContain('total_tokens');
+    expect(block).not.toContain('totalCostUsd');
+    expect(block).not.toContain('inputTokens:');
+    expect(block).not.toContain('outputTokens:');
   });
 
   it('observability failure never crashes — bad end() output is swallowed', () => {
