@@ -37,19 +37,17 @@ function toGitHubRepo(repo: string): string {
 // Matches canonical audit finding IDs: AUDIT-<Repo>-<8hexchars>
 const AUDIT_ID_RE = /\bAUDIT-[A-Za-z][A-Za-z0-9]*-[0-9a-f]{8}\b/g;
 
-// Resolve claude binary: env override wins, then PATH lookup, then VPS default.
-// The VPS default is `/usr/local/bin/claude` because `deploy/install-vps.sh`
-// symlinks `~/.local/bin/claude → /usr/local/bin/claude` and sets that path in
-// `/etc/environment`. The prior default of `/usr/bin/claude` ENOENT'd on the
-// VPS whenever PM2 launched without CLAUDE_BIN inherited.
-// Closes AUDIT-IFleet-c7798975.
-const CLAUDE_BIN = process.env['CLAUDE_BIN'] ?? (() => {
+// Lazily resolved at first call — keeps the module importable even when the
+// claude binary isn't on PATH (e.g. test environments, import-time analysis).
+function resolveClaude(): string {
+  if (process.env['CLAUDE_BIN']) return process.env['CLAUDE_BIN'];
   try {
     return execSync('which claude', { encoding: 'utf8' }).trim();
   } catch {
+    // VPS default: deploy/install-vps.sh symlinks claude to /usr/local/bin/claude.
     return '/usr/local/bin/claude';
   }
-})();
+}
 
 // Repos are expected to be siblings of the IFleet checkout.
 // IFleet itself resolves to IFLEET_REPO_ROOT (or cwd) to avoid duplication.
@@ -161,7 +159,7 @@ async function runAutopilot(repos: string[]): Promise<void> {
     const cwd = resolveRepoPath(repo);
     console.log(`[audit-ritual] autopilot ${repo} → ${cwd}`);
     try {
-      await execFileAsync(CLAUDE_BIN, ['-p', '/audit-fix auto'], {
+      await execFileAsync(resolveClaude(), ['-p', '/audit-fix auto'], {
         cwd,
         maxBuffer: 50 * 1024 * 1024,
         timeout: 30 * 60 * 1000,
@@ -193,8 +191,12 @@ async function runMorningReport(repos: string[]): Promise<void> {
     }
     const open = openFindings(index);
     const sev = index.by_severity;
+    const inProgress = index.findings.filter(
+      (f) => f.status === 'fixing' || f.status === 'verifying',
+    ).length;
+    const inProgressStr = inProgress > 0 ? `, ${inProgress} in-progress` : '';
     lines.push(
-      `**${repo}** — ${open.length} open` +
+      `**${repo}** — ${open.length} open${inProgressStr}` +
         ` (CRITICAL: ${sev['CRITICAL'] ?? 0}` +
         `, IMPORTANT: ${sev['IMPORTANT'] ?? 0}` +
         `, COSMETIC: ${sev['COSMETIC'] ?? 0})`,
@@ -204,14 +206,15 @@ async function runMorningReport(repos: string[]): Promise<void> {
   const message = lines.join('\n');
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   const DISCORD_TIMEOUT_MS = 30_000;
+  let loginTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      new Promise<never>((_, reject) =>
-        setTimeout(
+      new Promise<never>((_, reject) => {
+        loginTimer = setTimeout(
           () => reject(new Error('[audit-ritual] Discord login timed out after 30s')),
           DISCORD_TIMEOUT_MS,
-        ),
-      ),
+        );
+      }),
       (async () => {
         await client.login(token);
         await new Promise<void>((res, rej) => {
@@ -231,6 +234,7 @@ async function runMorningReport(repos: string[]): Promise<void> {
       })(),
     ]);
   } finally {
+    clearTimeout(loginTimer);
     client.destroy();
   }
   console.log('[audit-ritual] morning report posted');
