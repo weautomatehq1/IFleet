@@ -13,43 +13,27 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-export type AuditSeverity = 'CRITICAL' | 'IMPORTANT' | 'COSMETIC';
-export type AuditStatus = 'open' | 'fixing' | 'verifying' | 'reopened' | 'closed';
+import {
+  AUDIT_STATUSES,
+  emptyBySeverity,
+  type AuditFinding,
+  type AuditIndex,
+  type AuditSeverity,
+  type AuditStatus,
+} from '../audit/types.js';
 
-export interface AuditFinding {
-  id: string;
-  severity: AuditSeverity;
-  category: string;
-  title: string;
-  detail: string;
-  file_globs: string[];
-  fix_sketch: string;
-  parallel_safe: boolean;
-  fingerprint: string;
-  status: AuditStatus;
-  opened_at: string;
-  closed_at: string | null;
-  closing_pr: string | null;
-}
-
-export interface AuditIndex {
-  repo: string;
-  last_updated: string;
-  open_findings: number;
-  by_severity: Record<string, number>;
-  findings: AuditFinding[];
-}
+// Re-export so existing importers (`import { AuditFinding } from '.../audit-runner.js'`)
+// keep working without touching every call site.
+export {
+  AUDIT_STATUSES,
+  type AuditFinding,
+  type AuditIndex,
+  type AuditSeverity,
+  type AuditStatus,
+};
 
 /** Severity ordering for list grouping and auto-mode dispatch (worst first). */
 const SEVERITY_ORDER: readonly AuditSeverity[] = ['CRITICAL', 'IMPORTANT', 'COSMETIC'];
-
-const AUDIT_STATUSES: readonly AuditStatus[] = [
-  'open',
-  'fixing',
-  'verifying',
-  'reopened',
-  'closed',
-];
 
 // Audit finding ID prefix — all findings in .audits/index.json start with this
 const AUDIT_ID_PREFIX = 'AUDIT-';
@@ -108,7 +92,7 @@ export function readAuditIndex(indexPath: string): AuditIndex | null {
     repo: typeof obj['repo'] === 'string' ? obj['repo'] : 'repo',
     last_updated: typeof obj['last_updated'] === 'string' ? obj['last_updated'] : '',
     open_findings: 0,
-    by_severity: {},
+    by_severity: emptyBySeverity(),
     findings,
   };
   recomputeCounts(index);
@@ -285,7 +269,7 @@ export function markFindingClosed(
 function recomputeCounts(index: AuditIndex): void {
   const active = index.findings.filter((f) => f.status === 'open' || f.status === 'reopened');
   index.open_findings = active.length;
-  const by: Record<string, number> = { CRITICAL: 0, IMPORTANT: 0, COSMETIC: 0 };
+  const by = emptyBySeverity();
   for (const f of active) by[f.severity] = (by[f.severity] ?? 0) + 1;
   index.by_severity = by;
 }

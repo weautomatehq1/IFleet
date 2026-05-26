@@ -4,7 +4,12 @@
 // catch and fall back to the local file.
 
 import { getKgPool } from '../agents/indexer/pg-client.js';
-import type { AuditFinding, AuditIndex, AuditStatus } from '../discord/audit-runner.js';
+import {
+  emptyBySeverity,
+  type AuditFinding,
+  type AuditIndex,
+  type AuditStatus,
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Write
@@ -100,8 +105,9 @@ export async function dbReadIndex(repo: string): Promise<AuditIndex | null> {
     return null;
   }
   if (findings.length === 0) return null;
+  // `active` mirrors `openFindings()` in audit-runner: any non-closed status counts.
   const active = findings.filter((f) => f.status !== 'closed');
-  const by_severity: Record<string, number> = { CRITICAL: 0, IMPORTANT: 0, COSMETIC: 0 };
+  const by_severity = emptyBySeverity();
   for (const f of active) by_severity[f.severity] = (by_severity[f.severity] ?? 0) + 1;
   return {
     repo,
