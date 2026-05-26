@@ -25,7 +25,11 @@ import {
   synthesizeAuditBrief,
   type AuditIndex,
 } from '../audit-runner.js';
-import { dbReadIndex, dbUpdateFindingStatus } from '../../audit/audit-store.js';
+import {
+  dbReadIndex,
+  dbUpdateFindingStatus,
+  normaliseAuditRepo,
+} from '../../audit/audit-store.js';
 
 export interface InteractionDeps {
   router: ChannelRouter;
@@ -168,23 +172,17 @@ async function handleAuditStatus(
 }
 
 /**
- * Repo key used by the audit_findings Supabase table — basename only
- * (`IFleet`, not `weautomatehq1/IFleet`). The sync script (`pnpm audit:sync`)
- * seeds rows with the basename, so the bot's reads must match.
- */
-function repoKey(fullRepo: string): string {
-  const idx = fullRepo.lastIndexOf('/');
-  return idx === -1 ? fullRepo : fullRepo.slice(idx + 1);
-}
-
-/**
  * Read the audit index, preferring Supabase (so VPS and Mac stay in sync)
  * and falling back to the local file when the DB is unreachable or empty.
  * Returns null when neither source has findings.
+ *
+ * `fullRepo` may be qualified (`weautomatehq1/IFleet`) or bare (`IFleet`).
+ * Both forms are normalised inside `dbReadIndex` via `normaliseAuditRepo`,
+ * so callers don't have to think about which they're holding.
  */
 async function loadAuditIndex(fullRepo: string): Promise<AuditIndex | null> {
   try {
-    const dbIndex = await dbReadIndex(repoKey(fullRepo));
+    const dbIndex = await dbReadIndex(normaliseAuditRepo(fullRepo));
     if (dbIndex && dbIndex.findings.length > 0) return dbIndex;
   } catch (err) {
     console.warn(

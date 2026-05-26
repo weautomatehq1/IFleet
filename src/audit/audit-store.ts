@@ -12,6 +12,27 @@ import {
 } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Repo-name normalisation
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical form of `audit_findings.repo` — the basename of a possibly-qualified
+ * GitHub slug (`weautomatehq1/IFleet` → `IFleet`). Applied at every read and
+ * write boundary so the bot can't end up writing under one shape and reading
+ * under another.
+ *
+ * Historically this was inlined in three places (`sync-audit-findings.ts`,
+ * `interaction-create.ts`, `audit-runner.ts` via the `.audits/index.json`
+ * `repo` field) and one of them silently used the org-qualified form, so DB
+ * reads always returned empty. Centralising it here makes the invariant
+ * checkable from one location.
+ */
+export function normaliseAuditRepo(repo: string): string {
+  const slashIdx = repo.lastIndexOf('/');
+  return slashIdx === -1 ? repo : repo.slice(slashIdx + 1);
+}
+
+// ---------------------------------------------------------------------------
 // Write
 // ---------------------------------------------------------------------------
 
@@ -22,6 +43,7 @@ import {
  */
 export async function dbUpsertFindings(findings: AuditFinding[], repo: string): Promise<void> {
   if (findings.length === 0) return;
+  const repoKey = normaliseAuditRepo(repo);
   const pool = getKgPool();
   const client = await pool.connect();
   try {
@@ -39,7 +61,7 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
          )
          ON CONFLICT (id) DO NOTHING`,
         [
-          f.id, repo, f.severity, f.category, f.title, f.detail,
+          f.id, repoKey, f.severity, f.category, f.title, f.detail,
           f.file_globs, f.fix_sketch, f.parallel_safe, f.fingerprint,
           f.status, openedAt, f.closed_at, f.closing_pr,
         ],
@@ -85,7 +107,7 @@ export async function dbReadFindings(repo: string): Promise<AuditFinding[]> {
      FROM audit_findings
      WHERE repo = $1
      ORDER BY opened_at DESC`,
-    [repo],
+    [normaliseAuditRepo(repo)],
   );
   return rows.map(rowToFinding);
 }
@@ -98,9 +120,10 @@ export async function dbReadFindings(repo: string): Promise<AuditFinding[]> {
  * until `pnpm audit:sync` lands findings into Supabase.
  */
 export async function dbReadIndex(repo: string): Promise<AuditIndex | null> {
+  const repoKey = normaliseAuditRepo(repo);
   let findings: AuditFinding[];
   try {
-    findings = await dbReadFindings(repo);
+    findings = await dbReadFindings(repoKey);
   } catch {
     return null;
   }
@@ -110,7 +133,7 @@ export async function dbReadIndex(repo: string): Promise<AuditIndex | null> {
   const by_severity = emptyBySeverity();
   for (const f of active) by_severity[f.severity] = (by_severity[f.severity] ?? 0) + 1;
   return {
-    repo,
+    repo: repoKey,
     last_updated: new Date().toISOString(),
     open_findings: active.length,
     by_severity,
