@@ -10,6 +10,15 @@ export interface RunnerOptions {
   signal?: AbortSignal;
   parseLine: (line: string, emit: (e: WorkerEvent) => void) => void;
   finalize: (state: FinalizeState) => WorkerResult;
+  /**
+   * Called when the process exits non-zero. Lets the adapter reclassify an
+   * expected non-zero exit (e.g. a 429 rate limit, which the CLI reports via
+   * the stream and then exits 1) into a real {@link WorkerResult} instead of a
+   * {@link WorkerCrashError}. Return `undefined` to treat the exit as a crash
+   * (the default). Genuine crashes (segfault, OOM, spawn failure) return
+   * `undefined` and still throw.
+   */
+  classifyExit?: (state: FinalizeState) => WorkerResult | undefined;
   stderrTailLines?: number;
   killGraceMs?: number;
   spawnImpl?: SpawnLike;
@@ -155,14 +164,23 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
         if (!sessionDeferred.settled) sessionDeferred.reject(err);
       }
     } else {
-      const crash = new WorkerCrashError(
-        `worker exited with code=${code} signal=${signal}`,
-        code,
-        signal,
-        stderrTail,
-      );
-      if (!sessionDeferred.settled) sessionDeferred.reject(crash);
-      resultDeferred.reject(crash);
+      const state: FinalizeState = { startedAt, endedAt, exitCode: code, signal, stderrTail, sessionId };
+      // Give the adapter a chance to reclassify an expected non-zero exit
+      // (rate limit) into a result rather than a crash.
+      const reclassified = opts.classifyExit?.(state);
+      if (reclassified) {
+        if (!sessionDeferred.settled) sessionDeferred.resolve(reclassified.sessionId);
+        resultDeferred.resolve(reclassified);
+      } else {
+        const crash = new WorkerCrashError(
+          `worker exited with code=${code} signal=${signal}`,
+          code,
+          signal,
+          stderrTail,
+        );
+        if (!sessionDeferred.settled) sessionDeferred.reject(crash);
+        resultDeferred.reject(crash);
+      }
     }
     closeQueue();
   });

@@ -16,6 +16,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { isMainModule } from './lib/is-main-module.js';
 import { TaskStore, defaultTasksDbPath } from '../src/queue/store.ts';
 import {
   mapPullRequests,
@@ -145,4 +146,6 @@ function main(): void {
   );
 }
 
-main();
+if (isMainModule(import.meta.url)) {
+  main();
+}
