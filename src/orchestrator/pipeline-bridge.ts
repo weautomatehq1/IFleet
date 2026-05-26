@@ -127,10 +127,11 @@ function unifiedToPipelineTask(task: UnifiedQueuedTask): QueuedTask {
     body: task.brief,
     autonomy,
     labels: [],
-    // Propagate per-task mode so the architect/editor pick the mode-specific
-    // prompt template — without this, an explicit `mode:ralph` on a
-    // unified-shape brief silently degraded to the standard prompt.
-    ...(task.mode ? { mode: task.mode } : {}),
+    // Propagate per-task mode unconditionally (including explicit `null`) so
+    // operators can pin "no mode" via Discord slash-command. Without this, an
+    // explicit `mode:ralph` on a unified-shape brief silently degraded to the
+    // standard prompt. Closes AUDIT-IFleet-88fe0722 / AUDIT-IFleet-33c47c45.
+    mode: task.mode ?? null,
   };
 }
 
@@ -221,5 +222,10 @@ function statusToExitCode(status: PipelineResult['status']): number {
     case 'cancelled': return 2;
     case 'blocked_by_reviewer': return 3;
     case 'awaiting_interview': return 4;
+    // Defensive default: a future status value added without updating this
+    // switch must NOT return `undefined`, which would make SpawnResult.exitCode
+    // unswitchable in the sprint handler and silently strand the task. Treat
+    // unknown as a generic failure (exit 1). Closes AUDIT-IFleet-cac2e1f6.
+    default: return 1;
   }
 }

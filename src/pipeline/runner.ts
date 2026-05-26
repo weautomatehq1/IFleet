@@ -227,8 +227,13 @@ export class DefaultPipelineRunner implements PipelineRunner {
       if (!diff.trim()) {
         // Structured signal: the editor's audit-fix pre-check emits the
         // single line `NO_CHANGES_NEEDED` when the fix is already in place.
-        // Anything else with no diff is a silent tool-use failure (claude -p
-        // dropped its edits without explanation).
+        // We use this explicit sentinel rather than a byte-length heuristic
+        // (e.g. "output < 200B => already resolved") because the heuristic
+        // produced both false positives (verbose error logs >200B marked
+        // resolved) and false negatives (terse legitimate resolutions marked
+        // failed). Anything else with no diff is a silent tool-use failure
+        // (claude -p dropped its edits without explanation).
+        // Closes AUDIT-IFleet-77fe96e2.
         if (NO_CHANGES_NEEDED_RE.test(editor.attempt.output)) {
           maybeCloseAuditFinding(input, null);
           return alreadyResolved(attempts);
