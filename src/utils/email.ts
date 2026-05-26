@@ -14,10 +14,14 @@ export interface EmailResult {
 
 const DEFAULT_FROM = 'IFleet <onboarding@resend.dev>';
 
-function getClient(): Resend {
-  const key = process.env['RESEND_API_KEY'];
-  if (!key) throw new Error('RESEND_API_KEY is not set');
-  return new Resend(key);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    const key = process.env['RESEND_API_KEY'];
+    if (!key) throw new Error('RESEND_API_KEY is not set');
+    _resend = new Resend(key);
+  }
+  return _resend;
 }
 
 /**
@@ -44,7 +48,7 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
       throw new Error(`Invalid email address: ${addr}`);
     }
   }
-  const client = getClient();
+  const client = getResend();
   const { data, error } = await client.emails.send({
     from: payload.from ?? DEFAULT_FROM,
     to: Array.isArray(payload.to) ? payload.to : [payload.to],
