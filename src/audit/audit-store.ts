@@ -7,10 +7,16 @@ import { getKgPool } from '../agents/indexer/pg-client.js';
 import {
   emptyBySeverity,
   isActiveAuditStatus,
+  TERMINAL_AUDIT_STATUSES,
   type AuditFinding,
   type AuditIndex,
   type AuditStatus,
 } from './types.js';
+
+// SQL-literal list of terminal statuses for INSERT/UPDATE guards. Built from
+// the canonical TS list (in types.ts) so the SQL and TS surfaces can't drift.
+// Values are static enum members — no user input is ever interpolated.
+const TERMINAL_SQL_LIST = TERMINAL_AUDIT_STATUSES.map((s) => `'${s}'`).join(', ');
 
 // ---------------------------------------------------------------------------
 // Repo-name normalisation
@@ -38,15 +44,61 @@ export function normaliseAuditRepo(repo: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Upsert findings into Supabase. Skips any finding whose fingerprint already
- * exists in the DB with a non-closed status (dedup across scans). If the same
- * fingerprint exists only as closed, inserts as a new open finding (regression).
+ * Upsert findings into Supabase.
+ *
+ * Two dedup layers:
+ *
+ *  1. `WHERE NOT EXISTS` guards against a *different* finding id sharing the
+ *     same fingerprint in the same repo while still active (not in a terminal
+ *     state). This is the cross-scan dedup — if `/audit-scan` synthesises a
+ *     new id for a code pattern that's already being tracked, we skip the
+ *     insert so the existing row keeps its history.
+ *  2. `ON CONFLICT (id) DO UPDATE` upserts when the *same* id is rewritten by
+ *     a re-scan (detail/severity may have drifted). The update is conditional
+ *     on the existing row not being terminal — once a finding is closed,
+ *     fixed, or marked stale, its history is frozen.
+ *
+ * The previous code used `ON CONFLICT (id) DO NOTHING`, which silently
+ * dropped updates to existing rows (AUDIT-IFleet-6757c552). The previous
+ * `WHERE NOT EXISTS` predicate used `status != 'closed'`, so `fixed`/`stale`
+ * rows still allowed regression inserts of the same fingerprint
+ * (AUDIT-IFleet-e9f751ac).
+ *
+ * The atomicity gap between the `WHERE NOT EXISTS` subquery and the INSERT
+ * is closed by the partial unique index `audit_findings_fp_repo_active`,
+ * which (after migration 0003) covers `(fingerprint, repo)` with
+ * `WHERE status NOT IN ('closed','fixed','stale')`. Concurrent INSERTs that
+ * race past the subquery hit the index constraint and surface as an error
+ * instead of silently duplicating.
  */
 export async function dbUpsertFindings(findings: AuditFinding[], repo: string): Promise<void> {
   if (findings.length === 0) return;
   const repoKey = normaliseAuditRepo(repo);
   const pool = getKgPool();
   const client = await pool.connect();
+  // SQL literal — TERMINAL_SQL_LIST is built from static enum values, never
+  // user input. Same list in WHERE NOT EXISTS and ON CONFLICT WHERE clauses
+  // so the two dedup layers can't disagree.
+  const sql = `INSERT INTO audit_findings
+       (id, repo, severity, category, title, detail, file_globs, fix_sketch,
+        parallel_safe, fingerprint, status, opened_at, closed_at, closing_pr)
+     SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+     WHERE NOT EXISTS (
+       SELECT 1 FROM audit_findings
+       WHERE fingerprint = $10 AND repo = $2
+         AND status NOT IN (${TERMINAL_SQL_LIST})
+         AND id != $1
+     )
+     ON CONFLICT (id) DO UPDATE SET
+       severity      = EXCLUDED.severity,
+       category      = EXCLUDED.category,
+       title         = EXCLUDED.title,
+       detail        = EXCLUDED.detail,
+       file_globs    = EXCLUDED.file_globs,
+       fix_sketch    = EXCLUDED.fix_sketch,
+       parallel_safe = EXCLUDED.parallel_safe,
+       fingerprint   = EXCLUDED.fingerprint
+     WHERE audit_findings.status NOT IN (${TERMINAL_SQL_LIST})`;
   try {
     await client.query('BEGIN');
     for (const f of findings) {
@@ -56,22 +108,11 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
       // formatting via pg-format; we don't use any of those in practice,
       // but a regression test would be needed before relying on it.
       const openedAt = f.opened_at?.trim() ? f.opened_at : new Date().toISOString();
-      await client.query(
-        `INSERT INTO audit_findings
-           (id, repo, severity, category, title, detail, file_globs, fix_sketch,
-            parallel_safe, fingerprint, status, opened_at, closed_at, closing_pr)
-         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
-         WHERE NOT EXISTS (
-           SELECT 1 FROM audit_findings
-           WHERE fingerprint = $10 AND repo = $2 AND status != 'closed'
-         )
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          f.id, repoKey, f.severity, f.category, f.title, f.detail,
-          f.file_globs, f.fix_sketch, f.parallel_safe, f.fingerprint,
-          f.status, openedAt, f.closed_at, f.closing_pr,
-        ],
-      );
+      await client.query(sql, [
+        f.id, repoKey, f.severity, f.category, f.title, f.detail,
+        f.file_globs, f.fix_sketch, f.parallel_safe, f.fingerprint,
+        f.status, openedAt, f.closed_at, f.closing_pr,
+      ]);
     }
     await client.query('COMMIT');
   } catch (err) {
