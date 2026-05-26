@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dbUpsertFindings } from '../src/audit/audit-store.js';
+import { dbUpsertFindings, normaliseAuditRepo } from '../src/audit/audit-store.js';
 import type { AuditFinding } from '../src/discord/audit-runner.js';
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), '..', '..');
@@ -29,10 +29,11 @@ if (!repo) {
   console.warn(`[audit-sync] index.json "repo" field is empty or missing — upsert may target wrong repo`);
 }
 const active = findings.filter((f) => f.status !== 'closed');
+const repoKey = normaliseAuditRepo(repo ?? '');
 
-console.log(`Syncing ${active.length} active findings for repo "${repo}" to Supabase…`);
+console.log(`Syncing ${active.length} active findings for repo "${repoKey}" to Supabase…`);
 
-await dbUpsertFindings(active, repo);
+await dbUpsertFindings(active, repoKey);
 
 console.log(`Done. ${active.length} findings upserted (duplicates skipped by fingerprint).`);
 
