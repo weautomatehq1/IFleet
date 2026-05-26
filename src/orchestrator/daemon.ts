@@ -169,9 +169,22 @@ async function main(): Promise<void> {
   // both before the worktree is torn down (which happens before task.completed).
   const verifierCtx = new TaskContextRegistry();
 
-  // Cancel any sprints still marked 'running' from a previous crash so
-  // resumeAbandoned() has nothing to recover — preventing double-dispatch when
-  // recoverStale() just reset their tasks back to pending.
+  // Unified-store taskId → orchestrator SprintId. /cancel and /stop arrive
+  // with the unified ID (Discord ULID / GitHub node_id) and need to reach
+  // SprintManager.cancelSprint which is keyed by SprintId. Populated from
+  // wireSprintCompletion (which owns both) and pruned in the same handler
+  // on terminal sprint events. AUDIT-IFleet-15443528 / ea8d8b2f / 67942487.
+  const unifiedToSprintId = new Map<string, SprintId>();
+
+  // Boot recovery ordering (matters — DO NOT REORDER):
+  //   1. store.recoverStale() above flips any `in_flight` unified rows back
+  //      to `pending` so the tick loop can re-pick them after a crash.
+  //   2. The loop below marks any orchestrator sprints still `running` from
+  //      that same crash as `failed` so Orchestrator.resumeAbandoned() in
+  //      .start() returns empty and does not double-dispatch.
+  // Swapping these would let recoverStale revive a task whose sprint is
+  // still "running" in the StateStore, and resumeAbandoned would race the
+  // tick loop. Documented per AUDIT-IFleet-3b6e4b48.
   const staleSprintNow = Date.now();
   for (const sprint of orchestratorStore.listSprintsByStateKind('running')) {
     orchestratorStore.saveSprint({
@@ -311,10 +324,18 @@ async function main(): Promise<void> {
       // SprintManager's cancelSprint walks `running` and calls handle.cancel()
       // which in turn calls abortController.abort() — that's what kills the
       // editor/verifier/reviewer mid-spawn.
+      //
+      // PR #211 looked up `orchestratorStore.loadTask(resolvedId)` here, but
+      // the orchestrator store is keyed by `tk_<nanoid>` IDs (sprint.ts:170)
+      // while resolvedId is the unified store's ULID/node_id — the lookup
+      // always returned undefined and cancelSprint was never called. The
+      // unifiedToSprintId map is populated from wireSprintCompletion (which
+      // owns both IDs) so this lookup hits in O(1). AUDIT-IFleet-15443528,
+      // ea8d8b2f, 67942487, 11a51d4c.
       try {
-        const task = orchestratorStore.loadTask(resolvedId as TaskId);
-        if (task) {
-          await orchestrator.cancelSprint(task.sprintId, reason ?? 'cancelled via control plane');
+        const sprintId = unifiedToSprintId.get(resolvedId);
+        if (sprintId) {
+          await orchestrator.cancelSprint(sprintId, reason ?? 'cancelled via control plane');
         }
       } catch (err) {
         console.warn('[daemon] onCancel: orchestrator.cancelSprint failed:', err);
@@ -352,20 +373,40 @@ async function main(): Promise<void> {
       // sprint is queued/planning (not in `running`) — abort is a no-op
       // there, but the state flip still terminates it.
       const reason = cmd.reason ?? 'fleet stopped';
+      // Set the pause flag FIRST (AUDIT-IFleet-1cdaccd5). Previously this
+      // came after the read+cancel loop so the tick loop could pick up a
+      // new pending task during the await window between reading the
+      // running sprints and setting the freeze.
+      const opts: { reason?: string; by?: string } = { reason: cmd.reason ?? 'STOP' };
+      if (cmd.userLabel) opts.by = cmd.userLabel;
+      setFleetPaused(opts);
+
       const runningSprints = orchestratorStore.listSprintsByStateKind('running');
       let cancelled = 0;
       const sprintCancels: Promise<unknown>[] = [];
+
+      // Reverse-index the unified→sprint map so we can find every unified
+      // task ID attached to a sprint we're about to cancel. The orchestrator
+      // store keys tasks by `tk_<nanoid>` (sprint.ts:170) which is the wrong
+      // namespace for both store.updateState and approvalGate.resolve, both
+      // of which are keyed by the unified ID. AUDIT-IFleet-b98f11ed,
+      // 0920cd46, 0aaad39f.
+      const sprintToUnified = new Map<string, string[]>();
+      for (const [unifiedId, sprintId] of unifiedToSprintId.entries()) {
+        const bucket = sprintToUnified.get(sprintId) ?? [];
+        bucket.push(unifiedId);
+        sprintToUnified.set(sprintId, bucket);
+      }
+
       for (const sprint of runningSprints) {
         try {
-          const full = orchestratorStore.loadSprint(sprint.id);
-          const taskIds = full?.tasks ?? [];
-          for (const taskId of taskIds) {
+          for (const unifiedId of sprintToUnified.get(sprint.id) ?? []) {
             try {
-              store.updateState(taskId, 'failed', { reason });
+              store.updateState(unifiedId, 'failed', { reason });
             } catch {
-              /* unified row may not exist for this taskId */
+              /* unified row may already be terminal — leave it */
             }
-            approvalGate.resolve(taskId, 'cancel');
+            approvalGate.resolve(unifiedId, 'cancel');
             cancelled++;
           }
           sprintCancels.push(
@@ -377,12 +418,6 @@ async function main(): Promise<void> {
           console.warn('[daemon] onStop: sprint cancel iteration failed:', err);
         }
       }
-      // Set the pause flag BEFORE awaiting cancellations so the very next
-      // tick already sees the freeze even if the abort takes a few seconds
-      // to propagate through the pipeline phases.
-      const opts: { reason?: string; by?: string } = { reason: cmd.reason ?? 'STOP' };
-      if (cmd.userLabel) opts.by = cmd.userLabel;
-      setFleetPaused(opts);
       await Promise.allSettled(sprintCancels);
       broadcastIFleet(
         `🛑 Fleet STOPPED${cmd.userLabel ? ` by ${cmd.userLabel}` : ''}${cmd.reason ? ` — ${cmd.reason}` : ''}. ` +
@@ -401,8 +436,20 @@ async function main(): Promise<void> {
 
   // -------- Tick loop: drain pending → submitSprint --------
   let running = true;
+  // Tracks whether any subsystem reported a failure during shutdown so the
+  // process can exit with a non-zero code instead of masking it under exit(0).
+  // AUDIT-IFleet-e96f2978.
+  let shutdownErrors = 0;
   const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
-  void runTickLoop(unified, orchestrator, () => running, tickIntervalMs, store, discordOut);
+  void runTickLoop(
+    unified,
+    orchestrator,
+    () => running,
+    tickIntervalMs,
+    store,
+    discordOut,
+    unifiedToSprintId,
+  );
 
   orchestrator.start();
   console.warn(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);
@@ -415,29 +462,37 @@ async function main(): Promise<void> {
     try {
       approvalGate.drain();
     } catch (err) {
+      shutdownErrors++;
       console.warn('[daemon] approval drain failed:', err);
     }
     try {
       await orchestrator.stop();
     } catch (err) {
+      shutdownErrors++;
       console.warn('[daemon] orchestrator.stop failed:', err);
     }
     try {
       await client.destroy();
     } catch (err) {
+      shutdownErrors++;
       console.warn('[daemon] client.destroy failed:', err);
     }
     try {
       await cp.stop();
     } catch (err) {
+      shutdownErrors++;
       console.warn('[daemon] cp.stop failed:', err);
     }
     try {
       store.close();
     } catch (err) {
+      shutdownErrors++;
       console.warn('[daemon] store.close failed:', err);
     }
-    process.exit(0);
+    // Exit non-zero if any subsystem failed during teardown so PM2 and
+    // the operator surface the issue instead of seeing a clean exit code
+    // that masks a half-shutdown. AUDIT-IFleet-e96f2978.
+    process.exit(shutdownErrors > 0 ? 1 : 0);
   };
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
   process.once('SIGINT', () => void shutdown('SIGINT'));
@@ -456,6 +511,7 @@ async function runTickLoop(
   tickMs: number,
   store: TaskStore,
   out?: DiscordOutAdapter,
+  unifiedToSprintId?: Map<string, SprintId>,
 ): Promise<void> {
   let lastPausedAt = false;
   while (isRunning()) {
@@ -484,10 +540,15 @@ async function runTickLoop(
           goal: task.title,
           newTaskBriefs: [brief],
         });
+        // Bridge the unified task ID → orchestrator sprint ID so /cancel
+        // and /stop (which arrive with the unified ID) can reach the
+        // SprintManager. wireSprintCompletion cleans the entry on terminal
+        // sprint events.
+        unifiedToSprintId?.set(task.id, sprintRec.id);
         // adapter already flipped the row to in_flight inside pickNext().
         // Wire the sprint's terminal event back to the unified queue so the
         // task row transitions out of in_flight (done / failed).
-        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store, out);
+        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store, out, unifiedToSprintId);
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
@@ -511,6 +572,7 @@ function wireSprintCompletion(
   orchestrator: Orchestrator,
   store: TaskStore,
   out?: DiscordOutAdapter,
+  unifiedToSprintId?: Map<string, SprintId>,
 ): void {
   let lastPrUrl: string | undefined;
   let lastTotalTokens: number | undefined;
@@ -575,6 +637,7 @@ function wireSprintCompletion(
 
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
+      unifiedToSprintId?.delete(task.id);
 
       if (lastPrUrl) {
         const prNumber = extractPrNumber(lastPrUrl);
@@ -601,6 +664,7 @@ function wireSprintCompletion(
 
     if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
       orchestrator.off('event', handler);
+      unifiedToSprintId?.delete(task.id);
       // sprint.failed / sprint.cancelled events carry only { from, to } in
       // payload — the actual error/reason lives on SprintState. Read it from
       // the store via the orchestrator instead of trusting the payload.
