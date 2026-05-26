@@ -5,7 +5,7 @@
 // morning-report: reads each repo's .audits/index.json and posts a findings
 //                 summary to #ifleet (channel 1504120127791042631)
 
-import { execFile } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
@@ -24,7 +24,15 @@ const AUDIT_REPOS = (process.env['AUDIT_REPOS'] ?? 'IFleet')
   .split(',')
   .map((r) => r.trim())
   .filter(Boolean);
-const CLAUDE_BIN = process.env['CLAUDE_BIN'] ?? '/usr/bin/claude';
+
+// Resolve claude binary: env override wins, then PATH lookup, then VPS default.
+const CLAUDE_BIN = process.env['CLAUDE_BIN'] ?? (() => {
+  try {
+    return execSync('which claude', { encoding: 'utf8' }).trim();
+  } catch {
+    return '/usr/bin/claude';
+  }
+})();
 
 // Repos are expected to be siblings of the IFleet checkout.
 // IFleet itself resolves to IFLEET_REPO_ROOT (or cwd) to avoid duplication.
@@ -40,7 +48,11 @@ async function runAutopilot(repos: string[]): Promise<void> {
     const cwd = resolveRepoPath(repo);
     console.log(`[audit-ritual] autopilot ${repo} → ${cwd}`);
     try {
-      await execFileAsync(CLAUDE_BIN, ['-p', '/audit-fix auto'], { cwd });
+      await execFileAsync(CLAUDE_BIN, ['-p', '/audit-fix auto'], {
+        cwd,
+        maxBuffer: 50 * 1024 * 1024,
+        timeout: 30 * 60 * 1000,
+      });
       console.log(`[audit-ritual] autopilot done: ${repo}`);
     } catch (err) {
       console.error(
@@ -78,22 +90,33 @@ async function runMorningReport(repos: string[]): Promise<void> {
 
   const message = lines.join('\n');
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  const DISCORD_TIMEOUT_MS = 30_000;
   try {
-    await client.login(token);
-    await new Promise<void>((resolve, reject) => {
-      client.once('ready', async () => {
-        try {
-          const channel = await client.channels.fetch(IFLEET_CHANNEL_ID);
-          if (!channel || !('send' in channel)) {
-            throw new Error(`channel ${IFLEET_CHANNEL_ID} is not a text channel`);
-          }
-          await (channel as TextChannel).send(message);
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
+    await Promise.race([
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('[audit-ritual] Discord login timed out after 30s')),
+          DISCORD_TIMEOUT_MS,
+        ),
+      ),
+      (async () => {
+        await client.login(token);
+        await new Promise<void>((res, rej) => {
+          client.once('ready', async () => {
+            try {
+              const channel = await client.channels.fetch(IFLEET_CHANNEL_ID);
+              if (!channel || !('send' in channel)) {
+                throw new Error(`channel ${IFLEET_CHANNEL_ID} is not a text channel`);
+              }
+              await (channel as TextChannel).send(message);
+              res();
+            } catch (err) {
+              rej(err);
+            }
+          });
+        });
+      })(),
+    ]);
   } finally {
     client.destroy();
   }
@@ -109,7 +132,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('[audit-ritual] fatal:', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('[audit-ritual] fatal:', err);
+    process.exit(1);
+  });

@@ -383,3 +383,31 @@ describe('DiscordOutAdapter.postCompleted / postFailed', () => {
     expect(payload.embeds[0]!.data.description).toContain('exited');
   });
 });
+
+describe('DiscordOutAdapter.postChannelMessage', () => {
+  it('calls the channel send() method with the message', async () => {
+    const send = vi.fn();
+    const channel = { isTextBased: () => true, send };
+    const client = {
+      channels: {
+        fetch: vi.fn().mockResolvedValue(channel),
+      },
+    } as unknown as Client;
+    const adapter = new DiscordOutAdapter({ client, router: makeRouter([]) });
+    await adapter.postChannelMessage('123', 'test message');
+    expect(send).toHaveBeenCalledWith('test message');
+  });
+
+  it('is a no-op when the message is empty', async () => {
+    const send = vi.fn();
+    const channel = { isTextBased: () => true, send };
+    const client = {
+      channels: {
+        fetch: vi.fn().mockResolvedValue(channel),
+      },
+    } as unknown as Client;
+    const adapter = new DiscordOutAdapter({ client, router: makeRouter([]) });
+    await adapter.postChannelMessage('123', '');
+    expect(send).not.toHaveBeenCalled();
+  });
+});
