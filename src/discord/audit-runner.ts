@@ -14,7 +14,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export type AuditSeverity = 'CRITICAL' | 'IMPORTANT' | 'COSMETIC';
-export type AuditStatus = 'open' | 'fixing' | 'verifying' | 'reopened' | 'closed';
+export type AuditStatus = 'open' | 'fixing' | 'verifying' | 'reopened' | 'closed' | 'fixed' | 'stale';
 
 export interface AuditFinding {
   id: string;
@@ -49,6 +49,8 @@ const AUDIT_STATUSES: readonly AuditStatus[] = [
   'verifying',
   'reopened',
   'closed',
+  'fixed',
+  'stale',
 ];
 
 /**
