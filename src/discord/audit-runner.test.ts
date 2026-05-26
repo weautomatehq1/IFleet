@@ -39,7 +39,7 @@ function makeIndex(findings: AuditFinding[]): AuditIndex {
     repo: 'IFleet',
     last_updated: '2026-05-22T00:00:00Z',
     open_findings: findings.length,
-    by_severity: {},
+    by_severity: { CRITICAL: 0, IMPORTANT: 0, COSMETIC: 0 },
     findings,
   };
 }
