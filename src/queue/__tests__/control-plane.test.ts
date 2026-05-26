@@ -315,4 +315,100 @@ describe('control plane HTTP', () => {
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(approvedId, 't-1');
   });
+
+  it('verify round-trip — parseCommand + dispatch hits onVerify', async () => {
+    assert.deepEqual(parseCommand('{"type":"verify","taskId":"t-v"}'), {
+      type: 'verify',
+      taskId: 't-v',
+    });
+    let verifiedId: string | undefined;
+    const queue = noopQueue();
+    const cp = createControlPlane({
+      queue,
+      hmacSecret: 's',
+      port: 0,
+      onVerify: (id) => {
+        verifiedId = id;
+      },
+    });
+    await cp.start();
+    try {
+      const addr = cp.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}/control`;
+      const body = JSON.stringify({ type: 'verify', taskId: 't-v' });
+      const res = await fetch(url, { method: 'POST', headers: signedHeaders('s', body), body });
+      assert.equal(res.status, 202);
+    } finally {
+      await cp.stop();
+    }
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(verifiedId, 't-v');
+  });
+
+  it('force_pr round-trip — parseCommand + dispatch hits onForcePr with reason', async () => {
+    assert.deepEqual(parseCommand('{"type":"force_pr","taskId":"t-f","reason":"override"}'), {
+      type: 'force_pr',
+      taskId: 't-f',
+      reason: 'override',
+    });
+    let forcedId: string | undefined;
+    let forcedReason: string | undefined;
+    const queue = noopQueue();
+    const cp = createControlPlane({
+      queue,
+      hmacSecret: 's',
+      port: 0,
+      onForcePr: (id, reason) => {
+        forcedId = id;
+        forcedReason = reason;
+      },
+    });
+    await cp.start();
+    try {
+      const addr = cp.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}/control`;
+      const body = JSON.stringify({ type: 'force_pr', taskId: 't-f', reason: 'override' });
+      const res = await fetch(url, { method: 'POST', headers: signedHeaders('s', body), body });
+      assert.equal(res.status, 202);
+    } finally {
+      await cp.stop();
+    }
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(forcedId, 't-f');
+    assert.equal(forcedReason, 'override');
+  });
+
+  it('cancel dispatch does NOT call queue.markFailed even when resolveTask returns a task', async () => {
+    let onCancelCalled = false;
+    let markFailedCalled = false;
+    const queue: QueueAdapter = {
+      ...noopQueue(),
+      markFailed: async () => {
+        markFailedCalled = true;
+      },
+    };
+    const fakeTask = { id: 't-c' } as unknown as QueuedTask;
+    const cp = createControlPlane({
+      queue,
+      hmacSecret: 's',
+      port: 0,
+      onCancel: () => {
+        onCancelCalled = true;
+      },
+      resolveTask: () => fakeTask,
+    });
+    await cp.start();
+    try {
+      const addr = cp.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}/control`;
+      const body = JSON.stringify({ type: 'cancel', taskId: 't-c', reason: 'r' });
+      const res = await fetch(url, { method: 'POST', headers: signedHeaders('s', body), body });
+      assert.equal(res.status, 202);
+    } finally {
+      await cp.stop();
+    }
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(onCancelCalled, true, 'onCancel must run');
+    assert.equal(markFailedCalled, false, 'queue.markFailed must not be invoked from dispatch');
+  });
 });

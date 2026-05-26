@@ -119,6 +119,19 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     onCancel: async (taskId, reason) => {
       store.updateState(taskId, 'failed', { reason: reason ?? 'cancelled' });
     },
+    // verify / force_pr require the in-process verifier + orchestrator wiring
+    // that only the daemon owns. If they reach this public entry, fail loudly
+    // instead of optional-chaining into a silent no-op (AUDIT-IFleet-5bfc3a68).
+    onVerify: async (taskId) => {
+      throw new Error(
+        `[control-plane] verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      );
+    },
+    onForcePr: async (taskId) => {
+      throw new Error(
+        `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      );
+    },
     resolveTask: () => null, // legacy adapter; unified store carries the canonical state
   });
 
