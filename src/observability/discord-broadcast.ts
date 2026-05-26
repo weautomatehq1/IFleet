@@ -10,11 +10,47 @@
 // HTTP path so both the cron + daemon use the same wire format, and it
 // fails LOUD (warn on unset env) instead of silently no-oping.
 
-import { request } from 'node:https';
+import { request as httpsRequest } from 'node:https';
+import { request as httpRequest } from 'node:http';
 
 const ENV_VAR = 'DISCORD_IFLEET_WEBHOOK';
 
-let warnedUnset = false;
+// Discord webhook hard cap is 2000 chars for `content`; leave headroom for
+// any wrapping the caller forgot (markdown fences, ellipsis).
+const MAX_CONTENT_LEN = 1900;
+
+// Discord webhook rate limit is 30 req/min (5 burst per 2s). 2000ms minimum
+// spacing between sends keeps us under both limits even when /stop cancels
+// N tasks back-to-back. Closes AUDIT-IFleet-2e7a838d / AUDIT-IFleet-7912f2d9.
+const MIN_INTERVAL_MS = 2000;
+
+// Per-URL state so the module-level flag doesn't leak across parallel test
+// runs (each test that mutates DISCORD_IFLEET_WEBHOOK gets its own slot).
+// Closes AUDIT-IFleet-40f6cad5.
+interface BroadcastState {
+  warnedUnset: boolean;
+  lastSentAt: number;
+}
+const stateByUrl = new Map<string, BroadcastState>();
+
+// Key for the "unset" state — every callsite without a webhook URL shares one
+// slot so the warn-once still fires only once per process when nothing is set.
+const UNSET_KEY = '__unset__';
+
+function getState(key: string): BroadcastState {
+  let s = stateByUrl.get(key);
+  if (!s) {
+    s = { warnedUnset: false, lastSentAt: 0 };
+    stateByUrl.set(key, s);
+  }
+  return s;
+}
+
+function truncate(msg: string): string {
+  if (msg.length <= MAX_CONTENT_LEN) return msg;
+  // Reserve one char for the ellipsis so the wire payload stays under cap.
+  return msg.slice(0, MAX_CONTENT_LEN - 1) + '…';
+}
 
 /**
  * Post `msg` to the IFleet broadcast Discord webhook. Returns immediately —
@@ -23,12 +59,17 @@ let warnedUnset = false;
  *
  * The first call with an unset webhook env warns once on stderr so silent
  * misconfiguration is detectable in pm2 logs.
+ *
+ * Messages over 1900 chars are truncated (Discord caps `content` at 2000).
+ * Sends are spaced ≥ MIN_INTERVAL_MS apart to stay under Discord's 30/min
+ * webhook rate limit even when /stop cancels many tasks at once.
  */
 export function broadcastIFleet(msg: string): void {
   const url = process.env[ENV_VAR];
   if (!url) {
-    if (!warnedUnset) {
-      warnedUnset = true;
+    const s = getState(UNSET_KEY);
+    if (!s.warnedUnset) {
+      s.warnedUnset = true;
       console.warn(
         `[broadcast] ${ENV_VAR} is not set — IFleet task events will not surface to Discord. ` +
           `Set it in the PM2 ecosystem so silent failures stop happening.`,
@@ -36,12 +77,32 @@ export function broadcastIFleet(msg: string): void {
     }
     return;
   }
+
+  // Rate-limit: schedule the send so it lands ≥ MIN_INTERVAL_MS after the
+  // last send for the same URL. Caller still returns synchronously; the
+  // setTimeout keeps the fire-and-forget contract.
+  const state = getState(url);
+  const now = Date.now();
+  const delay = Math.max(0, state.lastSentAt + MIN_INTERVAL_MS - now);
+  state.lastSentAt = now + delay;
+  if (delay === 0) {
+    sendNow(url, truncate(msg));
+  } else {
+    setTimeout(() => sendNow(url, truncate(msg)), delay).unref();
+  }
+}
+
+function sendNow(url: string, msg: string): void {
   const body = JSON.stringify({ content: msg });
   try {
     const parsed = new URL(url);
+    // Closes AUDIT-IFleet-91db3b82: integration/dev setups may point at an
+    // http://localhost mock; default to https for prod webhook URLs.
+    const request = parsed.protocol === 'http:' ? httpRequest : httpsRequest;
     const req = request(
       {
         hostname: parsed.hostname,
+        port: parsed.port || undefined,
         path: parsed.pathname + parsed.search,
         method: 'POST',
         headers: {
@@ -61,4 +122,13 @@ export function broadcastIFleet(msg: string): void {
       `[broadcast] webhook POST threw: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/**
+ * Reset module-level broadcast state. Test-only helper — production code
+ * never calls this. Exported so test suites can isolate `warnedUnset` and
+ * `lastSentAt` between runs without sharing module-level state.
+ */
+export function __resetBroadcastStateForTests(): void {
+  stateByUrl.clear();
 }
