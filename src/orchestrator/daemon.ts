@@ -270,16 +270,82 @@ async function main(): Promise<void> {
       // Operator override: log the deliberate bypass into the events table so
       // observability can render the action. Verifier state is not mutated —
       // the verifier_runs row stays `failed`; this row is the audit trail.
+      // AUDIT-IFleet-73a3a883 / 9b44a71a — previous form only appended the
+      // event and never actually opened the PR. Now we resolve the task's
+      // branch from TaskContextRegistry and shell out to `gh pr create`.
+      // If branch context is missing (registry already evicted, GitHub
+      // source without a worktree), log and skip — don't crash the daemon.
+      let sprintId: SprintId | undefined;
       try {
-        const task = orchestratorStore.loadTask(taskId as TaskId);
-        if (task) {
+        // Try unified store first (Discord-source tasks live here only).
+        const unified = store.getById(taskId);
+        sprintId = unifiedToSprintId.get(taskId);
+        if (sprintId) {
           orchestratorStore.appendEvent({
             ts: Date.now(),
-            sprintId: task.sprintId,
-            taskId: task.id,
+            sprintId,
+            taskId: taskId as TaskId,
             kind: 'verifier.force_pr',
             payload: { reason: reason ?? null },
           });
+        } else {
+          // Fall back to orchestrator-store lookup for the legacy path
+          // (some tk_-keyed callers; keep the audit row landing).
+          const tk = orchestratorStore.loadTask(taskId as TaskId);
+          if (tk) {
+            sprintId = tk.sprintId;
+            orchestratorStore.appendEvent({
+              ts: Date.now(),
+              sprintId: tk.sprintId,
+              taskId: tk.id,
+              kind: 'verifier.force_pr',
+              payload: { reason: reason ?? null },
+            });
+          }
+        }
+        const ctx = verifierCtx.get(taskId);
+        if (!ctx) {
+          console.warn(
+            `[daemon] onForcePr(${taskId}): no branch context in TaskContextRegistry — audit event logged but PR not opened`,
+          );
+          return;
+        }
+        // Derive repo slug ("owner/repo") from the repoUrl the registry
+        // captured at bootstrap. Form: https://github.com/<owner>/<repo>.
+        const repoSlug = ctx.repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+        const title = unified?.title ?? `Force-PR for ${taskId}`;
+        const body =
+          `Force-PR override dispatched via Discord.\n\n` +
+          `- Task: \`${taskId}\`\n` +
+          `- Reason: ${reason ?? '(none)'}\n` +
+          `- Verifier status: \`failed\` (deliberate operator bypass)\n`;
+        try {
+          await execFileAsync(
+            'gh',
+            [
+              'pr',
+              'create',
+              '--repo',
+              repoSlug,
+              '--base',
+              'main',
+              '--head',
+              ctx.branch,
+              '--title',
+              title,
+              '--body',
+              body,
+            ],
+            { cwd: ctx.worktreePath },
+          );
+        } catch (err) {
+          // `gh` exits non-zero if the PR already exists — surface as warn,
+          // not a crash. Operator can verify on GitHub.
+          console.warn(
+            `[daemon] onForcePr(${taskId}): gh pr create failed (PR may already exist): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
         }
       } catch (err) {
         console.warn('[daemon] onForcePr append failed:', err);
@@ -449,6 +515,7 @@ async function main(): Promise<void> {
     store,
     discordOut,
     unifiedToSprintId,
+    verifierCtx,
   );
 
   orchestrator.start();
@@ -512,6 +579,7 @@ async function runTickLoop(
   store: TaskStore,
   out?: DiscordOutAdapter,
   unifiedToSprintId?: Map<string, SprintId>,
+  verifierCtx?: TaskContextRegistry,
 ): Promise<void> {
   let lastPausedAt = false;
   while (isRunning()) {
@@ -548,7 +616,16 @@ async function runTickLoop(
         // adapter already flipped the row to in_flight inside pickNext().
         // Wire the sprint's terminal event back to the unified queue so the
         // task row transitions out of in_flight (done / failed).
-        wireSprintCompletion(sprintRec.id, task, adapter, orchestrator, store, out, unifiedToSprintId);
+        wireSprintCompletion(
+          sprintRec.id,
+          task,
+          adapter,
+          orchestrator,
+          store,
+          out,
+          unifiedToSprintId,
+          verifierCtx,
+        );
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
@@ -573,6 +650,7 @@ function wireSprintCompletion(
   store: TaskStore,
   out?: DiscordOutAdapter,
   unifiedToSprintId?: Map<string, SprintId>,
+  verifierCtx?: TaskContextRegistry,
 ): void {
   let lastPrUrl: string | undefined;
   let lastTotalTokens: number | undefined;
@@ -638,6 +716,7 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
       unifiedToSprintId?.delete(task.id);
+      verifierCtx?.delete(task.id);
 
       if (lastPrUrl) {
         const prNumber = extractPrNumber(lastPrUrl);
@@ -665,6 +744,7 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
       orchestrator.off('event', handler);
       unifiedToSprintId?.delete(task.id);
+      verifierCtx?.delete(task.id);
       // sprint.failed / sprint.cancelled events carry only { from, to } in
       // payload — the actual error/reason lives on SprintState. Read it from
       // the store via the orchestrator instead of trusting the payload.
@@ -727,6 +807,14 @@ export class TaskContextRegistry {
     if (r) r.sha = sha;
   }
   get(taskId: string): TaskContextRecord | undefined { return this.map.get(taskId); }
+  /**
+   * Evict on terminal sprint state. Without this the map grows monotonically
+   * for the life of the 24/7 daemon — every processed task adds one entry
+   * that's never reclaimed. AUDIT-IFleet-4aed4b1e / 8c9e1b6f / 3d7f47c3 / 4c20a0e6.
+   */
+  delete(taskId: string): boolean { return this.map.delete(taskId); }
+  /** Test helper — current entry count. */
+  size(): number { return this.map.size; }
 }
 
 export function wrapFactoryWithVerifierContext(
