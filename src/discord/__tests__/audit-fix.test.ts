@@ -12,12 +12,16 @@ import type {
 const CHAN = '1504120127791042631';
 const USER = '1503477896402960405';
 
+// Hosted in a mutable holder so each test can point the route at the
+// per-test tmpdir that backs the .audits/index.json fixture.
+const ROUTE_WORKDIR = { current: '/tmp/ifleet-wd' };
+
 function route(channelId: string) {
   return channelId === CHAN
     ? {
         channelId,
         repo: 'weautomatehq1/IFleet',
-        workDir: '/tmp/ifleet-wd',
+        workDir: ROUTE_WORKDIR.current,
         defaultBranch: 'main' as const,
         defaultModel: 'opus' as const,
         allowedUserIds: [USER],
@@ -110,6 +114,7 @@ describe('/audit-fix handler', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'audit-fix-handler-'));
     prevRepoRoot = process.env['IFLEET_REPO_ROOT'];
     process.env['IFLEET_REPO_ROOT'] = repoRoot;
+    ROUTE_WORKDIR.current = repoRoot;
   });
 
   afterEach(() => {

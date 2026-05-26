@@ -49,7 +49,12 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
   try {
     await client.query('BEGIN');
     for (const f of findings) {
-      const openedAt = f.opened_at || new Date().toISOString();
+      // pg natively serializes a JS string[] → Postgres TEXT[] for
+      // file_globs. This is safe for ordinary glob patterns. Patterns that
+      // embed `{` `}` `,` `"` or `\` would need explicit array-literal
+      // formatting via pg-format; we don't use any of those in practice,
+      // but a regression test would be needed before relying on it.
+      const openedAt = f.opened_at?.trim() ? f.opened_at : new Date().toISOString();
       await client.query(
         `INSERT INTO audit_findings
            (id, repo, severity, category, title, detail, file_globs, fix_sketch,

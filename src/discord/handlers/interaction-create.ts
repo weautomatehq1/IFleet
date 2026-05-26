@@ -153,7 +153,7 @@ async function handleAuditStatus(
   interaction: ChatInputCommandInteraction,
   route: ChannelRoute,
 ): Promise<void> {
-  const index = await loadAuditIndex(route.repo);
+  const index = await loadAuditIndex(route.repo, route.workDir);
   if (!index) {
     await interaction.editReply('No audit findings yet — run `/audit-scan` from the CLI.');
     return;
@@ -180,7 +180,7 @@ async function handleAuditStatus(
  * Both forms are normalised inside `dbReadIndex` via `normaliseAuditRepo`,
  * so callers don't have to think about which they're holding.
  */
-async function loadAuditIndex(fullRepo: string): Promise<AuditIndex | null> {
+async function loadAuditIndex(fullRepo: string, repoRoot?: string): Promise<AuditIndex | null> {
   try {
     const dbIndex = await dbReadIndex(normaliseAuditRepo(fullRepo));
     if (dbIndex && dbIndex.findings.length > 0) return dbIndex;
@@ -189,7 +189,9 @@ async function loadAuditIndex(fullRepo: string): Promise<AuditIndex | null> {
       `[audit] dbReadIndex failed for ${fullRepo}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  return readAuditIndex(resolveAuditIndexPath());
+  // Use the per-channel route's workDir so e.g. an /audit-fix from the
+  // #factory channel reads factory's .audits/index.json, not IFleet's.
+  return readAuditIndex(resolveAuditIndexPath(repoRoot));
 }
 
 /**
@@ -217,8 +219,8 @@ async function handleAuditFix(
   // (the only other writer, /audit-scan, is a separate CLI invoked by hand).
   // Read prefers Supabase (synced from Mac via `pnpm audit:sync`) so the VPS
   // sees the current findings even when its local index.json is stale.
-  const indexPath = resolveAuditIndexPath();
-  const index = await loadAuditIndex(route.repo);
+  const indexPath = resolveAuditIndexPath(route.workDir);
+  const index = await loadAuditIndex(route.repo, route.workDir);
   if (!index) {
     await interaction.editReply('No audit findings yet. Run /audit-scan first.');
     return;

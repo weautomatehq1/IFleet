@@ -25,8 +25,13 @@ try {
 }
 
 const { repo, findings } = parsed;
-if (!repo) {
-  console.warn(`[audit-sync] index.json "repo" field is empty or missing — upsert may target wrong repo`);
+if (!repo || typeof repo !== 'string') {
+  console.error(`[audit-sync] index.json "repo" field is missing or not a string — refusing to upsert (would otherwise target the wrong scope)`);
+  process.exit(1);
+}
+if (!Array.isArray(findings)) {
+  console.error(`[audit-sync] index.json "findings" field is not an array — refusing to upsert`);
+  process.exit(1);
 }
 const active = findings.filter((f) => f.status !== 'closed');
 const repoKey = normaliseAuditRepo(repo ?? '');

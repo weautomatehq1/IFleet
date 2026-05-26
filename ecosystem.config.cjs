@@ -33,6 +33,11 @@ const path = require('path');
 
 const logDir = path.join(process.env.HOME || require('os').homedir(), '.pm2', 'logs');
 
+// Minimal .env parser used at PM2 boot.
+// Note: this parser does NOT handle multi-line values, `export FOO=...`
+// statements, surrounding quotes, escaped characters, or `${VAR}` expansion.
+// If you need any of those, pre-process the .env outside PM2 or switch to a
+// real dotenv library.
 const envFile = path.join(__dirname, '.env');
 const dotEnv = {};
 if (fs.existsSync(envFile)) {
