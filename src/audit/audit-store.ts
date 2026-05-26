@@ -6,6 +6,7 @@
 import { getKgPool } from '../agents/indexer/pg-client.js';
 import {
   emptyBySeverity,
+  isActiveAuditStatus,
   type AuditFinding,
   type AuditIndex,
   type AuditStatus,
@@ -133,8 +134,11 @@ export async function dbReadIndex(repo: string): Promise<AuditIndex | null> {
     return null;
   }
   if (findings.length === 0) return null;
-  // `active` mirrors `openFindings()` in audit-runner: any non-closed status counts.
-  const active = findings.filter((f) => f.status !== 'closed');
+  // `active` mirrors `recomputeCounts()` in audit-runner: only `open` or
+  // `reopened` findings count toward the rollup. Keeping the two filters
+  // lockstep is the invariant that prevents local index.json and Supabase
+  // rollups from diverging (AUDIT-IFleet-ab40871b).
+  const active = findings.filter((f) => isActiveAuditStatus(f.status));
   const by_severity = emptyBySeverity();
   for (const f of active) by_severity[f.severity] = (by_severity[f.severity] ?? 0) + 1;
   return {
