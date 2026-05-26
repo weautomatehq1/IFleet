@@ -2,6 +2,13 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { GitHubQueue, THROTTLE_MAX_RETRIES, isAuthorAllowed, shouldRetryRateLimit } from '../github.js';
 import type { QueuedTask } from '../types.js';
+import {
+  COOLDOWN_MS,
+  LABEL_AUTO_SHIP,
+  LABEL_FAILED,
+  LABEL_IFLEET_COOLDOWN,
+  LABEL_RETRY_PREFIX,
+} from '../types.js';
 
 interface FakeIssue {
   number: number;
@@ -81,6 +88,85 @@ function makeState(issues: FakeIssue[]): MockState {
     addedLabels: [],
     removedLabels: [],
     nextCommentId: 1000,
+  };
+}
+
+/**
+ * Extended mock with events support for sweepCooldowns tests.
+ * `findLabelAddedAt` uses `octokit.paginate(octokit.issues.listEvents, ...)`.
+ * The base mock routes all `issue_number` paginate calls to comments — this
+ * version routes `listEvents` calls to the events table instead.
+ */
+interface FakeEvent {
+  issue: number;
+  event: string;
+  label?: { name: string };
+  created_at: string;
+}
+
+interface MockStateWithEvents extends MockState {
+  events: FakeEvent[];
+}
+
+function makeStateWithEvents(issues: FakeIssue[]): MockStateWithEvents {
+  return { ...makeState(issues), events: [] };
+}
+
+function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
+  const listEvents = () => undefined; // sentinel used to route paginate
+
+  const paginate = async (
+    fn: unknown,
+    params: { labels?: string; issue_number?: number },
+  ): Promise<unknown[]> => {
+    if (fn === listEvents && params.issue_number !== undefined) {
+      return state.events.filter((e) => e.issue === params.issue_number);
+    }
+    if (params.issue_number !== undefined) {
+      return state.comments.filter((c) => c.issue === params.issue_number);
+    }
+    return state.issues.filter((i) => {
+      if (!params.labels) return true;
+      const wanted = params.labels.split(',');
+      const have = i.labels.map((l) => (typeof l === 'string' ? l : l.name ?? ''));
+      return wanted.every((w) => have.includes(w));
+    });
+  };
+
+  return {
+    paginate,
+    issues: {
+      listForRepo: () => undefined,
+      listComments: () => undefined,
+      listEvents,
+      addLabels: async (p: { issue_number: number; labels: string[] }) => {
+        state.addedLabels.push({ issue: p.issue_number, labels: p.labels });
+        const issue = state.issues.find((i) => i.number === p.issue_number);
+        if (issue) {
+          for (const l of p.labels) {
+            if (!issue.labels.some((x) => (typeof x === 'string' ? x : x.name) === l)) {
+              issue.labels.push(l);
+            }
+          }
+        }
+      },
+      removeLabel: async (p: { issue_number: number; name: string }) => {
+        state.removedLabels.push({ issue: p.issue_number, name: p.name });
+        const issue = state.issues.find((i) => i.number === p.issue_number);
+        if (issue) {
+          issue.labels = issue.labels.filter((l) => (typeof l === 'string' ? l : l.name) !== p.name);
+        }
+      },
+      createComment: async (p: { issue_number: number; body: string }) => {
+        const id = state.nextCommentId++;
+        state.comments.push({ id, issue: p.issue_number, body: p.body });
+        return { data: { id } };
+      },
+      updateComment: async (p: { comment_id: number; body: string }) => {
+        const c = state.comments.find((x) => x.id === p.comment_id);
+        if (c) c.body = p.body;
+      },
+    },
   };
 }
 
@@ -498,5 +584,168 @@ describe('GitHubQueue.pickNext author allowlist', () => {
     const q = makeGuardedQueue(state);
     const next = await q.pickNext();
     assert.equal(next, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sweepCooldowns — full retry-cap cycle (AUDIT-IFleet-73be8513)
+// ---------------------------------------------------------------------------
+
+describe('GitHubQueue.sweepCooldowns — retry label preserved across restore', () => {
+  const COOLDOWN_JUST_ELAPSED = COOLDOWN_MS + 1000;
+
+  function makeTask(extra: Partial<QueuedTask> = {}): QueuedTask {
+    return {
+      id: 'nid',
+      repo: 'weautomatehq1/IFleet',
+      issueNumber: 42,
+      title: 't',
+      body: '',
+      author: '',
+      labels: ['auto:ship', 'in_flight'],
+      routingHints: { priority: 'normal', verify: [], autonomy: 'auto' },
+      createdAt: 0,
+      url: 'u',
+      ...extra,
+    };
+  }
+
+  /**
+   * Build a queue with the clock set so `cooldownLabeledAt + COOLDOWN_MS` is
+   * in the past — forcing sweepCooldowns to restore the issue immediately.
+   */
+  function makeSweeperQueue(state: MockStateWithEvents): GitHubQueue {
+    const cooldownLabeledAt = Date.parse('2026-05-12T10:00:00Z');
+    const now = () => cooldownLabeledAt + COOLDOWN_JUST_ELAPSED;
+    return new GitHubQueue(mockOctokitWithEvents(state) as never, { repos: [REPO], now });
+  }
+
+  it('sweepCooldowns restores a cooled-down issue (removes cooldown, adds auto:ship)', async () => {
+    const state = makeStateWithEvents([
+      {
+        number: 42,
+        title: 't',
+        labels: [LABEL_IFLEET_COOLDOWN, LABEL_FAILED, `${LABEL_RETRY_PREFIX}1`],
+        created_at: '2026-05-12T09:00:00Z',
+        html_url: 'u',
+        node_id: 'nid',
+      },
+    ]);
+    // Provide the labeled event so findLabelAddedAt succeeds
+    state.events.push({
+      issue: 42,
+      event: 'labeled',
+      label: { name: LABEL_IFLEET_COOLDOWN },
+      created_at: '2026-05-12T10:00:00Z',
+    });
+
+    const q = makeSweeperQueue(state);
+    const { restored } = await q.sweepCooldowns();
+    assert.equal(restored, 1);
+
+    const labels = (state.issues[0]?.labels ?? []).map((l) =>
+      typeof l === 'string' ? l : l.name ?? '',
+    );
+    assert.ok(labels.includes(LABEL_AUTO_SHIP), 'auto:ship added');
+    assert.ok(!labels.includes(LABEL_IFLEET_COOLDOWN), 'ifleet:cooldown removed');
+    assert.ok(!labels.includes(LABEL_FAILED), 'auto:failed removed');
+  });
+
+  it('full cycle: markFailed → sweepCooldowns → markFailed again reads retry from labels', async () => {
+    // Phase 1: first failure — issue has no prior retry label
+    const state = makeStateWithEvents([
+      {
+        number: 42,
+        title: 't',
+        labels: [LABEL_AUTO_SHIP, 'in_flight'],
+        created_at: '2026-05-12T09:00:00Z',
+        html_url: 'u',
+        node_id: 'nid',
+      },
+    ]);
+
+    // Use a fixed base clock; sweep will use base + COOLDOWN_JUST_ELAPSED
+    const cooldownLabeledAt = Date.parse('2026-05-12T10:00:00Z');
+    const nowRef = { value: cooldownLabeledAt };
+    const q = new GitHubQueue(mockOctokitWithEvents(state) as never, {
+      repos: [REPO],
+      now: () => nowRef.value,
+    });
+
+    // markFailed from in_flight — task carries no prior retry label
+    const task1 = makeTask({ labels: [LABEL_AUTO_SHIP, 'in_flight'] });
+    await q.markFailed(task1, 'CI red round 1');
+
+    // Verify retry:1 was added
+    let labels = (state.issues[0]?.labels ?? []).map((l) =>
+      typeof l === 'string' ? l : l.name ?? '',
+    );
+    assert.ok(labels.includes(`${LABEL_RETRY_PREFIX}1`), 'retry:1 set after first failure');
+    assert.ok(labels.includes(LABEL_IFLEET_COOLDOWN), 'cooldown set');
+
+    // Phase 2: advance time past cooldown and sweep
+    nowRef.value = cooldownLabeledAt + COOLDOWN_JUST_ELAPSED;
+    state.events.push({
+      issue: 42,
+      event: 'labeled',
+      label: { name: LABEL_IFLEET_COOLDOWN },
+      // The event timestamp is when the label was added — at cooldownLabeledAt
+      created_at: new Date(cooldownLabeledAt).toISOString(),
+    });
+
+    const { restored } = await q.sweepCooldowns();
+    assert.equal(restored, 1, 'sweep restored the issue');
+
+    labels = (state.issues[0]?.labels ?? []).map((l) =>
+      typeof l === 'string' ? l : l.name ?? '',
+    );
+    assert.ok(labels.includes(LABEL_AUTO_SHIP), 'auto:ship restored');
+    assert.ok(!labels.includes(LABEL_IFLEET_COOLDOWN), 'cooldown removed');
+    // sweepCooldowns removes retry labels as a tidiness step (b06f33f2)
+    assert.ok(!labels.includes(`${LABEL_RETRY_PREFIX}1`), 'retry:1 removed by sweep');
+
+    // Phase 3: second failure. Task no longer has a retry label (sweep cleared
+    // it), so markFailed reads from issue labels live — retry should be 1 again
+    // (fresh start after sweep cleared the label).
+    const task2 = makeTask({ labels: [LABEL_AUTO_SHIP, 'in_flight'] });
+    await q.markFailed(task2, 'CI red round 2');
+
+    labels = (state.issues[0]?.labels ?? []).map((l) =>
+      typeof l === 'string' ? l : l.name ?? '',
+    );
+    // After sweep cleared retry:1, the second failure should add retry:1 again
+    assert.ok(labels.includes(`${LABEL_RETRY_PREFIX}1`), 'retry:1 added again after sweep + re-fail');
+    assert.ok(!labels.includes(`${LABEL_RETRY_PREFIX}2`), 'retry:2 NOT added (counter reset by sweep)');
+  });
+
+  it('sweepCooldowns skips issues with ifleet:chronic-fail', async () => {
+    const state = makeStateWithEvents([
+      {
+        number: 42,
+        title: 't',
+        labels: [LABEL_IFLEET_COOLDOWN, LABEL_FAILED, 'ifleet:chronic-fail', `${LABEL_RETRY_PREFIX}2`],
+        created_at: '2026-05-12T09:00:00Z',
+        html_url: 'u',
+        node_id: 'nid',
+      },
+    ]);
+    state.events.push({
+      issue: 42,
+      event: 'labeled',
+      label: { name: LABEL_IFLEET_COOLDOWN },
+      created_at: '2026-05-12T10:00:00Z',
+    });
+
+    const q = makeSweeperQueue(state);
+    const { restored, skippedChronic } = await q.sweepCooldowns();
+    assert.equal(restored, 0);
+    assert.equal(skippedChronic, 1);
+
+    const labels = (state.issues[0]?.labels ?? []).map((l) =>
+      typeof l === 'string' ? l : l.name ?? '',
+    );
+    // Issue NOT restored — still has cooldown
+    assert.ok(labels.includes(LABEL_IFLEET_COOLDOWN), 'cooldown not removed for chronic-fail');
+    assert.ok(!labels.includes(LABEL_AUTO_SHIP), 'auto:ship not re-added for chronic-fail');
   });
 });
