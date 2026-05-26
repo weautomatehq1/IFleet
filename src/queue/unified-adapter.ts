@@ -52,23 +52,10 @@ export class UnifiedQueueAdapter {
 
   async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
     this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
-    const prNumber = parsePrNumber(prUrl);
-    if (prNumber !== null) {
-      try {
-        this.store.recordPrDecision({
-          taskId: task.id,
-          repo: task.repo,
-          prNumber,
-          verdict: 'merged',
-        });
-      } catch (err) {
-        console.warn(
-          `[unified-queue] recordPrDecision failed for ${task.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
+    // pr_decision row is written by wireSprintCompletion in daemon.ts, which
+    // already has the full context (prUrl from task.completed event, verdict
+    // from sprint terminal state). Writing it here too would create duplicate
+    // rows on every successful sprint.completed event.
     await this.sourceFor(task).markCompleted(task, prUrl, totalTokens);
   }
 
@@ -105,9 +92,3 @@ export class UnifiedQueueAdapter {
   }
 }
 
-function parsePrNumber(prUrl: string): number | null {
-  if (!prUrl) return null;
-  const match = /\/pull\/(\d+)/.exec(prUrl);
-  if (match?.[1]) return Number(match[1]);
-  return null;
-}

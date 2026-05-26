@@ -576,9 +576,23 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
 
-      // adapter.markCompleted records the pr_decision row internally via
-      // UnifiedQueueAdapter — calling store.recordPrDecision here too would
-      // create duplicate rows for the same (task_id, pr_number) pair.
+      if (lastPrUrl) {
+        const prNumber = extractPrNumber(lastPrUrl);
+        if (prNumber !== null) {
+          try {
+            store.recordPrDecision({
+              taskId: task.id,
+              repo: task.repo,
+              prNumber,
+              verdict: 'merged',
+              reviewerLogin: null,
+            });
+          } catch (err) {
+            console.warn('[daemon] recordPrDecision(merged) failed:', err);
+          }
+        }
+      }
+
       void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens).catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
