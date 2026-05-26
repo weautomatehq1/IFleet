@@ -274,11 +274,11 @@ async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Pro
       await opts.onApprove?.(command.taskId);
       return;
     case 'cancel': {
+      // State transitions are owned by `onCancel`. The legacy queue.markFailed
+      // call was a dead path under the daemon's null resolveTask, and would
+      // have double-marked any caller that wired a real resolveTask alongside
+      // an onCancel that already touches the unified store.
       await opts.onCancel?.(command.taskId, command.reason);
-      const task = await opts.resolveTask?.(command.taskId);
-      if (task) {
-        await opts.queue.markFailed(task, command.reason ?? 'cancelled via control plane');
-      }
       return;
     }
     case 'status': {
