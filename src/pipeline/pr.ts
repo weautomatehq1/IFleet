@@ -66,10 +66,6 @@ function formatPrBody(input: FormatInput): string {
     `## Review summary`,
     input.reviewSummary,
     ``,
-    `---`,
-    `🗣️ In plain terms:`,
-    `An AI architect planned this change, a different AI wrote it, and a third AI from the other provider reviewed it. CI is green and the reviewer approved. A human still needs to merge.`,
-    ``,
     `Closes #${input.task.issueNumber}`,
   ].join('\n');
 }
