@@ -26,8 +26,8 @@ if [[ "${SKIP_BUILD:-}" != "1" ]]; then
   pnpm install --frozen-lockfile
 
   log "Building TypeScript → dist/"
-  npx tsc -p tsconfig.build.json
-  [[ -d dist ]] || fail "Build produced no dist/ — check tsconfig.build.json"
+  npx tsc -p tsconfig.json
+  [[ -d dist ]] || fail "Build produced no dist/ — check tsconfig.json"
 else
   log "SKIP_BUILD=1 — assuming dist/ is current"
 fi
