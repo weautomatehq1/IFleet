@@ -14,6 +14,7 @@ import type { TextChannel } from 'discord.js';
 import {
   resolveAuditIndexPath,
   readAuditIndex,
+  writeAuditIndex,
   openFindings,
 } from '../src/discord/audit-runner.js';
 
@@ -25,6 +26,16 @@ const AUDIT_REPOS = (process.env['AUDIT_REPOS'] ?? 'IFleet')
   .split(',')
   .map((r) => r.trim())
   .filter(Boolean);
+
+// Short repo name → full GitHub "org/repo" path.
+// If the entry already contains a slash it is used verbatim.
+const GITHUB_ORG = process.env['GITHUB_ORG'] ?? 'weautomatehq1';
+function toGitHubRepo(repo: string): string {
+  return repo.includes('/') ? repo : `${GITHUB_ORG}/${repo}`;
+}
+
+// Matches canonical audit finding IDs: AUDIT-<Repo>-<8hexchars>
+const AUDIT_ID_RE = /\bAUDIT-[A-Za-z][A-Za-z0-9]*-[0-9a-f]{8}\b/g;
 
 // Resolve claude binary: env override wins, then PATH lookup, then VPS default.
 // The VPS default is `/usr/local/bin/claude` because `deploy/install-vps.sh`
@@ -47,6 +58,102 @@ export function resolveRepoPath(repo: string): string {
   if (repo === 'IFleet') return ifleetRoot;
   const base = process.env['AUDIT_BASE_DIR'] ?? resolve(ifleetRoot, '..');
   return resolve(base, repo);
+}
+
+// ---------------------------------------------------------------------------
+// PR reconciliation — mark findings fixed when their PR has been merged
+// ---------------------------------------------------------------------------
+
+/**
+ * For each repo, fetch its own merged PRs from the last 30 days, extract any
+ * AUDIT-* IDs referenced in titles/bodies, and mark those findings as `fixed`
+ * in that repo's local index.json. Syncs to Supabase afterwards if
+ * IFLEET_KG_DATABASE_URL is set.
+ *
+ * The gh query is scoped per-repo so that a PR in repo A never closes a
+ * finding that belongs to repo B.
+ */
+async function reconcileMergedPRs(repos: string[]): Promise<void> {
+  const sinceDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  for (const repo of repos) {
+    const ghRepo = toGitHubRepo(repo);
+    let prJson: string;
+    try {
+      const { stdout } = await execFileAsync('gh', [
+        'pr', 'list',
+        '--repo', ghRepo,
+        '--state', 'merged',
+        '--search', `is:pr is:merged merged:>=${sinceDate}`,
+        '--limit', '200',
+        '--json', 'number,title,body,mergedAt,url',
+      ]);
+      prJson = stdout;
+    } catch (err) {
+      console.warn(
+        `[audit-ritual] reconcile: gh pr list failed for ${ghRepo} —`,
+        err instanceof Error ? err.message : String(err),
+      );
+      continue;
+    }
+
+    let prs: { number: number; title: string; body: string; mergedAt: string; url: string }[];
+    try {
+      prs = JSON.parse(prJson) as typeof prs;
+    } catch {
+      console.warn(`[audit-ritual] reconcile: failed to parse gh output for ${ghRepo}`);
+      continue;
+    }
+
+    if (prs.length === 0) continue;
+
+    const closedByPr = new Map<string, { url: string; mergedAt: string }>();
+    for (const pr of prs) {
+      const text = `${pr.title}\n${pr.body ?? ''}`;
+      for (const id of text.match(AUDIT_ID_RE) ?? []) {
+        if (!closedByPr.has(id)) {
+          closedByPr.set(id, { url: pr.url, mergedAt: pr.mergedAt });
+        }
+      }
+    }
+
+    if (closedByPr.size === 0) continue;
+
+    const repoPath = resolveRepoPath(repo);
+    const indexPath = resolveAuditIndexPath(repoPath);
+    const index = readAuditIndex(indexPath);
+    if (!index) continue;
+
+    let changed = 0;
+    for (const finding of index.findings) {
+      if (finding.status === 'closed') continue;
+      const pr = closedByPr.get(finding.id);
+      if (!pr) continue;
+      finding.status = 'closed';
+      finding.closed_at = pr.mergedAt;
+      finding.closing_pr = pr.url;
+      changed++;
+    }
+
+    if (changed > 0) {
+      writeAuditIndex(indexPath, index);
+      console.log(`[audit-ritual] reconcile: ${repo} — marked ${changed} finding(s) fixed`);
+
+      if (process.env['IFLEET_KG_DATABASE_URL']) {
+        try {
+          execSync(`npx tsx scripts/sync-audit-findings.ts ${indexPath}`, {
+            stdio: 'inherit',
+            cwd: resolveRepoPath('IFleet'),
+          });
+        } catch (syncErr) {
+          console.warn(
+            `[audit-ritual] reconcile: Supabase sync failed for ${repo}:`,
+            syncErr instanceof Error ? syncErr.message : String(syncErr),
+          );
+        }
+      }
+    }
+  }
 }
 
 async function runAutopilot(repos: string[]): Promise<void> {
@@ -131,6 +238,8 @@ async function runMorningReport(repos: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   console.log(`[audit-ritual] mode=${AUDIT_MODE} repos=${AUDIT_REPOS.join(',')}`);
+  // Always reconcile first so merged PRs are reflected before we report or fix.
+  await reconcileMergedPRs(AUDIT_REPOS);
   if (AUDIT_MODE === 'autopilot') {
     await runAutopilot(AUDIT_REPOS);
   } else {
