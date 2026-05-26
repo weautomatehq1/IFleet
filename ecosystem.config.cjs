@@ -53,6 +53,14 @@ const baseEnv = {
   // Runtime socket — must come from the shell, not .env, since it changes
   // every session.
   SSH_AUTH_SOCK: process.env.SSH_AUTH_SOCK ?? '',
+  // Audit + KG plumbing: passed through from the shell so PM2 picks them up
+  // even when project .env is missing or stale (e.g. fresh VPS bootstrap
+  // before deploy/install-vps.sh has hydrated .env). Empty string means
+  // "unset" — the consuming module decides whether to warn or no-op.
+  // Closes AUDIT-IFleet-ef930b21, AUDIT-IFleet-f9d5682b.
+  IFLEET_KG_DATABASE_URL: process.env.IFLEET_KG_DATABASE_URL ?? '',
+  IFLEET_REPO_ROOT: process.env.IFLEET_REPO_ROOT ?? '/opt/ifleet',
+  CLAUDE_BIN: process.env.CLAUDE_BIN ?? '',
   ...dotEnv,
 };
 
