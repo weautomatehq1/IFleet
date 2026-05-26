@@ -311,6 +311,9 @@ async function handleAuditFix(
   }
 
   // Revert anything that failed to queue so it stays visible to /audit-fix.
+  // The local file is the canonical source; Supabase is best-effort. When the
+  // Supabase revert fails the two stores diverge — run `pnpm audit:sync` to
+  // reconcile them.
   if (failed.length > 0) {
     setFindingsStatus(indexPath, failed, 'open');
     for (const id of failed) {
@@ -318,7 +321,7 @@ async function handleAuditFix(
         await dbUpdateFindingStatus(id, 'open');
       } catch (err) {
         console.warn(
-          `[audit] dbUpdateFindingStatus(open) failed for ${id}: ${
+          `[audit] dbUpdateFindingStatus(open) failed for ${id} — Supabase and local file diverged; run \`pnpm audit:sync\` to reconcile: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );

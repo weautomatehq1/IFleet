@@ -28,7 +28,7 @@ export class KgPostgresUnavailableError extends Error {
  */
 export function getKgPool(overrideUrl?: string): Pool {
   if (cachedPool) return cachedPool;
-  const url = overrideUrl ?? process.env.IFLEET_KG_DATABASE_URL;
+  const url = overrideUrl ?? process.env['IFLEET_KG_DATABASE_URL'];
   if (!url) {
     throw new KgPostgresUnavailableError(
       'IFLEET_KG_DATABASE_URL is not set. Either copy .env.example to .env and ' +
@@ -44,7 +44,8 @@ export function getKgPool(overrideUrl?: string): Pool {
     connectionTimeoutMillis: 8_000,
     // Supabase direct connection requires TLS; node-postgres needs the explicit hint
     // because the URL alone doesn't enable SSL by default.
-    ssl: url.includes('supabase.co') ? { rejectUnauthorized: false } : undefined,
+    // rejectUnauthorized remains true (the default) to validate the server certificate.
+    ssl: url.includes('supabase.co') ? true : undefined,
   };
   cachedPool = new Pool(config);
   return cachedPool;

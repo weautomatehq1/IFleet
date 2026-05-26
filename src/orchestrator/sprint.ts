@@ -290,6 +290,12 @@ export class SprintManager {
       (t) =>
         t.state.kind === 'completed' || t.state.kind === 'failed' || t.state.kind === 'cancelled',
     );
+    // Both conditions are required: `allTerminal` checks store state (which may
+    // lag by one tick for tasks just dispatched), and `this.running.size === 0`
+    // guards against tasks that were dispatched in this same tick() call whose
+    // awaitHandle() promise is still in flight. Without the running-map guard,
+    // a sprint could incorrectly transition to completed/failed while a worker
+    // is still active.
     if (tasks.length > 0 && allTerminal && this.running.size === 0) {
       // A worker self-cancel (exit 2) is treated as sprint failure: a sprint where any task did not complete is a failed sprint.
       const anyFailed = tasks.some((t) => t.state.kind === 'failed' || t.state.kind === 'cancelled');

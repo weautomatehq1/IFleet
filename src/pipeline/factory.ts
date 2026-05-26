@@ -293,7 +293,15 @@ async function setupWorktree(
   }
 
   await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
-  await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, 'main'], { cwd: repoRoot });
+  try {
+    await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, 'main'], { cwd: repoRoot });
+  } catch (err) {
+    // Clean up any partially-created worktree path so subsequent retries of
+    // the same task don't confuse git with a stale directory.
+    await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
+    await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
+    throw err;
+  }
 
   const nmTarget = join(worktreePath, 'node_modules');
   if (!existsSync(nmTarget)) {

@@ -576,23 +576,9 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
 
-      if (lastPrUrl) {
-        const prNumber = extractPrNumber(lastPrUrl);
-        if (prNumber !== null) {
-          try {
-            store.recordPrDecision({
-              taskId: task.id,
-              repo: task.repo,
-              prNumber,
-              verdict: 'merged',
-              reviewerLogin: null,
-            });
-          } catch (err) {
-            console.warn('[daemon] recordPrDecision(merged) failed:', err);
-          }
-        }
-      }
-
+      // adapter.markCompleted records the pr_decision row internally via
+      // UnifiedQueueAdapter — calling store.recordPrDecision here too would
+      // create duplicate rows for the same (task_id, pr_number) pair.
       void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens).catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
@@ -878,7 +864,3 @@ export {
 // because the daemon's tick loop hands typed TaskIds to submitSprint in
 // future iterations.
 void newTaskId;
-// `lastTotalTokens` is captured for parity with the markCompleted signature
-// even though sprint.completed events do not surface it directly; suppress
-// unused-variable lints while the totalTokens-on-completion wiring lands.
-void ((): void => undefined);

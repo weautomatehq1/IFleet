@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { claudeChildEnv, wrapBriefAsData } from './claude-env.ts';
-import { runStreaming, type SpawnLike } from './spawn-runner.ts';
+import { claudeChildEnv, wrapBriefAsData } from './claude-env.js';
+import { runStreaming, type SpawnLike } from './spawn-runner.js';
 import {
   categorizeRateLimitError,
   type SpawnHandle,
   type SpawnOpts,
   type WorkerAdapter,
   type WorkerEvent,
-} from './types.ts';
+} from './types.js';
 
 const WORKER_INSTRUCTION =
   `You are an IFleet worker. Execute the user-supplied task brief that ` +
