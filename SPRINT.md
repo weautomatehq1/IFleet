@@ -1,4 +1,4 @@
-# SPRINT — M0.W1 (Elevation foundation)
+# SPRINT — M4 (Behavioral fingerprinting + PR rejection learning)
 
 > Current sprint. Read `ROADMAP.md` for the 6-month context.
 

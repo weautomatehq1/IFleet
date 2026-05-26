@@ -282,9 +282,6 @@ export class Orchestrator {
         this.taskThreadIds.set(taskId, threadId);
       }
       switch (event.kind) {
-        case 'task.assigned':
-          await out.postProgress(threadId, '🟡 picked up — architect starting');
-          return;
         case 'task.completed': {
           const pr = event.payload['pr'] as string | undefined;
           const totalTokens = event.payload['totalTokens'] as number | undefined;
@@ -298,7 +295,7 @@ export class Orchestrator {
             const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
             const findingMatch = completedTask.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);
             const findingStr = findingMatch ? ` \`${findingMatch[1]}\` fixed →` : '';
-            await out.postChannelMessage(channelId, `✅${findingStr} ${pr}${tokenStr}`).catch(() => {});
+            await out.postChannelMessage(channelId, `[done]${findingStr} ${pr}${tokenStr}`).catch(() => {});
           }
           return;
         }

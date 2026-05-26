@@ -1,3 +1,4 @@
+// Architecture invariant: SprintManager must never import from src/queue/github.ts directly — all GitHub calls go through the queue bridge.
 import { nanoid } from 'nanoid';
 import type { Capabilities } from './capabilities';
 import { isCapabilityAvailable } from './capabilities';

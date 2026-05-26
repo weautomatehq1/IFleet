@@ -47,7 +47,7 @@ import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
 import { UnifiedQueueAdapter } from '../queue/unified-adapter.js';
 import { FileChannelRouter } from '../repos/router.js';
 import { titleToBranchName } from '../utils/branch-name.js';
-import { newTaskId, type OrchestratorEvent, type SprintId, type TaskId, type WorkerConfig } from './types.js';
+import type { OrchestratorEvent, SprintId, TaskId, WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
 import {
@@ -983,11 +983,15 @@ function loadInitialWorkers(): ReadonlyArray<WorkerConfig> {
   // AccountPool. Real configs live in config/workers.json — the orchestrator
   // already reloads from there on SIGHUP, so a minimal bootstrap value is
   // enough to start.
+  const modelsEnv = process.env['WORKER_MODELS'];
+  const models = modelsEnv
+    ? modelsEnv.split(',').map((m) => m.trim()).filter((m) => m.length > 0)
+    : ['opus-4.7', 'sonnet-4.6', 'haiku-4.5'];
   const cfg: WorkerConfig = {
     id: 'claude-max-1',
     provider: 'claude',
     authProfile: process.env['CLAUDE_AUTH_PROFILE'] ?? 'default',
-    models: ['opus-4.7', 'sonnet-4.6', 'haiku-4.5'],
+    models,
     maxConcurrent: 1,
     enabled: true,
   };
@@ -1026,11 +1030,3 @@ export {
   wrapFactoryWithApprovalAndEmit,
   resolveVerifierContext,
 };
-// Suppress an "unused export" eslint warning for newTaskId — kept exported
-// because the daemon's tick loop hands typed TaskIds to submitSprint in
-// future iterations.
-void newTaskId;
-// `lastTotalTokens` is captured for parity with the markCompleted signature
-// even though sprint.completed events do not surface it directly; suppress
-// unused-variable lints while the totalTokens-on-completion wiring lands.
-void ((): void => undefined);
