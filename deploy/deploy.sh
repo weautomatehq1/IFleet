@@ -6,11 +6,12 @@
 #   SKIP_BUILD=1 bash deploy/deploy.sh   # rsync-only (when dist/ already fresh)
 #   DRY_RUN=1 bash deploy/deploy.sh      # show rsync plan, no changes
 #
-# Requires SSH access to root@187.124.77.142 (key auth, no password prompts).
+# Requires SSH access to root@${VPS_HOST} (key auth, no password prompts).
 
 set -euo pipefail
 
-VPS="${IFLEET_VPS:-root@187.124.77.142}"
+VPS="${VPS_HOST:?Set VPS_HOST env var, e.g. export VPS_HOST=1.2.3.4}"
+VPS="root@$VPS"
 REMOTE_DIR="${IFLEET_REMOTE_DIR:-/opt/ifleet}"
 LOCAL_REPO="${IFLEET_LOCAL_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 DOMAIN="${IFLEET_DOMAIN:-control.weautomatehq.cloud}"
