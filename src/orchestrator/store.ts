@@ -94,6 +94,10 @@ const MIGRATIONS: ReadonlyArray<string> = [
     FOREIGN KEY (sprint_id) REFERENCES sprints(id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_sprint ON tasks(sprint_id)`,
+  // Expression index on the sprint state kind. listSprintsByStateKind() filters
+  // by state.kind (JSON-extracted) so SQLite can use this index when the JSON
+  // path predicate appears literally in the WHERE clause.
+  `CREATE INDEX IF NOT EXISTS idx_sprints_state_kind ON sprints(json_extract(state_json, '$.kind'))`,
   `CREATE TABLE IF NOT EXISTS attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT NOT NULL,
@@ -364,9 +368,12 @@ export class StateStore {
   }
 
   listSprintsByStateKind(kind: string): ReadonlyArray<SprintRecord> {
+    // Filter in SQL via the expression index on json_extract(state_json,'$.kind')
+    // instead of loading every row and filtering in JS. Avoids a full table
+    // scan once the sprints table grows.
     const rows = this.db
-      .prepare('SELECT * FROM sprints')
-      .all() as ReadonlyArray<SprintRow>;
+      .prepare(`SELECT * FROM sprints WHERE json_extract(state_json, '$.kind') = ?`)
+      .all(kind) as ReadonlyArray<SprintRow>;
     const out: SprintRecord[] = [];
     for (const row of rows) {
       let state: SprintRecord['state'];

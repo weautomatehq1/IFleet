@@ -206,6 +206,21 @@ export class TaskStore {
     return { inserted: true };
   }
 
+  // TaskStore state machine — DO NOT confuse with the orchestrator's
+  // StateStore (src/orchestrator/store.ts) which uses kind: 'pending' |
+  // 'running' | 'completed' | 'cancelled' | 'paused'. They are different
+  // tables for different lifecycles.
+  //
+  //   TaskStore.state values (TaskState in src/contracts/task.ts):
+  //     'pending'    — created, not yet picked up
+  //     'in_flight'  — pickNext() set this; picked_at is the wall-clock pick
+  //     'done'       — completed successfully
+  //     'failed'     — terminal failure
+  //     'blocked'    — needs operator attention (HITL)
+  //
+  // pickNext() reads state = 'pending' (above). recoverStale() resets any
+  // 'in_flight' row whose picked_at is older than maxAgeMs back to 'pending'.
+  // The two share the 'pending' / 'in_flight' vocabulary on purpose.
   pickNext(filter: PickFilter = {}): QueuedTask | null {
     const params: Record<string, unknown> = {};
     let sql = `SELECT * FROM tasks WHERE state = 'pending'`;
@@ -223,6 +238,11 @@ export class TaskStore {
    * back to `pending` so the next `pickNext` re-issues it. Defaults to 30
    * minutes — call once at server boot to recover from a crash that left
    * tasks orphaned mid-run. Returns the number of rows reset.
+   *
+   * State machine: only 'in_flight' rows are eligible. 'done' / 'failed' /
+   * 'blocked' are terminal-ish and untouched. 'pending' rows already are
+   * waiting so they're skipped. This is intentionally narrower than
+   * pickNext() which only consumes 'pending'.
    */
   recoverStale(maxAgeMs: number = DEFAULT_STALE_MS): number {
     const cutoff = Date.now() - maxAgeMs;
@@ -313,11 +333,16 @@ export class TaskStore {
 
   /**
    * Record the final disposition of a PR that was opened during a sprint.
-   * Idempotent on (task_id, pr_number) — a second call for the same pair
-   * will throw a UNIQUE constraint if the table ever gains that constraint;
-   * for now callers are responsible for not double-writing.
+   * Idempotent on (task_id, pr_number): a second call for the same pair is a
+   * no-op and returns the existing row. Both wireSprintCompletion (in
+   * src/orchestrator/daemon.ts) and UnifiedQueueAdapter can fire on the same
+   * sprint completion under retry/restart, so the dedup lives here at the
+   * single write site.
    */
   recordPrDecision(input: RecordPrDecisionInput): PrDecision {
+    const existing = this.getPrDecisionByTaskPr(input.taskId, input.prNumber);
+    if (existing) return existing;
+
     const id = `prd_${randomUUID()}`;
     const createdAt = Date.now();
     const reviewerLogin = input.reviewerLogin ?? null;
@@ -348,6 +373,37 @@ export class TaskStore {
       reviewerLogin,
       mergedAt,
       createdAt,
+    };
+  }
+
+  /** Look up an existing PR decision for the (taskId, prNumber) pair. */
+  getPrDecisionByTaskPr(taskId: string, prNumber: number): PrDecision | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM pr_decisions WHERE task_id = @task_id AND pr_number = @pr_number LIMIT 1`,
+      )
+      .get({ task_id: taskId, pr_number: prNumber }) as
+      | {
+          id: string;
+          task_id: string;
+          repo: string;
+          pr_number: number;
+          verdict: string;
+          reviewer_login: string | null;
+          merged_at: number | null;
+          created_at: number;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      repo: row.repo,
+      prNumber: row.pr_number,
+      verdict: row.verdict as PrDecision['verdict'],
+      reviewerLogin: row.reviewer_login,
+      mergedAt: row.merged_at,
+      createdAt: row.created_at,
     };
   }
 
