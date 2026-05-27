@@ -21,6 +21,8 @@ import {
   type AuditIndex,
   type AuditSeverity,
   type AuditStatus,
+  type ClosedIndex,
+  type ClosureRecord,
 } from '../audit/types.js';
 
 // Re-export so existing importers (`import { AuditFinding } from '.../audit-runner.js'`)
@@ -31,6 +33,8 @@ export {
   type AuditIndex,
   type AuditSeverity,
   type AuditStatus,
+  type ClosedIndex,
+  type ClosureRecord,
 };
 
 /** Severity ordering for list grouping and auto-mode dispatch (worst first). */
@@ -251,6 +255,33 @@ export function markFindingsFixing(indexPath: string, ids: readonly string[]): n
  * stored the literal string `'already-resolved'` into `closing_pr`, which
  * corrupted the rollup downstream.
  */
+/**
+ * Append a closure record to `.audits/closed.json` so `audit-regression-detector`
+ * can detect when the same fingerprint resurfaces in a future scan.
+ * Safe to call multiple times for the same finding — duplicates are harmless
+ * (the detector picks the most recent by `closed_at`).
+ */
+export function appendToClosedJson(indexPath: string, finding: AuditFinding): void {
+  const closedPath = join(dirname(indexPath), 'closed.json');
+  let data: ClosedIndex = { closures: [] };
+  if (existsSync(closedPath)) {
+    try {
+      data = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
+      if (!Array.isArray(data.closures)) data.closures = [];
+    } catch {
+      data = { closures: [] };
+    }
+  }
+  const record: ClosureRecord = {
+    fingerprint: finding.fingerprint,
+    finding_id: finding.id,
+    closed_at: finding.closed_at ?? new Date().toISOString(),
+    closing_pr: finding.closing_pr ?? null,
+  };
+  data.closures.push(record);
+  writeFileSync(closedPath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
+
 export function markFindingClosed(
   indexPath: string,
   findingId: string,
@@ -270,6 +301,7 @@ export function markFindingClosed(
   finding.closing_pr = prUrl;
   finding.closed_at = new Date().toISOString();
   writeAuditIndex(indexPath, index);
+  appendToClosedJson(indexPath, finding);
   return true;
 }
 
