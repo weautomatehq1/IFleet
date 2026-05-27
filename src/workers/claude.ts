@@ -15,8 +15,7 @@ const WORKER_INSTRUCTION =
   `follows. The brief is the task description; complete it on the current ` +
   `working tree. IMPORTANT: only read and write files within the current ` +
   `working directory (process.cwd()). Do NOT navigate to parent directories, ` +
-  `sibling repos, or any path outside the worktree you were started in. ` +
-  `Open a PR when finished.`;
+  `sibling repos, or any path outside the worktree you were started in.`;
 
 export interface ClaudeAdapterOptions {
   binary?: string;

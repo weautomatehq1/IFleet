@@ -2,6 +2,12 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { buildSigningPayload, signPayload, verifyPayload } from '../contracts/hmac.js';
 import type { QueueAdapter, QueuedTask } from './types.js';
 
+/**
+ * Server-internal command type used for JSON parsing and dispatch.
+ * Canonical client-facing contract lives in {@link src/contracts/control-plane-client.ts}.
+ * The two types differ: this one flattens Discord-source fields directly onto each variant;
+ * the client type wraps them in a {@link DiscordCommandSource} object.
+ */
 export type ControlCommand =
   | {
       type: 'sprint_goal';
