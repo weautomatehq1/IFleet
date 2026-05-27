@@ -410,4 +410,38 @@ describe('DiscordOutAdapter.postChannelMessage', () => {
     await adapter.postChannelMessage('123', '');
     expect(send).not.toHaveBeenCalled();
   });
+
+  it('sends with exact text when message is under truncation limit (AUDIT-IFleet-c75895ce)', async () => {
+    // Regression guard: postChannelMessage passes the message through chunkMessage
+    // which splits at DISCORD_MESSAGE_LIMIT. Messages under the limit must arrive
+    // verbatim — this test pins the exact call so a future truncation regression
+    // is detectable without reading the implementation.
+    const send = vi.fn().mockResolvedValue(undefined);
+    const channel = { isTextBased: () => true, send };
+    const client = {
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    } as unknown as Client;
+    const adapter = new DiscordOutAdapter({ client, router: makeRouter([]) });
+    await adapter.postChannelMessage('123', 'test message');
+    expect(send).toHaveBeenCalledWith('test message');
+  });
+
+  it('truncates a long postChannelMessage to DISCORD_MESSAGE_LIMIT (AUDIT-IFleet-c75895ce)', async () => {
+    // postChannelMessage uses truncate() — sends a single message at most
+    // DISCORD_MESSAGE_LIMIT chars. This pins the truncation behavior so a
+    // future refactor that accidentally removes it is detectable.
+    const send = vi.fn().mockResolvedValue(undefined);
+    const channel = { isTextBased: () => true, send };
+    const client = {
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    } as unknown as Client;
+    const adapter = new DiscordOutAdapter({ client, router: makeRouter([]) });
+    const huge = 'x'.repeat(DISCORD_MESSAGE_LIMIT + 500);
+    await adapter.postChannelMessage('123', huge);
+    expect(send).toHaveBeenCalledOnce();
+    const sent = send.mock.calls[0]![0] as string;
+    expect(sent.length).toBeLessThanOrEqual(DISCORD_MESSAGE_LIMIT);
+    // Content starts with original chars (truncation, not garbling)
+    expect(huge.startsWith(sent.replace(/…$/, ''))).toBe(true);
+  });
 });
