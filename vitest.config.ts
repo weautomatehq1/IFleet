@@ -12,7 +12,7 @@ export default defineConfig({
       'src/discord/**/*.test.ts',
       'src/agents/**/*.test.ts',
       'src/audit/**/*.test.ts',
-      'src/queue/**/*.test.ts',
+      // src/queue tests use node:test format — run by the node --import tsx --test script
       'scripts/__tests__/**/*.test.ts',
       'dashboard/**/*.test.ts',
     ],
