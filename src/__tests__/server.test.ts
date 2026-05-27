@@ -151,7 +151,7 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     expect(forcedReason).toBe('override');
   });
 
-  it('verify → onVerify that throws does not crash the server (error is logged, not fatal)', async () => {
+  it('dispatch layer survives onVerify callback throw', async () => {
     // This mirrors server.ts production behavior: onVerify throws for daemon-only guard
     let threw = false;
     const cp = createControlPlane({
@@ -188,7 +188,7 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     expect(threw).toBe(true);
   });
 
-  it('force_pr → onForcePr that throws does not crash the server', async () => {
+  it('dispatch layer survives onForcePr callback throw', async () => {
     let threw = false;
     const cp = createControlPlane({
       queue: noopQueue(),
