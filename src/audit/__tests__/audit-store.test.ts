@@ -167,7 +167,7 @@ describe('dbUpsertFindings', () => {
       (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('INSERT'),
     );
     expect(insertCall![0]).toContain("WHERE NOT EXISTS");
-    expect(insertCall![0]).toContain("status != 'closed'");
+    expect(insertCall![0]).toMatch(/status NOT IN/);
   });
 });
 
@@ -259,13 +259,12 @@ describe('dbReadIndex', () => {
     mockQuery.mockResolvedValueOnce({ rows });
 
     const index = await dbReadIndex('IFleet');
-    expect(index!.open_findings).toBe(2); // 'open' + 'fixing', not 'closed'
+    expect(index!.open_findings).toBe(1); // only 'open' counts (isActiveAuditStatus); 'fixing' and 'closed' excluded
   });
 
   it('open_findings excludes fixed and stale statuses', async () => {
-    // 'fixed' and 'stale' are not in the AuditStatus enum — the current
-    // implementation filters by status !== 'closed'. Only 'closed' is excluded.
-    // This test confirms the exact exclusion semantics.
+    // isActiveAuditStatus counts only 'open' and 'reopened'.
+    // 'verifying', 'fixing', 'closed', 'fixed', 'stale' are all excluded.
     const rows = [
       makeDbRow({ id: 'f1', status: 'open' }),
       makeDbRow({ id: 'f2', status: 'verifying' }),
@@ -275,7 +274,7 @@ describe('dbReadIndex', () => {
     mockQuery.mockResolvedValueOnce({ rows });
 
     const index = await dbReadIndex('IFleet');
-    expect(index!.open_findings).toBe(3); // all except 'closed'
+    expect(index!.open_findings).toBe(2); // 'open' + 'reopened' only
   });
 
   it('by_severity counts only active findings', async () => {
