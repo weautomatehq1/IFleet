@@ -1,4 +1,15 @@
-// Architecture invariant: SprintManager must never import from src/queue/github.ts directly — all GitHub calls go through the queue bridge.
+/**
+ * @invariant no-direct-github-import — SprintManager must never import from
+ * `src/queue/github.ts` directly. All GitHub calls flow through the queue
+ * bridge so SprintManager stays decoupled from GitHub rate-limits and
+ * webhook quirks. Documented in CLAUDE.md ("SprintManager emits events. It
+ * NEVER calls GitHub directly.").
+ *
+ * Enforcement: comment-only today. The `@invariant:` JSDoc tag is a
+ * machine-readable hook so a future custom-eslint rule or repo-grep CI
+ * check can promote this from documentation to enforced policy.
+ * AUDIT-IFleet-d55e2033 / 05938a16.
+ */
 import { nanoid } from 'nanoid';
 import type { Capabilities } from './capabilities';
 import { isCapabilityAvailable } from './capabilities';

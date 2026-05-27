@@ -309,7 +309,11 @@ export class Orchestrator {
             const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
             const findingMatch = completedTask.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);
             const findingStr = findingMatch ? ` \`${findingMatch[1]}\` fixed →` : '';
-            await out.postChannelMessage(channelId, `[done]${findingStr} ${pr}${tokenStr}`).catch(() => {});
+            // ✅ prefix matches broadcastIFleet + per-thread postProgress
+            // formats elsewhere so monitoring / search filters that key on
+            // the checkmark catch this channel-level ping too.
+            // AUDIT-IFleet-3d187de7 / 416ebab1 / 2dee4f76.
+            await out.postChannelMessage(channelId, `✅${findingStr} ${pr}${tokenStr}`).catch(() => {});
           }
           return;
         }
@@ -407,10 +411,18 @@ export function startOrchestrator(opts: StartOrchestratorOpts): Orchestrator {
 function parseBudgetEnv(): number | undefined {
   const raw = process.env['BUDGET_USD'];
   if (!raw) {
-    console.warn(
-      '[orchestrator] BUDGET_USD unset — per-sprint budget guard disabled. ' +
-        'This is intentional on Max-plan sessions but silently dangerous on metered runs.',
-    );
+    // Only warn when an API key is present — that implies metered billing
+    // where an unset BUDGET_USD is actually dangerous. On Max-plan / OAuth
+    // sessions (the default for the IFleet daemon) this warning fired on
+    // every boot, desensitising operators to real alerts.
+    // AUDIT-IFleet-44a424a6.
+    if (process.env['ANTHROPIC_API_KEY']) {
+      console.warn(
+        '[orchestrator] BUDGET_USD unset but ANTHROPIC_API_KEY is set — ' +
+          'per-sprint budget guard disabled on a metered account. Consider ' +
+          'setting BUDGET_USD or unsetting ANTHROPIC_API_KEY for Max-plan runs.',
+      );
+    }
     return undefined;
   }
   const val = Number(raw);
