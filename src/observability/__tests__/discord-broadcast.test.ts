@@ -177,3 +177,36 @@ describe('broadcastIFleet — rate limiter', () => {
     expect(mockHttpRequest).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('broadcastIFleet — queue depth cap', () => {
+  it('drops messages when queue depth exceeds cap', () => {
+    vi.useFakeTimers();
+    process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
+
+    // Capture console.warn calls to verify drop messages
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Send 55 messages — first will send immediately, remaining 54 will queue
+    // but only 49 can queue (50 total pending including first), so last 5 drop
+    for (let i = 0; i < 55; i++) {
+      broadcastIFleet(`message ${i}`);
+    }
+
+    // First message sends immediately (delay=0)
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    // Messages 2-50 are queued (delay>0, pendingCount < 50)
+    // Messages 51-55 should be dropped with warning
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/queue depth.*>=.*dropping message/),
+    );
+
+    // Advance timers to drain the queue
+    vi.runAllTimers();
+
+    // After draining, all 50 queued messages should have sent
+    expect(mockHttpRequest).toHaveBeenCalledTimes(51);
+
+    warnSpy.mockRestore();
+    vi.useRealTimers();
+  });
+});
