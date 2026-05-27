@@ -4,57 +4,55 @@
 
 ## Sprint goal
 
-Lock the architectural foundation for the 6-month elevation plan **before** any feature code lands. Specifically: the trace-format decision (ADR-0001), the verifier contract shape (empty scaffold), and the eval set (so every later upgrade has a benchmark).
+Build behavioral fingerprinting for PRs and a rejection-learning loop so IFleet can stop repeating patterns that human reviewers reject. M1–M3 delivered the verifier, plan-reviewer, and knowledge graph; M4 wires them together with memory.
 
 ## Why this sprint matters
 
-The 6-month plan has one expensive-to-reverse decision: **single shared trace vs. multi-agent with private contexts.** Cognition's "Don't Build Multi-Agents" (June 2025) and Anthropic's Magentic-One both have strong evidence. Picking wrong costs ~3 months of untangling. This sprint commits to single-trace (Cognition position) with structured-pushback roles inside (MARS pattern).
+Without fingerprinting, IFleet has no way to learn from reviewer feedback across sprints. Every rejection is siloed. M4 adds a shared `pr_decisions` table (merged/rejected + fingerprint diff), reviewer preference cards, and a feedback loop so the architect can adapt its plans based on what reviewers historically approve.
 
-## In scope (this week)
+## In scope (this sprint)
 
 | ID | Task | Status | Owner |
 |---|---|---|---|
-| T1 | Write ADR-0001: single-trace architecture | done | seb |
-| T2 | Scaffold VerifierAgent (empty Docker shell, emits `verifier.passed` unconditionally) | done | seb |
-| T3 | Bootstrap private eval set (50-100 historical tasks, JSONL at `.ifleet/eval/`) | done | seb |
-| T4 | Create `SECURITY.md` (protected paths) and `NON_GOALS.md` | done | seb |
-| T5 | Write IFleet AI Operating Standard (one-pager, liability) | done | seb |
-| T6 | Write ADR-0002: Docker verifier sandbox | done | seb |
-| T7 | Write ADR-0003: Knowledge graph stack (tree-sitter + Postgres + pgvector) | done | seb |
+| M4-T1 | Schema: `pr_decisions` + `verifier_runs` tables with fingerprint column | open | fleet |
+| M4-T2 | Fingerprinting: compute structural diff hash for each PR at merge/reject time | open | fleet |
+| M4-T3 | Reviewer preference cards: per-reviewer accept/reject pattern summary (top 3 reviewers) | open | fleet |
+| M4-T4 | Architect tool `get_reviewer_prefs` — queries preference cards before planning | open | fleet |
+| M4-T5 | `RecordPrDecision` event emitted by SprintManager on PR merge or close-without-merge | open | fleet |
+| M4-T6 | 50% of merged PRs have fingerprint diff populated (KPI validation) | open | fleet |
 
-## Out of scope (this week)
+## Out of scope (this sprint)
 
-- Actual verifier logic (M1.W2+)
-- Plan-Reviewer (M2)
-- Postgres install (M3.W1, gated on T7 ADR approval)
-- Self-modifying IFleet (deferred M4+)
+- Goal-driven mode / Proposer (M5)
+- Cross-repo drift detector (M6)
+- Thompson sampling bandit routing (M6)
+- Self-modifying IFleet (deferred — see NON_GOALS.md)
 
 ## Definition of done
 
-- `docs/adr/0001-single-trace-architecture.md`, `0002-*.md`, `0003-*.md` merged
-- `src/agents/verifier/` exists with empty TypeScript shell, types defined, migration file added (verifier_runs + verifier_failures tables), Dockerfile.base scaffolded
-- `SECURITY.md` lists protected paths (at minimum: `src/orchestrator/sprint.ts`, `src/queue/`, `src/server.ts`, `.env*`, `deploy/`, `nginx/`, `ecosystem.config.cjs`)
-- `NON_GOALS.md` lists the 7+ items from CLAUDE.md and ARCHITECTURE.md out-of-scope sections
-- `.ifleet/eval/eval-set.jsonl` exists with ≥10 rows (current realistic ceiling); reach 50 by M3 as sibling repos ship more PRs
-- `docs/elevation/operating-standard.md` reviewed and merged
+- `pr_decisions` and `verifier_runs` tables migrated and deployed to KG database
+- Fingerprinting runs on every SprintManager close event (merged + rejected)
+- Reviewer preference cards populated for top 3 reviewers in `.ifleet/prefs/`
+- Architect emits `query_reviewer_prefs` tool call in ≥50% of observed plan cycles
+- `pnpm test` green, `pnpm tsc --noEmit` clean
 
 ## Verification
 
-- Run `pnpm build` — green
-- Run `pnpm test` — green
-- `git grep -l "single-trace" docs/adr/` returns ADR-0001
-- `wc -l .ifleet/eval/eval-set.jsonl` ≥ 10 (M0.W1 ship gate; ≥50 is the M3 target)
+- `SELECT count(*) FROM pr_decisions WHERE fingerprint IS NOT NULL` > 0 after first post-M4 sprint
+- Reviewer preference card JSON exists at `.ifleet/prefs/<reviewer>.json`
+- `grep -r "get_reviewer_prefs" src/` returns the architect tool definition
 
-## M1–M3 shipped (2026-05-20)
+## M0–M3 shipped (2026-05-20)
 
 | Milestone | What landed | Key PRs |
 |-----------|-------------|---------|
+| M0 | ADR-0001/0002/0003, VerifierAgent scaffold, SECURITY.md, NON_GOALS.md, eval set | #118 |
 | M1 | Closed-loop Docker verifier + retry loop + Discord alerts | #130, #135 |
-| M2 | Plan-Reviewer agent (renamed diff-reviewer, reviewer catches pre-verifier bugs) | #132 |
+| M2 | Plan-Reviewer agent (renamed diff-reviewer, catches pre-verifier bugs) | #132 |
 | M3 | KG schema + indexer (tree-sitter + Postgres + pgvector core) | #134 |
 
-Canary disagreement alerter shipping via `feat/canary-disagreement-alerting` (07b5781).
+Canary disagreement alerter shipped via `feat/canary-disagreement-alerting` (07b5781).
 
-## Next sprint — Phase 2: 24/7 continuous operation
+## Next sprint — M5: Goal-driven mode
 
-M1, M2, and M3 are all merged to main. Active work is Phase 2: wiring the fleet for continuous 24/7 operation. See `ROADMAP.md` for M4–M6 dependency chain and `docs/running.md` for single-seat operational policy.
+Once M4 fingerprinting is validated (≥50% fingerprint coverage, preference cards live), M5 ships the Proposer: autonomous goal generation + #ifleet-proposals channel + budget gate. See `ROADMAP.md` for M5–M6 dependency chain.

@@ -1,5 +1,6 @@
 {
   "$schema": "./workers.schema.json",
+  "_note": "Use full Claude model IDs: claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5-20251001. Short aliases (opus-4.7 etc.) also resolve via mapModel() in factory.ts.",
   "workers": [
     {
       "id": "claude-max-1",
@@ -7,7 +8,7 @@
       "tier": "max-100",
       "authProfile": "default",
       "permissionMode": "auto",
-      "models": ["opus-4.7", "sonnet-4.6", "haiku-4.5"],
+      "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
       "maxConcurrent": 3,
       "enabled": true,
       "notes": "Primary Claude Max account ($100 tier). Auto Mode enabled."
@@ -18,7 +19,7 @@
       "tier": "max-100",
       "authProfile": "claude-max-2",
       "permissionMode": "auto",
-      "models": ["opus-4.7", "sonnet-4.6", "haiku-4.5"],
+      "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
       "maxConcurrent": 3,
       "enabled": false,
       "notes": "Second Claude Max account. Enable when profile is configured."
