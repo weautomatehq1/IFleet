@@ -11,6 +11,8 @@ export default defineConfig({
       'src/repos/**/*.test.ts',
       'src/discord/**/*.test.ts',
       'src/agents/**/*.test.ts',
+      'src/audit/**/*.test.ts',
+      'src/queue/**/*.test.ts',
       'scripts/__tests__/**/*.test.ts',
       'dashboard/**/*.test.ts',
     ],
