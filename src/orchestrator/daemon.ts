@@ -313,36 +313,54 @@ async function main(): Promise<void> {
         // Derive repo slug ("owner/repo") from the repoUrl the registry
         // captured at bootstrap. Form: https://github.com/<owner>/<repo>.
         const repoSlug = ctx.repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+        const [owner, repo] = repoSlug.split('/', 2);
+        if (!owner || !repo) {
+          console.warn(
+            `[daemon] onForcePr(${taskId}): could not parse owner/repo from ${ctx.repoUrl}`,
+          );
+          return;
+        }
         const title = unified?.title ?? `Force-PR for ${taskId}`;
+        // Wrap user-controlled fields in backticks so a reason like
+        // "<!-- broken markdown" can't escape the body context.
+        // AUDIT-IFleet-def3f18a.
         const body =
           `Force-PR override dispatched via Discord.\n\n` +
           `- Task: \`${taskId}\`\n` +
-          `- Reason: ${reason ?? '(none)'}\n` +
+          `- Reason: \`${(reason ?? '(none)').replace(/`/g, "'")}\`\n` +
           `- Verifier status: \`failed\` (deliberate operator bypass)\n`;
+        // Push the branch first — onForcePr can fire from a failed-verifier
+        // worktree that the normal PR path never reached, so origin may not
+        // have the head yet. Best-effort: if push fails (already up to date,
+        // worktree gone, etc.) the subsequent pulls.create will surface a
+        // clearer error than a stale push warning.
         try {
-          await execFileAsync(
-            'gh',
-            [
-              'pr',
-              'create',
-              '--repo',
-              repoSlug,
-              '--base',
-              'main',
-              '--head',
-              ctx.branch,
-              '--title',
-              title,
-              '--body',
-              body,
-            ],
-            { cwd: ctx.worktreePath },
-          );
-        } catch (err) {
-          // `gh` exits non-zero if the PR already exists — surface as warn,
-          // not a crash. Operator can verify on GitHub.
+          await execFileAsync('git', ['push', '-u', 'origin', ctx.branch], { cwd: ctx.worktreePath });
+        } catch (pushErr) {
           console.warn(
-            `[daemon] onForcePr(${taskId}): gh pr create failed (PR may already exist): ${
+            `[daemon] onForcePr(${taskId}): git push failed (may already be pushed): ${
+              pushErr instanceof Error ? pushErr.message : String(pushErr)
+            }`,
+          );
+        }
+        // Use the existing Octokit client (already authenticated with
+        // GITHUB_TOKEN) instead of shelling to `gh`, which isn't installed on
+        // the VPS daemon image. AUDIT-IFleet-63347c06.
+        try {
+          await octokit.rest.pulls.create({
+            owner,
+            repo,
+            base: 'main',
+            head: ctx.branch,
+            title,
+            body,
+          });
+        } catch (err) {
+          // 422 = already exists; other 4xx/5xx codes are real errors — both
+          // get logged as warn here so the operator sees the message on
+          // Discord follow-up without crashing the daemon.
+          console.warn(
+            `[daemon] onForcePr(${taskId}): pulls.create failed (PR may already exist): ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
@@ -439,18 +457,12 @@ async function main(): Promise<void> {
       // sprint is queued/planning (not in `running`) — abort is a no-op
       // there, but the state flip still terminates it.
       const reason = cmd.reason ?? 'fleet stopped';
-      // Set the pause flag FIRST (AUDIT-IFleet-1cdaccd5). Previously this
-      // came after the read+cancel loop so the tick loop could pick up a
-      // new pending task during the await window between reading the
-      // running sprints and setting the freeze.
-      const opts: { reason?: string; by?: string } = { reason: cmd.reason ?? 'STOP' };
-      if (cmd.userLabel) opts.by = cmd.userLabel;
-      setFleetPaused(opts);
-
+      // Snapshot the running sprints AND the unified→sprint reverse index
+      // BEFORE flipping the pause flag (AUDIT-IFleet-07b8a597) and before any
+      // await. JS is single-threaded so the synchronous block is atomic with
+      // respect to wireSprintCompletion eviction; capturing them here also
+      // makes the ordering invariant explicit for future readers.
       const runningSprints = orchestratorStore.listSprintsByStateKind('running');
-      let cancelled = 0;
-      const sprintCancels: Promise<unknown>[] = [];
-
       // Reverse-index the unified→sprint map so we can find every unified
       // task ID attached to a sprint we're about to cancel. The orchestrator
       // store keys tasks by `tk_<nanoid>` (sprint.ts:170) which is the wrong
@@ -464,6 +476,16 @@ async function main(): Promise<void> {
         sprintToUnified.set(sprintId, bucket);
       }
 
+      // Pause flag last in the synchronous prelude (AUDIT-IFleet-1cdaccd5):
+      // the tick loop cannot pick up new work once this is set, and the snapshot
+      // above is now stable for the await window below.
+      const opts: { reason?: string; by?: string } = { reason: cmd.reason ?? 'STOP' };
+      if (cmd.userLabel) opts.by = cmd.userLabel;
+      setFleetPaused(opts);
+
+      let cancelledTasks = 0;
+      let cancelledSprints = 0;
+      const sprintCancels: Promise<unknown>[] = [];
       for (const sprint of runningSprints) {
         try {
           for (const unifiedId of sprintToUnified.get(sprint.id) ?? []) {
@@ -473,8 +495,9 @@ async function main(): Promise<void> {
               /* unified row may already be terminal — leave it */
             }
             approvalGate.resolve(unifiedId, 'cancel');
-            cancelled++;
+            cancelledTasks++;
           }
+          cancelledSprints++;
           sprintCancels.push(
             orchestrator.cancelSprint(sprint.id, reason).catch((err: unknown) =>
               console.warn(`[daemon] onStop: cancelSprint ${sprint.id} failed:`, err),
@@ -485,9 +508,13 @@ async function main(): Promise<void> {
         }
       }
       await Promise.allSettled(sprintCancels);
+      // Report sprint count (the architectural unit) AND task count so a
+      // future multi-brief-per-sprint world stays diagnosable.
+      // AUDIT-IFleet-f751e1f1.
       broadcastIFleet(
         `🛑 Fleet STOPPED${cmd.userLabel ? ` by ${cmd.userLabel}` : ''}${cmd.reason ? ` — ${cmd.reason}` : ''}. ` +
-          `Aborted ${cancelled} in-flight task(s); queue paused. Use /continue to resume pickups.`,
+          `Aborted ${cancelledSprints} sprint(s) / ${cancelledTasks} task(s); queue paused. ` +
+          `Use /continue to resume pickups.`,
       );
     },
     resolveTask: () => null,
@@ -744,7 +771,15 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
       orchestrator.off('event', handler);
       unifiedToSprintId?.delete(task.id);
-      verifierCtx?.delete(task.id);
+      // Only evict verifier context on `cancelled` — on `failed` the operator
+      // may still call /force-pr to push the WIP branch up, and that path
+      // depends on the registry holding repoUrl/branch/worktreePath. Memory
+      // pressure from failed-sprint entries is bounded (failures are rare on
+      // the happy path) and the next successful daemon boot starts a fresh
+      // registry. AUDIT-IFleet-dae6c0e6.
+      if (event.kind === 'sprint.cancelled') {
+        verifierCtx?.delete(task.id);
+      }
       // sprint.failed / sprint.cancelled events carry only { from, to } in
       // payload — the actual error/reason lives on SprintState. Read it from
       // the store via the orchestrator instead of trusting the payload.
@@ -800,20 +835,43 @@ interface TaskContextRecord {
 }
 
 export class TaskContextRegistry {
+  // Records are stored once under a primary key (the orchestrator's `tk_*`
+  // task ID) and exposed via secondary aliases (the unified queue ID — Discord
+  // ULID or GitHub node_id). `get`/`setSha`/`delete` resolve aliases first so
+  // either ID namespace returns the same record. Closes AUDIT-IFleet-57f5d4e8.
   private readonly map = new Map<string, TaskContextRecord>();
-  record(taskId: string, rec: TaskContextRecord): void { this.map.set(taskId, rec); }
+  private readonly aliasToPrimary = new Map<string, string>();
+
+  record(taskId: string, rec: TaskContextRecord, alias?: string): void {
+    this.map.set(taskId, rec);
+    if (alias && alias !== taskId) this.aliasToPrimary.set(alias, taskId);
+  }
   setSha(taskId: string, sha: string): void {
-    const r = this.map.get(taskId);
+    const primary = this.aliasToPrimary.get(taskId) ?? taskId;
+    const r = this.map.get(primary);
     if (r) r.sha = sha;
   }
-  get(taskId: string): TaskContextRecord | undefined { return this.map.get(taskId); }
+  get(taskId: string): TaskContextRecord | undefined {
+    const primary = this.aliasToPrimary.get(taskId) ?? taskId;
+    return this.map.get(primary);
+  }
   /**
    * Evict on terminal sprint state. Without this the map grows monotonically
    * for the life of the 24/7 daemon — every processed task adds one entry
    * that's never reclaimed. AUDIT-IFleet-4aed4b1e / 8c9e1b6f / 3d7f47c3 / 4c20a0e6.
+   *
+   * Accepts either the primary `tk_*` ID or any alias — removes the record
+   * and every alias pointing at it.
    */
-  delete(taskId: string): boolean { return this.map.delete(taskId); }
-  /** Test helper — current entry count. */
+  delete(taskId: string): boolean {
+    const primary = this.aliasToPrimary.get(taskId) ?? taskId;
+    const existed = this.map.delete(primary);
+    for (const [alias, target] of this.aliasToPrimary.entries()) {
+      if (target === primary) this.aliasToPrimary.delete(alias);
+    }
+    return existed;
+  }
+  /** Test helper — current entry count (primary keys only). */
   size(): number { return this.map.size; }
 }
 
@@ -825,11 +883,19 @@ export function wrapFactoryWithVerifierContext(
     const bootstrap = await inner(taskId, brief, opts);
     const task = decodeBridgeBrief(brief);
     if (task) {
-      registry.record(taskId, {
-        repoUrl: `https://github.com/${task.repo}`,
-        branch: titleToBranchName(task.issueNumber, task.title),
-        worktreePath: bootstrap.input.worktreePath,
-      });
+      // Alias the unified queue ID (Discord ULID / GitHub node_id) to the
+      // orchestrator's `tk_*` primary key so callbacks that arrive with the
+      // unified ID (onForcePr, wireSprintCompletion's verifierCtx.delete) can
+      // resolve the same record. AUDIT-IFleet-57f5d4e8.
+      registry.record(
+        taskId,
+        {
+          repoUrl: `https://github.com/${task.repo}`,
+          branch: titleToBranchName(task.issueNumber, task.title),
+          worktreePath: bootstrap.input.worktreePath,
+        },
+        task.id,
+      );
     }
     const origTeardown = bootstrap.teardown;
     // Capture HEAD SHA before original teardown removes the worktree.
