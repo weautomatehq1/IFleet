@@ -73,7 +73,7 @@ export async function sendSprintAlert(opts: {
 }): Promise<EmailResult> {
   return sendEmail({
     to: opts.to,
-    subject: `[IFleet] ${escapeHtml(opts.subject)}`,
+    subject: `[IFleet] ${opts.subject}`,
     html: `<p><strong>Sprint:</strong> ${escapeHtml(opts.sprintId)}</p><pre>${escapeHtml(opts.body)}</pre>`,
   });
 }
