@@ -145,8 +145,6 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   });
 
   await cp.start();
-  // TODO: restrict to 127.0.0.1 and proxy via nginx in prod — server.listen()
-  // defaults to all interfaces (0.0.0.0). HMAC is the only guard right now.
   const url = `http://127.0.0.1:${port}`;
   console.warn(`[control-plane] listening on ${url}`);
 
