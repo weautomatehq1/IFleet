@@ -301,20 +301,58 @@ async function setupWorktree(
   await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
   await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, 'main'], { cwd: repoRoot });
 
+  // Symlink the worktree's node_modules to the host repo's tree. Two
+  // assumptions ride on this:
+  //   1. The host install is NOT prod-stripped (devDeps like `typescript`,
+  //      `tsx`, `eslint`, `@types/*` must be present, or verify steps in the
+  //      pipeline fail). `deploy/deploy.sh` runs `pnpm install
+  //      --frozen-lockfile` (no `--prod`) on the VPS for this reason.
+  //   2. The lockfile in the worktree matches the host's. Tasks that mutate
+  //      `package.json` will resolve against stale deps; the verify step
+  //      (`tsc --noEmit` etc.) is the safety net that surfaces the mismatch.
   const nmTarget = join(worktreePath, 'node_modules');
   if (!existsSync(nmTarget)) {
     symlinkSync(join(repoRoot, 'node_modules'), nmTarget);
   }
 
-  // Pre-approve all tools so the Claude subprocess doesn't block on
-  // permission prompts in a non-interactive (piped stdio) environment.
+  // Pre-approve a narrow set of tools so the Claude subprocess doesn't block
+  // on permission prompts in non-interactive (piped stdio) environments.
+  // Bash is restricted to dev-tool prefixes — no blanket `Bash(*)` — so a
+  // prompt-injected worker cannot run `curl`, `wget`, `ssh`, or read arbitrary
+  // host files. Add prefixes here as legitimate worker needs surface.
+  // TODO: narrow further per role (architect/editor/doctor/reviewer) once the
+  // role is plumbed through to setupWorktree.
   const claudeDir = join(worktreePath, '.claude');
   mkdirSync(claudeDir, { recursive: true });
   writeFileSync(
     join(claudeDir, 'settings.json'),
     JSON.stringify({
       permissions: {
-        allow: ['Bash(*)', 'Edit(*)', 'Write(*)', 'Read(*)', 'Glob(*)', 'Grep(*)', 'TodoWrite(*)'],
+        allow: [
+          'Bash(git *)',
+          'Bash(pnpm *)',
+          'Bash(npm *)',
+          'Bash(npx *)',
+          'Bash(node *)',
+          'Bash(tsc *)',
+          'Bash(tsx *)',
+          'Bash(eslint *)',
+          'Bash(vitest *)',
+          'Bash(ls *)',
+          'Bash(cat *)',
+          'Bash(grep *)',
+          'Bash(find *)',
+          'Bash(mkdir *)',
+          'Bash(rm *)',
+          'Bash(mv *)',
+          'Bash(cp *)',
+          'Edit(*)',
+          'Write(*)',
+          'Read(*)',
+          'Glob(*)',
+          'Grep(*)',
+          'TodoWrite(*)',
+        ],
       },
     }),
   );

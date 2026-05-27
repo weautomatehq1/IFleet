@@ -57,7 +57,11 @@ rsync "${RSYNC_FLAGS[@]}" ./ "$VPS:$REMOTE_DIR/"
 [[ "${DRY_RUN:-}" == "1" ]] && { log "DRY_RUN complete."; exit 0; }
 
 # ---- 3. Remote install + reload --------------------------------------------
-log "Installing prod deps on VPS + reloading PM2"
+# NOTE: Do not add `--prod`. The pipeline worktree symlinks node_modules from
+# this directory (src/pipeline/factory.ts → setupWorktree), and verify steps
+# need devDeps (`typescript`, `tsx`, `eslint`, `@types/*`). A prod-stripped
+# install will break every worker's typecheck.
+log "Installing deps on VPS + reloading PM2"
 ssh "$VPS" bash <<EOF
 set -euo pipefail
 cd "$REMOTE_DIR"

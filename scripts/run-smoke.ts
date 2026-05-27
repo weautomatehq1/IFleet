@@ -15,6 +15,11 @@
  * without spawning a worker or creating a worktree. Use it on launch eve
  * to verify queue + classifier wiring without burning a real run.
  *
+ * NOTE: This smoke runner maintains its own GitHubQueue/WorkerPool independent of the daemon.
+ * The daemon is the production path. This runner omits: eventSink, verifierController,
+ * approvalGate, Discord output. Use the daemon + /ship command for production smoke tests.
+ * See AUDIT-IFleet-5b5cb5a4.
+ *
  * Known Phase A limitations (surface them, don't hide them):
  *  1. The smoke driver now goes through `PipelineBridge` so it shares a
  *     `PipelineRunnerFactory` with the orchestrator (Phase B work). The

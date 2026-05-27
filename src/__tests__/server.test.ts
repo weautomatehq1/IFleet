@@ -8,8 +8,7 @@
  * is invoked and errors are not swallowed without logging.
  */
 
-import { strict as assert } from 'node:assert';
-import { describe, it } from 'node:test';
+import { describe, it, expect } from 'vitest';
 import { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import {
@@ -56,27 +55,26 @@ function signedHeaders(
 
 describe('parseCommand — verify and force_pr', () => {
   it('parses verify with taskId', () => {
-    assert.deepEqual(parseCommand('{"type":"verify","taskId":"t-v"}'), {
+    expect(parseCommand('{"type":"verify","taskId":"t-v"}')).toEqual({
       type: 'verify',
       taskId: 't-v',
     });
   });
 
   it('parses force_pr with taskId and reason', () => {
-    assert.deepEqual(
+    expect(
       parseCommand('{"type":"force_pr","taskId":"t-f","reason":"override"}'),
-      { type: 'force_pr', taskId: 't-f', reason: 'override' },
-    );
+    ).toEqual({ type: 'force_pr', taskId: 't-f', reason: 'override' });
   });
 
   it('parses force_pr without reason', () => {
     const cmd = parseCommand('{"type":"force_pr","taskId":"t-g"}');
-    assert.equal(cmd.type, 'force_pr');
-    if (cmd.type === 'force_pr') assert.equal(cmd.taskId, 't-g');
+    expect(cmd.type).toBe('force_pr');
+    if (cmd.type === 'force_pr') expect(cmd.taskId).toBe('t-g');
   });
 
   it('rejects verify without taskId', () => {
-    assert.throws(() => parseCommand('{"type":"verify"}'));
+    expect(() => parseCommand('{"type":"verify"}')).toThrow();
   });
 });
 
@@ -93,7 +91,9 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
       queue: noopQueue(),
       hmacSecret: SECRET,
       port: 0,
-      onVerify: async (id) => { verifiedId = id; },
+      onVerify: async (id) => {
+        verifiedId = id;
+      },
     });
     await cp.start();
     try {
@@ -105,13 +105,16 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
         body,
       });
       // Dispatch is fire-and-forget → always 202
-      assert.equal(res.status, 202);
+      expect(res.status).toBe(202);
     } finally {
       await cp.stop();
     }
-    // Give fire-and-forget a tick to settle
-    await new Promise((r) => setTimeout(r, 20));
-    assert.equal(verifiedId, 'T-1');
+    const deadline = Date.now() + 200;
+    while (Date.now() < deadline) {
+      if (verifiedId !== undefined) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(verifiedId).toBe('T-1');
   });
 
   it('force_pr command → onForcePr callback is invoked with taskId and reason', async () => {
@@ -121,7 +124,10 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
       queue: noopQueue(),
       hmacSecret: SECRET,
       port: 0,
-      onForcePr: async (id, reason) => { forcedId = id; forcedReason = reason; },
+      onForcePr: async (id, reason) => {
+        forcedId = id;
+        forcedReason = reason;
+      },
     });
     await cp.start();
     try {
@@ -132,13 +138,17 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
         headers: signedHeaders(SECRET, body),
         body,
       });
-      assert.equal(res.status, 202);
+      expect(res.status).toBe(202);
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 20));
-    assert.equal(forcedId, 'T-2');
-    assert.equal(forcedReason, 'override');
+    const deadline = Date.now() + 200;
+    while (Date.now() < deadline) {
+      if (forcedId !== undefined) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(forcedId).toBe('T-2');
+    expect(forcedReason).toBe('override');
   });
 
   it('verify → onVerify that throws does not crash the server (error is logged, not fatal)', async () => {
@@ -163,15 +173,19 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
         headers: signedHeaders(SECRET, body),
         body,
       });
-      assert.equal(res.status, 202);
+      expect(res.status).toBe(202);
       // Server is still alive after the throw
       const healthz = await fetch(`http://127.0.0.1:${port}/healthz`);
-      assert.equal(healthz.status, 200);
+      expect(healthz.status).toBe(200);
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 20));
-    assert.equal(threw, true);
+    const deadline2 = Date.now() + 200;
+    while (Date.now() < deadline2) {
+      if (threw) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(threw).toBe(true);
   });
 
   it('force_pr → onForcePr that throws does not crash the server', async () => {
@@ -194,13 +208,17 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
         headers: signedHeaders(SECRET, body),
         body,
       });
-      assert.equal(res.status, 202);
+      expect(res.status).toBe(202);
       const healthz = await fetch(`http://127.0.0.1:${port}/healthz`);
-      assert.equal(healthz.status, 200);
+      expect(healthz.status).toBe(200);
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 20));
-    assert.equal(threw, true);
+    const deadline = Date.now() + 200;
+    while (Date.now() < deadline) {
+      if (threw) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(threw).toBe(true);
   });
 });
