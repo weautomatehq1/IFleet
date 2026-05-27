@@ -260,6 +260,20 @@ export class Orchestrator {
    */
   private async dispatchToDiscord(event: OrchestratorEvent, taskId: TaskId): Promise<void> {
     if (!this.discordOut || !this.queuedTaskLoader) return;
+    // Only completion/failure/cancellation are routed through DiscordOut from
+    // here. `task.assigned` is owned by daemon.ts:wireSprintCompletion which
+    // re-reads the task to pick up a thread created post-ingest — running
+    // both paths would double-post the picked-up message and waste a thread
+    // creation call when the task already has one. Short-circuit before any
+    // thread resolution so unsupported events don't trigger postTaskCreated
+    // / bindThreadToTask side-effects. AUDIT-IFleet-b3fdcf22.
+    if (
+      event.kind !== 'task.completed' &&
+      event.kind !== 'task.failed' &&
+      event.kind !== 'task.cancelled'
+    ) {
+      return;
+    }
     try {
       const out = this.discordOut;
       const taskLoader = this.queuedTaskLoader;
