@@ -101,6 +101,7 @@ describe('dbUpsertFindings', () => {
     const calls: string[] = clientMock.query.mock.calls.map((c: unknown[]) => c[0] as string);
     expect(calls[0]).toBe('BEGIN');
     expect(calls[calls.length - 1]).toBe('COMMIT');
+    expect(clientMock.release).toHaveBeenCalledTimes(1);
   });
 
   it('executes INSERT with correct parameter order', async () => {
