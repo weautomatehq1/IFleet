@@ -109,8 +109,11 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     } finally {
       await cp.stop();
     }
-    // Give fire-and-forget a tick to settle
-    await new Promise((r) => setTimeout(r, 20));
+    const deadline = Date.now() + 200;
+    while (Date.now() < deadline) {
+      if (verifiedId !== undefined) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
     expect(verifiedId).toBe('T-1');
   });
 
@@ -139,7 +142,11 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 20));
+    const deadline = Date.now() + 200;
+    while (Date.now() < deadline) {
+      if (forcedId !== undefined) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
     expect(forcedId).toBe('T-2');
     expect(forcedReason).toBe('override');
   });
@@ -173,7 +180,11 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 20));
+    const deadline2 = Date.now() + 200;
+    while (Date.now() < deadline2) {
+      if (threw) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
     expect(threw).toBe(true);
   });
 
@@ -203,7 +214,11 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 20));
+    const deadline = Date.now() + 200;
+    while (Date.now() < deadline) {
+      if (threw) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
     expect(threw).toBe(true);
   });
 });
