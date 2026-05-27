@@ -106,8 +106,8 @@ describe('sendSprintAlert', () => {
     );
   });
 
-  it('escapes HTML entities in subject (AUDIT-IFleet-ec328b31)', async () => {
-    sendMock.mockResolvedValue({ data: { id: 'msg_escaped' }, error: null });
+  it('passes subject through verbatim — email subjects are plain-text MIME headers', async () => {
+    sendMock.mockResolvedValue({ data: { id: 'msg_verbatim' }, error: null });
 
     await sendSprintAlert({
       to: 'seb@example.com',
@@ -118,7 +118,7 @@ describe('sendSprintAlert', () => {
 
     expect(sendMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        subject: '[IFleet] &lt;script&gt;alert(1)&lt;/script&gt;',
+        subject: '[IFleet] <script>alert(1)</script>',
       }),
     );
   });
