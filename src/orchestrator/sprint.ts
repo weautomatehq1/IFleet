@@ -298,13 +298,16 @@ export class SprintManager {
       await this.dispatch(task, workerId);
     }
 
-    const allTerminal = tasks.every(
+    const freshTasks = sprint.tasks
+      .map((id) => this.store.loadTask(id))
+      .filter((t): t is TaskRecord => Boolean(t));
+    const allTerminal = freshTasks.every(
       (t) =>
         t.state.kind === 'completed' || t.state.kind === 'failed' || t.state.kind === 'cancelled',
     );
-    if (tasks.length > 0 && allTerminal && this.running.size === 0) {
+    if (freshTasks.length > 0 && allTerminal && this.running.size === 0) {
       // A worker self-cancel (exit 2) is treated as sprint failure: a sprint where any task did not complete is a failed sprint.
-      const anyFailed = tasks.some((t) => t.state.kind === 'failed' || t.state.kind === 'cancelled');
+      const anyFailed = freshTasks.some((t) => t.state.kind === 'failed' || t.state.kind === 'cancelled');
       if (anyFailed) {
         this.transition(sprintId, {
           kind: 'failed',
@@ -312,7 +315,7 @@ export class SprintManager {
           error: 'one or more tasks failed',
         });
       } else {
-        const prs = tasks
+        const prs = freshTasks
           .map((t) => (t.state.kind === 'completed' ? t.state.pr : undefined))
           .filter((p): p is string => Boolean(p));
         this.transition(sprintId, { kind: 'completed', at: this.now(), prs });
