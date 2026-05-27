@@ -149,6 +149,49 @@ describe('index read/write + status mutation', () => {
     expect(readAuditIndex(indexPath)?.findings[0]?.status).toBe('open');
   });
 
+  it('setFindingsStatus is a no-op on terminal `closed` findings', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([finding({ id: 'AUDIT-IFleet-term0001', status: 'closed' })]),
+    );
+    const updated = setFindingsStatus(indexPath, ['AUDIT-IFleet-term0001'], 'open');
+    expect(updated).toBe(0);
+    expect(readAuditIndex(indexPath)?.findings[0]?.status).toBe('closed');
+  });
+
+  it('setFindingsStatus is a no-op on terminal `fixed` findings', () => {
+    // `fixed` is written by reconcileMergedPRs in audit-ritual.ts. Without
+    // the terminal-state guard, a /audit-fix auto dispatch would regress it
+    // to `fixing` and re-open work that's already done.
+    writeAuditIndex(
+      indexPath,
+      makeIndex([finding({ id: 'AUDIT-IFleet-term0002', status: 'fixed' })]),
+    );
+    const updated = setFindingsStatus(indexPath, ['AUDIT-IFleet-term0002'], 'fixing');
+    expect(updated).toBe(0);
+    expect(readAuditIndex(indexPath)?.findings[0]?.status).toBe('fixed');
+  });
+
+  it('setFindingsStatus is a no-op on terminal `stale` findings', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([finding({ id: 'AUDIT-IFleet-term0003', status: 'stale' })]),
+    );
+    const updated = setFindingsStatus(indexPath, ['AUDIT-IFleet-term0003'], 'fixing');
+    expect(updated).toBe(0);
+    expect(readAuditIndex(indexPath)?.findings[0]?.status).toBe('stale');
+  });
+
+  it('openFindings excludes terminal `fixed` and `stale` findings', () => {
+    const idx = makeIndex([
+      finding({ id: 'a', status: 'open' }),
+      finding({ id: 'b', status: 'reopened' }),
+      finding({ id: 'c', status: 'fixed' }),
+      finding({ id: 'd', status: 'stale' }),
+    ]);
+    expect(openFindings(idx).map((f) => f.id).sort()).toEqual(['a', 'b']);
+  });
+
   it('markFindingClosed sets status, closing_pr, closed_at and drops the open count', () => {
     writeAuditIndex(
       indexPath,
