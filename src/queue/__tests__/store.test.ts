@@ -328,6 +328,35 @@ describe('TaskStore', () => {
     }
   });
 
+  it('recordPrDecision is idempotent on (taskId, prNumber)', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask({ idempotencyKey: 'dedup-1' });
+      store.insert(task);
+      const first = store.recordPrDecision({
+        taskId: task.id,
+        repo: 'weautomatehq1/IFleet',
+        prNumber: 99,
+        verdict: 'merged',
+      });
+      const second = store.recordPrDecision({
+        taskId: task.id,
+        repo: 'weautomatehq1/IFleet',
+        prNumber: 99,
+        verdict: 'rejected', // different verdict to confirm the first row is returned
+      });
+      // Only one row should exist; second call returns the existing decision.
+      assert.equal(first.id, second.id);
+      assert.equal(second.verdict, 'merged');
+      const all = store.getPrDecisionsByRepo('weautomatehq1/IFleet');
+      assert.equal(all.length, 1);
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it('list filters by source and channelId', () => {
     const { path, cleanup } = tmpDb();
     try {
