@@ -56,24 +56,6 @@ export interface SprintRuntimeState {
   rateResetAt: number | null;
 }
 
-export interface PrDecisionInput {
-  taskId: string;
-  repo: string;
-  prNumber: number | null;
-  verdict: 'merged' | 'abandoned';
-  reviewerLogin: string | null;
-}
-
-export interface PrDecisionRow {
-  id: number;
-  taskId: string;
-  repo: string;
-  prNumber: number | null;
-  verdict: 'merged' | 'abandoned';
-  reviewerLogin: string | null;
-  decidedAt: number;
-}
-
 const MIGRATIONS: ReadonlyArray<string> = [
   `CREATE TABLE IF NOT EXISTS sprints (
     id TEXT PRIMARY KEY,
@@ -179,18 +161,6 @@ const MIGRATIONS: ReadonlyArray<string> = [
     FOREIGN KEY (run_id) REFERENCES verifier_runs(id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_verifier_failures_run ON verifier_failures(run_id)`,
-  // PR decision log: one row per sprint terminal event. Drives the
-  // merge-rate / abandonment-rate metrics (M4 elevation plan).
-  `CREATE TABLE IF NOT EXISTS pr_decisions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    repo TEXT NOT NULL,
-    pr_number INTEGER,
-    verdict TEXT NOT NULL,
-    reviewer_login TEXT,
-    decided_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id)`,
 ];
 
 interface AttemptRecordInput {
@@ -567,43 +537,4 @@ export class StateStore {
     };
   }
 
-  recordPrDecision(input: PrDecisionInput): void {
-    this.db
-      .prepare(
-        `INSERT INTO pr_decisions (task_id, repo, pr_number, verdict, reviewer_login, decided_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        input.taskId,
-        input.repo,
-        input.prNumber ?? null,
-        input.verdict,
-        input.reviewerLogin ?? null,
-        Date.now(),
-      );
-  }
-
-  listPrDecisions(taskId: string): ReadonlyArray<PrDecisionRow> {
-    interface RawRow {
-      id: number;
-      task_id: string;
-      repo: string;
-      pr_number: number | null;
-      verdict: string;
-      reviewer_login: string | null;
-      decided_at: number;
-    }
-    const rows = this.db
-      .prepare('SELECT * FROM pr_decisions WHERE task_id = ? ORDER BY id ASC')
-      .all(taskId) as ReadonlyArray<RawRow>;
-    return rows.map((r) => ({
-      id: r.id,
-      taskId: r.task_id,
-      repo: r.repo,
-      prNumber: r.pr_number,
-      verdict: r.verdict as 'merged' | 'abandoned',
-      reviewerLogin: r.reviewer_login,
-      decidedAt: r.decided_at,
-    }));
-  }
 }

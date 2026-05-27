@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS pr_decisions (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
 CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_decisions_task_pr
+  ON pr_decisions(task_id, pr_number);
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -158,6 +160,8 @@ export class TaskStore {
       );
       CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
       CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_decisions_task_pr
+        ON pr_decisions(task_id, pr_number);
     `);
     // Forward-compat: if an older DB already created pr_decisions WITHOUT the
     // task_id FK, recreate it. Safe because pr_decisions was dead code until
@@ -365,13 +369,10 @@ export class TaskStore {
    * Idempotent on (task_id, pr_number): a second call for the same pair is a
    * no-op and returns the existing row. Both wireSprintCompletion (in
    * src/orchestrator/daemon.ts) and UnifiedQueueAdapter can fire on the same
-   * sprint completion under retry/restart, so the dedup lives here at the
-   * single write site.
+   * sprint completion under retry/restart, so the dedup is enforced by the
+   * UNIQUE constraint on (task_id, pr_number).
    */
   recordPrDecision(input: RecordPrDecisionInput): PrDecision {
-    const existing = this.getPrDecisionByTaskPr(input.taskId, input.prNumber);
-    if (existing) return existing;
-
     const id = `prd_${randomUUID()}`;
     const createdAt = Date.now();
     const reviewerLogin = input.reviewerLogin ?? null;
@@ -379,7 +380,7 @@ export class TaskStore {
 
     this.db
       .prepare(
-        `INSERT INTO pr_decisions (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at)
+        `INSERT OR IGNORE INTO pr_decisions (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at)
          VALUES (@id, @task_id, @repo, @pr_number, @verdict, @reviewer_login, @merged_at, @created_at)`,
       )
       .run({
@@ -393,16 +394,7 @@ export class TaskStore {
         created_at: createdAt,
       });
 
-    return {
-      id,
-      taskId: input.taskId,
-      repo: input.repo,
-      prNumber: input.prNumber,
-      verdict: input.verdict,
-      reviewerLogin,
-      mergedAt,
-      createdAt,
-    };
+    return this.getPrDecisionByTaskPr(input.taskId, input.prNumber)!;
   }
 
   /** Look up an existing PR decision for the (taskId, prNumber) pair. */
