@@ -105,4 +105,21 @@ describe('sendSprintAlert', () => {
       }),
     );
   });
+
+  it('escapes HTML entities in subject (AUDIT-IFleet-ec328b31)', async () => {
+    sendMock.mockResolvedValue({ data: { id: 'msg_escaped' }, error: null });
+
+    await sendSprintAlert({
+      to: 'seb@example.com',
+      sprintId: 'sprint_xss',
+      subject: '<script>alert(1)</script>',
+      body: 'body text',
+    });
+
+    expect(sendMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: '[IFleet] &lt;script&gt;alert(1)&lt;/script&gt;',
+      }),
+    );
+  });
 });
