@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 const execFileAsync = promisify(execFile);
 
 const IFLEET_CHANNEL_ID = '1504120127791042631';
+// Legacy sprint events path; gracefully skipped if missing.
 const SPRINTS_DIR = resolve(process.cwd(), '.omc/sprints');
 
 // ---- Data collection --------------------------------------------------------
