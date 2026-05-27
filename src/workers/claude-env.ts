@@ -17,6 +17,10 @@ const CLAUDE_ENV_ALLOWLIST = [
   'NODE_ENV',
   'LANG',
   'LC_ALL',
+  // Required for the `anthropic-api` adapter (src/workers/adapters/registry.ts)
+  // — the API-key fallback path when Max-plan auth is unavailable. Prompt-
+  // injection exfiltration risk is accepted because removing the key would
+  // break the fallback; treat any worker output that echoes env as suspect.
   'ANTHROPIC_API_KEY',
   'CLAUDE_PATH',
 ] as const;
