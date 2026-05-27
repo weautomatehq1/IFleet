@@ -246,20 +246,13 @@ export function markFindingsFixing(indexPath: string, ids: readonly string[]): n
 }
 
 /**
- * Mark a finding `closed` and record the PR that closed it. Returns `false`
- * (and logs a warning) when the index or the finding is missing — never
- * throws, so a pipeline close-out can call this without a guard.
+ * Append a closure record to `.audits/closed.json` so a future
+ * audit-regression-detector can detect when the same fingerprint resurfaces
+ * in a future scan. Safe to call multiple times for the same finding —
+ * duplicates are harmless (the detector picks the most recent by `closed_at`).
  *
- * `prUrl` may be `null` for non-PR closures (e.g. the editor/architect short
- * -circuited with NO_CHANGES_NEEDED / ALREADY_RESOLVED). The previous form
- * stored the literal string `'already-resolved'` into `closing_pr`, which
- * corrupted the rollup downstream.
- */
-/**
- * Append a closure record to `.audits/closed.json` so `audit-regression-detector`
- * can detect when the same fingerprint resurfaces in a future scan.
- * Safe to call multiple times for the same finding — duplicates are harmless
- * (the detector picks the most recent by `closed_at`).
+ * Uses an atomic tmp+rename write so a crash mid-write cannot leave a
+ * truncated closed.json on disk.
  */
 export function appendToClosedJson(indexPath: string, finding: AuditFinding): void {
   const closedPath = join(dirname(indexPath), 'closed.json');
@@ -277,15 +270,33 @@ export function appendToClosedJson(indexPath: string, finding: AuditFinding): vo
     finding_id: finding.id,
     closed_at: finding.closed_at ?? new Date().toISOString(),
     closing_pr: finding.closing_pr ?? null,
+    status: finding.status,
   };
   data.closures.push(record);
-  writeFileSync(closedPath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  const tmp = join(dirname(closedPath), `.closed.json.tmp-${process.pid}-${Date.now()}`);
+  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  renameSync(tmp, closedPath);
 }
 
+/**
+ * Mark a finding `closed` and record the PR that closed it. Returns `false`
+ * (and logs a warning) when the index or the finding is missing, and `false`
+ * (silently) when the finding is already in a terminal state — never throws,
+ * so a pipeline close-out can call this without a guard.
+ *
+ * `prUrl` may be `null` for non-PR closures (e.g. the editor/architect short
+ * -circuited with NO_CHANGES_NEEDED / ALREADY_RESOLVED). The previous form
+ * stored the literal string `'already-resolved'` into `closing_pr`, which
+ * corrupted the rollup downstream.
+ *
+ * `closedAt` lets callers pin the closure timestamp to a known event time
+ * (e.g. a PR's mergedAt). Defaults to `new Date().toISOString()`.
+ */
 export function markFindingClosed(
   indexPath: string,
   findingId: string,
   prUrl: string | null,
+  closedAt?: string,
 ): boolean {
   const index = readAuditIndex(indexPath);
   if (!index) {
@@ -297,12 +308,74 @@ export function markFindingClosed(
     console.warn(`[audit-fix] cannot close ${findingId}: not found in ${indexPath}`);
     return false;
   }
+  if (isTerminalAuditStatus(finding.status)) return false;
   finding.status = 'closed';
   finding.closing_pr = prUrl;
-  finding.closed_at = new Date().toISOString();
+  finding.closed_at = closedAt ?? new Date().toISOString();
   writeAuditIndex(indexPath, index);
   appendToClosedJson(indexPath, finding);
   return true;
+}
+
+/**
+ * Batch variant of `markFindingClosed` — closes N findings in a single index
+ * write and a single closed.json write. Skips findings that are missing or
+ * already in a terminal state. Returns the count of findings actually closed.
+ *
+ * Each closure may specify its own `closedAt` (e.g. the PR's mergedAt) and
+ * `status` (`'closed'` for pipeline close-outs, `'fixed'` for PR reconciliation
+ * in audit-ritual). Defaults: `closedAt` = now, `status` = `'closed'`.
+ */
+export function markFindingsClosed(
+  indexPath: string,
+  closures: ReadonlyArray<{
+    findingId: string;
+    prUrl: string | null;
+    closedAt?: string;
+    status?: 'fixed' | 'closed';
+  }>,
+): number {
+  const index = readAuditIndex(indexPath);
+  if (!index) {
+    console.warn(`[audit-fix] cannot batch-close: no audit index at ${indexPath}`);
+    return 0;
+  }
+  const now = new Date().toISOString();
+  const records: ClosureRecord[] = [];
+  let changed = 0;
+  for (const { findingId, prUrl, closedAt, status = 'closed' } of closures) {
+    const finding = index.findings.find((f) => f.id === findingId);
+    if (!finding || isTerminalAuditStatus(finding.status)) continue;
+    finding.status = status;
+    finding.closing_pr = prUrl;
+    finding.closed_at = closedAt ?? now;
+    records.push({
+      fingerprint: finding.fingerprint,
+      finding_id: findingId,
+      closed_at: finding.closed_at,
+      closing_pr: prUrl,
+      status: finding.status,
+    });
+    changed++;
+  }
+  if (changed === 0) return 0;
+  writeAuditIndex(indexPath, index);
+
+  const closedPath = join(dirname(indexPath), 'closed.json');
+  let cdata: ClosedIndex = { closures: [] };
+  if (existsSync(closedPath)) {
+    try {
+      cdata = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
+      if (!Array.isArray(cdata.closures)) cdata.closures = [];
+    } catch {
+      cdata = { closures: [] };
+    }
+  }
+  cdata.closures.push(...records);
+  const tmp = join(dirname(closedPath), `.closed.json.tmp-${process.pid}-${Date.now()}`);
+  writeFileSync(tmp, `${JSON.stringify(cdata, null, 2)}\n`, 'utf8');
+  renameSync(tmp, closedPath);
+  return changed;
 }
 
 // ---------------------------------------------------------------------------

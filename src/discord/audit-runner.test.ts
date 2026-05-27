@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   type AuditFinding,
   type AuditIndex,
+  type ClosedIndex,
   extractAuditFindingId,
   formatFindingsList,
   markFindingClosed,
+  markFindingsClosed,
   markFindingsFixing,
   openFindings,
   readAuditIndex,
@@ -235,5 +237,138 @@ describe('index read/write + status mutation', () => {
     expect(back?.findings[0]?.status).toBe('open');
     expect(back?.findings[0]?.severity).toBe('IMPORTANT');
     expect(readFileSync(indexPath, 'utf8')).toContain('AUDIT-IFleet-partial1');
+  });
+});
+
+describe('closed.json bookkeeping', () => {
+  let dir: string;
+  let indexPath: string;
+  let closedPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'audit-closed-'));
+    indexPath = join(dir, 'index.json');
+    closedPath = join(dir, 'closed.json');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function readClosed(): ClosedIndex {
+    return JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
+  }
+
+  it('creates closed.json with one ClosureRecord on first close', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([
+        finding({
+          id: 'AUDIT-IFleet-clos0001',
+          severity: 'CRITICAL',
+          fingerprint: 'fp-clos0001',
+        }),
+      ]),
+    );
+    const ok = markFindingClosed(indexPath, 'AUDIT-IFleet-clos0001', 'https://gh/x/y/pull/1');
+    expect(ok).toBe(true);
+    const data = readClosed();
+    expect(data.closures).toHaveLength(1);
+    expect(data.closures[0]?.fingerprint).toBe('fp-clos0001');
+    expect(data.closures[0]?.finding_id).toBe('AUDIT-IFleet-clos0001');
+    expect(data.closures[0]?.closing_pr).toBe('https://gh/x/y/pull/1');
+    expect(data.closures[0]?.status).toBe('closed');
+  });
+
+  it('appends on second call — closed.json has two records', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([
+        finding({ id: 'AUDIT-IFleet-clos0002', fingerprint: 'fp-2' }),
+        finding({ id: 'AUDIT-IFleet-clos0003', fingerprint: 'fp-3' }),
+      ]),
+    );
+    markFindingClosed(indexPath, 'AUDIT-IFleet-clos0002', 'pr2');
+    markFindingClosed(indexPath, 'AUDIT-IFleet-clos0003', 'pr3');
+    const data = readClosed();
+    expect(data.closures).toHaveLength(2);
+    expect(data.closures.map((c) => c.finding_id).sort()).toEqual([
+      'AUDIT-IFleet-clos0002',
+      'AUDIT-IFleet-clos0003',
+    ]);
+  });
+
+  it('resets gracefully when closed.json is corrupt', () => {
+    writeFileSync(closedPath, '{ not json', 'utf8');
+    writeAuditIndex(
+      indexPath,
+      makeIndex([finding({ id: 'AUDIT-IFleet-clos0004', fingerprint: 'fp-4' })]),
+    );
+    const ok = markFindingClosed(indexPath, 'AUDIT-IFleet-clos0004', 'pr4');
+    expect(ok).toBe(true);
+    const data = readClosed();
+    expect(data.closures).toHaveLength(1);
+    expect(data.closures[0]?.finding_id).toBe('AUDIT-IFleet-clos0004');
+  });
+
+  it('markFindingClosed returns false and does not write when finding is already terminal', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([
+        finding({ id: 'AUDIT-IFleet-clos0005', status: 'fixed', fingerprint: 'fp-5' }),
+      ]),
+    );
+    const ok = markFindingClosed(indexPath, 'AUDIT-IFleet-clos0005', 'pr5');
+    expect(ok).toBe(false);
+    // closed.json should not exist (or be empty); the finding is still 'fixed'
+    const back = readAuditIndex(indexPath);
+    expect(back?.findings[0]?.status).toBe('fixed');
+  });
+
+  it('markFindingsClosed closes N findings in one write', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([
+        finding({ id: 'AUDIT-IFleet-batch001', fingerprint: 'fp-b1' }),
+        finding({ id: 'AUDIT-IFleet-batch002', fingerprint: 'fp-b2' }),
+        finding({ id: 'AUDIT-IFleet-batch003', fingerprint: 'fp-b3' }),
+      ]),
+    );
+    const closed = markFindingsClosed(indexPath, [
+      { findingId: 'AUDIT-IFleet-batch001', prUrl: 'pr-1' },
+      { findingId: 'AUDIT-IFleet-batch002', prUrl: 'pr-2' },
+      { findingId: 'AUDIT-IFleet-batch003', prUrl: 'pr-3' },
+    ]);
+    expect(closed).toBe(3);
+    const back = readAuditIndex(indexPath);
+    expect(back?.findings.every((f) => f.status === 'closed')).toBe(true);
+    const data = readClosed();
+    expect(data.closures).toHaveLength(3);
+  });
+
+  it('markFindingsClosed honors per-closure status:"fixed" for reconciliation', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([finding({ id: 'AUDIT-IFleet-batch004', fingerprint: 'fp-b4' })]),
+    );
+    const closed = markFindingsClosed(indexPath, [
+      { findingId: 'AUDIT-IFleet-batch004', prUrl: 'pr-4', status: 'fixed' },
+    ]);
+    expect(closed).toBe(1);
+    expect(readAuditIndex(indexPath)?.findings[0]?.status).toBe('fixed');
+    expect(readClosed().closures[0]?.status).toBe('fixed');
+  });
+
+  it('markFindingsClosed skips terminal findings without writing', () => {
+    writeAuditIndex(
+      indexPath,
+      makeIndex([
+        finding({ id: 'AUDIT-IFleet-batch005', status: 'fixed', fingerprint: 'fp-b5' }),
+      ]),
+    );
+    const closed = markFindingsClosed(indexPath, [
+      { findingId: 'AUDIT-IFleet-batch005', prUrl: 'pr-5' },
+    ]);
+    expect(closed).toBe(0);
   });
 });
