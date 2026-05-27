@@ -28,6 +28,7 @@
 // Run: `pnpm start:daemon` or via PM2.
 
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { promisify } from 'node:util';
 import type { Client } from 'discord.js';
@@ -156,7 +157,7 @@ async function main(): Promise<void> {
   }, discordOut);
 
   // -------- Production pipeline factory + emit wiring --------
-  const initialWorkers = loadInitialWorkers();
+  const initialWorkers = loadInitialWorkers(resolvePath(repoRoot, 'config', 'workers.json'));
   const octokit = new Octokit({ auth: githubToken });
   const productionFactory = makeProductionFactory({
     repoRoot,
@@ -725,18 +726,12 @@ function wireSprintCompletion(
         const reason = (event.payload['failureReason'] as string | undefined) ?? 'no changes needed';
         broadcastIFleet(`✅ task completed — ${task.repo} · ${task.title} (no PR: ${reason})`);
       }
-      // Mirror the `task.assigned` Discord ping above: post a completion
-      // message to the task's thread the moment a PR opens, so operators
-      // see visibility in the same thread that announced 🟡 picked up.
-      if (out && lastPrUrl) {
-        const current = store.getById(task.id);
-        const threadId =
-          current && current.source.kind === 'discord' ? current.source.threadId : undefined;
-        if (threadId) {
-          const msg = `✅ PR opened: ${lastPrUrl} — ${task.title}`;
-          void out.postProgress(threadId, msg).catch(() => {});
-        }
-      }
+      // Thread-level completion post is owned by Orchestrator.dispatchToDiscord
+      // (`out.postCompleted`) which fires on every `task.completed` event for
+      // Discord-source tasks with a resolved thread. Posting again here would
+      // double the per-thread message. AUDIT-IFleet-b4ad2ed4. The
+      // broadcastIFleet ping above is the source-agnostic notification and
+      // doesn't duplicate the per-thread post.
       return;
     }
 
@@ -1044,15 +1039,50 @@ function legacyQueueShim(_legacy: GitHubQueue): import('../queue/types.js').Queu
   };
 }
 
-function loadInitialWorkers(): ReadonlyArray<WorkerConfig> {
-  // The pipeline factory needs at least one worker config to construct an
-  // AccountPool. Real configs live in config/workers.json — the orchestrator
-  // already reloads from there on SIGHUP, so a minimal bootstrap value is
-  // enough to start.
+// AUDIT-IFleet-1b8126b6 — minimal sanity-check on WORKER_MODELS values.
+// Known model shorthand names accepted by the pipeline factory's mapModel().
+// Unknown values are still allowed (forward-compatibility with new models)
+// but emit a one-line warn so a typo like "sonet-4.6" surfaces immediately
+// at boot instead of failing opaquely at account-pool resolution.
+const KNOWN_MODEL_SHORTHAND = new Set(['opus-4.7', 'sonnet-4.6', 'haiku-4.5']);
+
+function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
+  // Preferred bootstrap path: read config/workers.json so the initial value
+  // matches the live config without hardcoding model versions in source code.
+  // AUDIT-IFleet-df1f3730 / 3ea3e721.
+  if (configPath) {
+    try {
+      const raw = readFileSync(configPath, 'utf8');
+      const parsed = JSON.parse(raw) as { workers?: ReadonlyArray<WorkerConfig> };
+      const enabled = (parsed.workers ?? []).filter((w) => w.enabled);
+      if (enabled.length > 0) return enabled;
+    } catch (err) {
+      console.warn(
+        `[daemon] loadInitialWorkers: could not read ${configPath} (${
+          err instanceof Error ? err.message : String(err)
+        }); falling back to env / hardcoded bootstrap`,
+      );
+    }
+  }
+  // Fallback: WORKER_MODELS env var, then a single-account hardcoded bootstrap.
+  // The orchestrator's WorkerRegistry watches config/workers.json and reloads
+  // on change, so this fallback only survives until the file appears.
   const modelsEnv = process.env['WORKER_MODELS'];
   const models = modelsEnv
-    ? modelsEnv.split(',').map((m) => m.trim()).filter((m) => m.length > 0)
+    ? modelsEnv
+        .split(',')
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0)
     : ['opus-4.7', 'sonnet-4.6', 'haiku-4.5'];
+  for (const m of models) {
+    if (!KNOWN_MODEL_SHORTHAND.has(m)) {
+      console.warn(
+        `[daemon] WORKER_MODELS contains unknown model shorthand: \`${m}\` ` +
+          `(known: ${Array.from(KNOWN_MODEL_SHORTHAND).join(', ')}). ` +
+          `Forwarding to pool anyway; verify pipeline factory mapModel() supports it.`,
+      );
+    }
+  }
   const cfg: WorkerConfig = {
     id: 'claude-max-1',
     provider: 'claude',

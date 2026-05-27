@@ -55,16 +55,25 @@ still recover via `store.list({channelId: threadId})`.
 
 ### Supported orchestrator events
 
-The orchestrator subscribes to these `OrchestratorEvent.kind` values and
-routes them through `DiscordOut`:
+The orchestrator (`src/orchestrator/index.ts:dispatchToDiscord`) subscribes
+to these `OrchestratorEvent.kind` values and routes them through
+`DiscordOut`:
 
-| Event kind             | Adapter call                                            |
-|------------------------|---------------------------------------------------------|
-| `task.assigned`        | `postProgress(thread, '🟡 picked up — architect starting')` |
-| `task.completed`       | `postCompleted(thread, payload.pr)`                     |
-| `task.failed`          | `postFailed(thread, payload.error)`                     |
-| `task.cancelled`       | `postProgress(thread, '🛑 cancelled')`                  |
-| `architect.plan_ready` | `postPlanForApproval(thread, payload.plan)` *(new event — see T2 contract drift note in T5-done.md)* |
+| Event kind             | Adapter call                                            | Routed by |
+|------------------------|---------------------------------------------------------|-----------|
+| `task.completed`       | `postCompleted(thread, payload.pr)`                     | `Orchestrator.dispatchToDiscord` |
+| `task.failed`          | `postFailed(thread, payload.error)`                     | `Orchestrator.dispatchToDiscord` |
+| `task.cancelled`       | `postProgress(thread, '🛑 cancelled')`                  | `Orchestrator.dispatchToDiscord` |
+| `task.assigned`        | `postProgress(thread, '🟡 picked up — architect starting')` | `daemon.ts:wireSprintCompletion` (re-reads the task so a thread created post-ingest is picked up) |
+| `architect.plan_ready` | `postPlanForApproval(thread, payload.plan)`             | pipeline `onArchitectPlan` callback in `daemon.ts:wrapFactoryWithApprovalAndEmit` |
+
+> **Routing note:** `task.assigned` is intentionally NOT handled by
+> `Orchestrator.dispatchToDiscord` — that handler short-circuits before
+> thread resolution for any event kind it doesn't post per-task, so it
+> doesn't waste a `postTaskCreated` / `bindThreadToTask` call. The daemon's
+> `wireSprintCompletion` owns the picked-up message because it can re-read
+> the task after `discordSource.ingest()` opens the thread. See
+> `AUDIT-IFleet-b3fdcf22` / `c2feb878` / `6d692d64` for history.
 
 Other event kinds (`ratelimit.observed`, `sprint.*`, `task.capability_blocked`)
 are intentionally NOT routed per task — they belong on the sprint-level
