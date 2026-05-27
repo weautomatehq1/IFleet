@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dbUpsertFindings, normaliseAuditRepo } from '../src/audit/audit-store.js';
+import { TERMINAL_AUDIT_STATUSES } from '../src/audit/types.js';
 import type { AuditFinding } from '../src/discord/audit-runner.js';
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), '..', '..');
@@ -33,8 +34,20 @@ if (!Array.isArray(findings)) {
   console.error(`[audit-sync] index.json "findings" field is not an array — refusing to upsert`);
   process.exit(1);
 }
-const active = findings.filter((f) => f.status !== 'closed');
+
+const terminal = new Set<string>(TERMINAL_AUDIT_STATUSES);
+const active = findings.filter((f) => !terminal.has(f.status));
 const repoKey = normaliseAuditRepo(repo ?? '');
+
+if (active.length === 0) {
+  console.error(
+    `[audit-sync] no active findings for repo "${repoKey}" (total=${findings.length}, ` +
+      `terminal=${findings.length - active.length}). Refusing to upsert an empty batch — ` +
+      `treat this as a misconfiguration (wrong repo path, stale clone, or every finding ` +
+      `already closed/fixed/stale).`,
+  );
+  process.exit(1);
+}
 
 console.log(`Syncing ${active.length} active findings for repo "${repoKey}" to Supabase…`);
 

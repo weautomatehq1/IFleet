@@ -9,7 +9,9 @@ export type AuditStatus =
   | 'fixing'
   | 'verifying'
   | 'reopened'
-  | 'closed';
+  | 'closed'
+  | 'fixed'
+  | 'stale';
 
 export const AUDIT_STATUSES: readonly AuditStatus[] = [
   'open',
@@ -17,7 +19,35 @@ export const AUDIT_STATUSES: readonly AuditStatus[] = [
   'verifying',
   'reopened',
   'closed',
+  'fixed',
+  'stale',
 ];
+
+/**
+ * Statuses that a finding cannot transition out of via Discord commands or
+ * pipeline auto-mutations. `closed` is set by the pipeline / markFindingClosed,
+ * `fixed` by reconcileMergedPRs in audit-ritual, and `stale` by manual cleanup
+ * of findings whose underlying code is gone. Once a finding is in any of these
+ * states, a new /audit-scan must surface its fingerprint again (as a fresh id)
+ * to reopen it.
+ */
+export const TERMINAL_AUDIT_STATUSES: readonly AuditStatus[] = ['closed', 'fixed', 'stale'];
+
+export function isTerminalAuditStatus(status: AuditStatus): boolean {
+  return (TERMINAL_AUDIT_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Statuses that count toward `open_findings` and `by_severity` in the rollup.
+ * Findings that are mid-pipeline (`fixing`, `verifying`) are tracked but not
+ * counted as actionable — `openFindings()` and rollups must agree on this set
+ * or local/Supabase counts will diverge (see AUDIT-IFleet-ab40871b).
+ */
+export const ACTIVE_AUDIT_STATUSES: readonly AuditStatus[] = ['open', 'reopened'];
+
+export function isActiveAuditStatus(status: AuditStatus): boolean {
+  return (ACTIVE_AUDIT_STATUSES as readonly string[]).includes(status);
+}
 
 export const AUDIT_SEVERITIES: readonly AuditSeverity[] = [
   'CRITICAL',
