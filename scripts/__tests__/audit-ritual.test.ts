@@ -35,15 +35,14 @@ vi.mock('node:child_process', async (importOriginal) => {
 vi.mock('../../src/discord/audit-runner.js', () => ({
   resolveAuditIndexPath: vi.fn((repoPath: string) => `${repoPath}/.audits/index.json`),
   readAuditIndex: vi.fn(),
-  writeAuditIndex: vi.fn(),
-  markFindingClosed: vi.fn(),
+  markFindingsClosed: vi.fn(() => 0),
   openFindings: vi.fn((idx: AuditIndex) =>
     idx.findings.filter((f) => f.status === 'open' || f.status === 'reopened'),
   ),
 }));
 
 import { resolveRepoPath, AUDIT_ID_RE, reconcileMergedPRs } from '../audit-ritual.ts';
-import { readAuditIndex, markFindingClosed } from '../../src/discord/audit-runner.js';
+import { readAuditIndex, markFindingsClosed } from '../../src/discord/audit-runner.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -210,18 +209,20 @@ describe('audit-ritual — reconcileMergedPRs', () => {
     expect(args[searchIdx + 1]).toContain('merged:>=');
   });
 
-  it('closes findings referenced in a merged PR title', async () => {
+  it('batches reconciled closures via markFindingsClosed with status:"fixed"', async () => {
     const finding = makeFinding({ id: 'AUDIT-IFleet-aabbccdd', status: 'open' });
     const index = makeIndex({ findings: [finding] });
     vi.mocked(readAuditIndex).mockReturnValue(index);
+    vi.mocked(markFindingsClosed).mockReturnValue(1);
 
+    const mergedAt = '2026-05-26T10:00:00.000Z';
     mockGhSuccess(
       JSON.stringify([
         {
           number: 99,
           title: 'fix: closes AUDIT-IFleet-aabbccdd',
           body: '',
-          mergedAt: new Date().toISOString(),
+          mergedAt,
           url: 'https://github.com/weautomatehq1/IFleet/pull/99',
         },
       ]),
@@ -229,15 +230,20 @@ describe('audit-ritual — reconcileMergedPRs', () => {
 
     await reconcileMergedPRs(['IFleet']);
 
-    expect(vi.mocked(markFindingClosed)).toHaveBeenCalledOnce();
-    expect(vi.mocked(markFindingClosed)).toHaveBeenCalledWith(
-      expect.stringContaining('.audits/index.json'),
-      'AUDIT-IFleet-aabbccdd',
-      'https://github.com/weautomatehq1/IFleet/pull/99',
-    );
+    expect(vi.mocked(markFindingsClosed)).toHaveBeenCalledOnce();
+    const [idxArg, closuresArg] = vi.mocked(markFindingsClosed).mock.calls[0]!;
+    expect(idxArg).toContain('.audits/index.json');
+    expect(closuresArg).toEqual([
+      {
+        findingId: 'AUDIT-IFleet-aabbccdd',
+        prUrl: 'https://github.com/weautomatehq1/IFleet/pull/99',
+        closedAt: mergedAt,
+        status: 'fixed',
+      },
+    ]);
   });
 
-  it('does not write index when no PR references a finding ID', async () => {
+  it('does not call markFindingsClosed when no PR references a finding ID', async () => {
     vi.mocked(readAuditIndex).mockReturnValue(
       makeIndex({ findings: [makeFinding({ id: 'AUDIT-IFleet-aabbccdd' })] }),
     );
@@ -255,7 +261,37 @@ describe('audit-ritual — reconcileMergedPRs', () => {
 
     await reconcileMergedPRs(['IFleet']);
 
-    expect(vi.mocked(markFindingClosed)).not.toHaveBeenCalled();
+    expect(vi.mocked(markFindingsClosed)).not.toHaveBeenCalled();
+  });
+
+  it('skips findings already in a terminal state (fixed/closed/stale)', async () => {
+    const findings = [
+      makeFinding({ id: 'AUDIT-IFleet-aabbccdd', status: 'fixed' }),
+      makeFinding({ id: 'AUDIT-IFleet-bbccddee', status: 'closed' }),
+      makeFinding({ id: 'AUDIT-IFleet-ccddeeff', status: 'open' }),
+    ];
+    vi.mocked(readAuditIndex).mockReturnValue(makeIndex({ findings }));
+    vi.mocked(markFindingsClosed).mockReturnValue(1);
+
+    mockGhSuccess(
+      JSON.stringify([
+        {
+          number: 42,
+          title: 'closes AUDIT-IFleet-aabbccdd and AUDIT-IFleet-bbccddee and AUDIT-IFleet-ccddeeff',
+          body: '',
+          mergedAt: '2026-05-26T10:00:00.000Z',
+          url: 'https://github.com/weautomatehq1/IFleet/pull/42',
+        },
+      ]),
+    );
+
+    await reconcileMergedPRs(['IFleet']);
+
+    expect(vi.mocked(markFindingsClosed)).toHaveBeenCalledOnce();
+    const closures = vi.mocked(markFindingsClosed).mock.calls[0]![1];
+    // Only the 'open' finding should be batched.
+    expect(closures).toHaveLength(1);
+    expect(closures[0]?.findingId).toBe('AUDIT-IFleet-ccddeeff');
   });
 
   it('skips a failed repo and continues with remaining repos', async () => {

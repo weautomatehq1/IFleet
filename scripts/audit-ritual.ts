@@ -14,9 +14,10 @@ import type { TextChannel } from 'discord.js';
 import {
   resolveAuditIndexPath,
   readAuditIndex,
-  markFindingClosed,
+  markFindingsClosed,
   openFindings,
 } from '../src/discord/audit-runner.js';
+import { isTerminalAuditStatus } from '../src/audit/types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -122,18 +123,32 @@ export async function reconcileMergedPRs(repos: string[]): Promise<void> {
     const index = readAuditIndex(indexPath);
     if (!index) continue;
 
-    let changed = 0;
+    // Collect PR-references into a batch so the index + closed.json get one
+    // write each (versus N writes through markFindingClosed). Reconciled
+    // closures are status:'fixed' — a real merged PR did the work — and
+    // closed_at is the PR's mergedAt so the audit timeline matches GitHub.
+    const toClose: Array<{
+      findingId: string;
+      prUrl: string;
+      closedAt: string;
+      status: 'fixed';
+    }> = [];
     for (const finding of index.findings) {
-      if (finding.status === 'closed') continue;
+      if (isTerminalAuditStatus(finding.status)) continue;
       const pr = closedByPr.get(finding.id);
       if (!pr) continue;
-      // Route through markFindingClosed so closed.json stays in sync.
-      markFindingClosed(indexPath, finding.id, pr.url);
-      changed++;
+      toClose.push({
+        findingId: finding.id,
+        prUrl: pr.url,
+        closedAt: pr.mergedAt,
+        status: 'fixed',
+      });
     }
 
+    const changed = toClose.length > 0 ? markFindingsClosed(indexPath, toClose) : 0;
+
     if (changed > 0) {
-      console.log(`[audit-ritual] reconcile: ${repo} — marked ${changed} finding(s) closed`);
+      console.log(`[audit-ritual] reconcile: ${repo} — marked ${changed} finding(s) fixed`);
 
       if (process.env['IFLEET_KG_DATABASE_URL']) {
         try {
