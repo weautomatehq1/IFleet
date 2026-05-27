@@ -39,12 +39,11 @@ const terminal = new Set<string>(TERMINAL_AUDIT_STATUSES);
 const active = findings.filter((f) => !terminal.has(f.status));
 const repoKey = normaliseAuditRepo(repo ?? '');
 
-if (active.length === 0) {
+if (findings.length === 0) {
   console.error(
-    `[audit-sync] no active findings for repo "${repoKey}" (total=${findings.length}, ` +
-      `terminal=${findings.length - active.length}). Refusing to upsert an empty batch — ` +
-      `treat this as a misconfiguration (wrong repo path, stale clone, or every finding ` +
-      `already closed/fixed/stale).`,
+    `[audit-sync] index.json is empty for repo "${repoKey}". ` +
+      `Refusing to upsert an empty batch — treat this as a misconfiguration ` +
+      `(wrong repo path or stale clone).`,
   );
   process.exit(1);
 }
