@@ -55,7 +55,11 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   const secret = env['IFLEET_HMAC_SECRET'];
   if (!secret) throw new Error('IFLEET_HMAC_SECRET is required');
 
-  const port = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
+  const portRaw = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
+  if (!Number.isInteger(portRaw) || portRaw < 1 || portRaw > 65535) {
+    throw new Error(`CONTROL_PLANE_PORT must be an integer 1-65535, got: ${env['CONTROL_PLANE_PORT']}`);
+  }
+  const port = portRaw;
   const store = deps.store ?? new TaskStore(env['IFLEET_STATE_DIR'] ? undefined : defaultTasksDbPath());
 
   // Crash-recovery sweep: any task left `in_flight` past the threshold (30
@@ -136,8 +140,7 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   });
 
   await cp.start();
-  // TODO: restrict to 127.0.0.1 and proxy via nginx in prod — server.listen()
-  // defaults to all interfaces (0.0.0.0). HMAC is the only guard right now.
+  // Bound to 127.0.0.1 inside createControlPlane — nginx proxies inbound traffic.
   const url = `http://127.0.0.1:${port}`;
   console.warn(`[control-plane] listening on ${url}`);
 
@@ -146,8 +149,13 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     await cp.stop();
     store.close();
   };
-  process.once('SIGTERM', () => void shutdown().then(() => process.exit(0)));
-  process.once('SIGINT', () => void shutdown().then(() => process.exit(0)));
+  const onSignal = (sig: string) => (): void => {
+    void shutdown()
+      .then(() => process.exit(0))
+      .catch((err) => { console.warn(`[control-plane] ${sig} shutdown error:`, err); process.exit(1); });
+  };
+  process.once('SIGTERM', onSignal('SIGTERM'));
+  process.once('SIGINT', onSignal('SIGINT'));
 
   return { url, port, store, stop: shutdown };
 }

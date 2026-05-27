@@ -137,7 +137,7 @@ export function createControlPlane(opts: ControlPlaneOptions): ControlPlane {
     start: () =>
       new Promise<void>((resolve, reject) => {
         server.once('error', reject);
-        server.listen(opts.port, () => {
+        server.listen(opts.port, '127.0.0.1', () => {
           server.off('error', reject);
           resolve();
         });

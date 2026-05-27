@@ -1,0 +1,92 @@
+{
+  "audit_id": "audit-20260527T041319Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-05-27T04:13:19Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-br001bad",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "Verifier context records wrong branch for Discord-source tasks",
+      "detail": "wrapFactoryWithVerifierContext (daemon.ts:830) calls titleToBranchName(task.issueNumber, task.title) which passes issueNumber=0 for Discord-source tasks. The factory (factory.ts:80) correctly uses task.id as the taskRef when issueNumber<=0. This means the registry records a branch like 'chore/smoke-0-fix-foo' while the actual git branch created is 'chore/smoke-01hnx2fk-fix-foo'. onForcePr then tries to open a PR on the non-existent wrong branch.",
+      "file_globs": ["src/orchestrator/daemon.ts"],
+      "fix_sketch": "Change titleToBranchName(task.issueNumber, task.title) to titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title) in wrapFactoryWithVerifierContext to match factory.ts:80 exactly.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-27T04:13:19Z",
+      "closed_at": "2026-05-27T04:13:19Z",
+      "closing_pr": "audit/nightly-2026-05-27"
+    },
+    {
+      "id": "AUDIT-IFleet-port002aa",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Number() of env var CONTROL_PLANE_PORT has no NaN/range guard",
+      "detail": "server.ts:58 and daemon.ts:78 call Number(env['CONTROL_PLANE_PORT'] ?? default) with no validation. Number('abc') returns NaN and Node's server.listen(NaN) silently binds to port 0 (random) rather than throwing. An operator typo like CONTROL_PLANE_PORT=300l (letter l) would cause a silent misconfiguration. daemon.ts:509 has the same issue for IFLEET_DAEMON_TICK_MS.",
+      "file_globs": ["src/server.ts", "src/orchestrator/daemon.ts"],
+      "fix_sketch": "After each Number() call, add: if (!Number.isInteger(portRaw) || portRaw < 1 || portRaw > 65535) throw new Error(...). For tick interval: fall back to DEFAULT_TICK_MS if parsed value is not finite/positive.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-27T04:13:19Z",
+      "closed_at": "2026-05-27T04:13:19Z",
+      "closing_pr": "audit/nightly-2026-05-27"
+    },
+    {
+      "id": "AUDIT-IFleet-bind003aa",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Control-plane server listens on 0.0.0.0 (all interfaces) instead of 127.0.0.1",
+      "detail": "createControlPlane calls server.listen(opts.port) without a host, binding to all interfaces. The TODO comment in server.ts:139 acknowledges this gap. HMAC is the only guard; if an attacker can reach the port (misconfigured firewall, cloud security group), they can probe timing or send authenticated commands if they obtain the secret. Restricting to 127.0.0.1 eliminates the network exposure entirely.",
+      "file_globs": ["src/queue/control-plane.ts", "src/server.ts"],
+      "fix_sketch": "Change server.listen(opts.port, callback) to server.listen(opts.port, '127.0.0.1', callback) in createControlPlane. Update the existing TODO comment to mark as fixed.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-05-27T04:13:19Z",
+      "closed_at": "2026-05-27T04:13:19Z",
+      "closing_pr": "audit/nightly-2026-05-27"
+    },
+    {
+      "id": "AUDIT-IFleet-exit004aa",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "server.ts SIGTERM/SIGINT handlers exit 0 even when shutdown throws",
+      "detail": "server.ts:149-150 uses void shutdown().then(() => process.exit(0)) without a .catch(). If shutdown() rejects (e.g. cp.stop() throws), the unhandled rejection is swallowed and process.exit() is never called, leaving a zombie process. Daemon.ts correctly tracks shutdownErrors and exits non-zero. server.ts has no equivalent guard.",
+      "file_globs": ["src/server.ts"],
+      "fix_sketch": "Add .catch((err) => { console.warn('[control-plane] shutdown error:', err); process.exit(1); }) to both SIGTERM and SIGINT handler chains in server.ts.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-27T04:13:19Z",
+      "closed_at": "2026-05-27T04:13:19Z",
+      "closing_pr": "audit/nightly-2026-05-27"
+    },
+    {
+      "id": "AUDIT-IFleet-elif005aa",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "unifiedToPipelineTask silently defaults issueNumber=0 for unknown source kinds",
+      "detail": "pipeline-bridge.ts:120 uses a binary if/else: kind==='github' sets issueNumber from source, else defaults to 0. The isUnifiedQueuedTask guard currently enforces kind in ['github','discord'], but if a third source kind is added (e.g. 'email'), unifiedToPipelineTask would silently treat it as Discord (issueNumber=0) masking an integration bug. An explicit exhaustive check would catch this at runtime.",
+      "file_globs": ["src/orchestrator/pipeline-bridge.ts"],
+      "fix_sketch": "Change to an if/else-if/else chain with a final throw for unexpected kinds.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-27T04:13:19Z",
+      "closed_at": "2026-05-27T04:13:19Z",
+      "closing_pr": "audit/nightly-2026-05-27"
+    },
+    {
+      "id": "AUDIT-IFleet-dupl006aa",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Duplicate node:path import in orchestrator/store.ts",
+      "detail": "orchestrator/store.ts imports from 'node:path' on two separate lines: line 3 imports dirname and line 5 imports join. TypeScript and bundlers handle this, but it is inconsistent style and should be merged into one import statement.",
+      "file_globs": ["src/orchestrator/store.ts"],
+      "fix_sketch": "Merge into: import { dirname, join } from 'node:path'; and remove the duplicate import line.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-27T04:13:19Z",
+      "closed_at": "2026-05-27T04:13:19Z",
+      "closing_pr": "audit/nightly-2026-05-27"
+    }
+  ]
+}

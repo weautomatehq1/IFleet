@@ -75,7 +75,11 @@ async function main(): Promise<void> {
   const hmacSecret = requireEnv('IFLEET_HMAC_SECRET');
   const discordToken = requireEnv('DISCORD_BOT_TOKEN');
   const githubToken = requireEnv('GITHUB_TOKEN');
-  const port = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
+  const portRaw = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
+  if (!Number.isInteger(portRaw) || portRaw < 1 || portRaw > 65535) {
+    throw new Error(`CONTROL_PLANE_PORT must be an integer 1-65535, got: ${process.env['CONTROL_PLANE_PORT']}`);
+  }
+  const port = portRaw;
 
   console.warn('[daemon] booting IFleet daemon');
 
@@ -506,7 +510,10 @@ async function main(): Promise<void> {
   // process can exit with a non-zero code instead of masking it under exit(0).
   // AUDIT-IFleet-e96f2978.
   let shutdownErrors = 0;
-  const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  const tickIntervalMsRaw = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  const tickIntervalMs = Number.isFinite(tickIntervalMsRaw) && tickIntervalMsRaw > 0
+    ? tickIntervalMsRaw
+    : DEFAULT_TICK_MS;
   void runTickLoop(
     unified,
     orchestrator,
@@ -827,7 +834,7 @@ export function wrapFactoryWithVerifierContext(
     if (task) {
       registry.record(taskId, {
         repoUrl: `https://github.com/${task.repo}`,
-        branch: titleToBranchName(task.issueNumber, task.title),
+        branch: titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title),
         worktreePath: bootstrap.input.worktreePath,
       });
     }

@@ -117,7 +117,14 @@ function isUnifiedQueuedTask(t: object): boolean {
 }
 
 function unifiedToPipelineTask(task: UnifiedQueuedTask): QueuedTask {
-  const issueNumber = task.source.kind === 'github' ? task.source.issueNumber : 0;
+  let issueNumber: number;
+  if (task.source.kind === 'github') {
+    issueNumber = task.source.issueNumber;
+  } else if (task.source.kind === 'discord') {
+    issueNumber = 0;
+  } else {
+    throw new Error(`unifiedToPipelineTask: unexpected source.kind '${(task.source as { kind: string }).kind}'`);
+  }
   const autonomy = task.routingHints?.autonomy ?? 'auto';
   return {
     id: task.id,
