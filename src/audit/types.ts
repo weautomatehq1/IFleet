@@ -25,11 +25,12 @@ export const AUDIT_STATUSES: readonly AuditStatus[] = [
 
 /**
  * Statuses that a finding cannot transition out of via Discord commands or
- * pipeline auto-mutations. `closed` is set by the pipeline / markFindingClosed,
- * `fixed` by reconcileMergedPRs in audit-ritual, and `stale` by manual cleanup
- * of findings whose underlying code is gone. Once a finding is in any of these
- * states, a new /audit-scan must surface its fingerprint again (as a fresh id)
- * to reopen it.
+ * pipeline auto-mutations. `fixed` — set when a PR references the finding ID
+ * via markFindingsClosed with status:'fixed'; `closed` — set by the pipeline
+ * runner or markFindingClosed; `stale` — set by manual cleanup of findings
+ * whose underlying code is gone. Once a finding is in any of these states, a
+ * new /audit-scan must surface its fingerprint again (as a fresh id) to
+ * reopen it.
  */
 export const TERMINAL_AUDIT_STATUSES: readonly AuditStatus[] = ['closed', 'fixed', 'stale'];
 
@@ -89,6 +90,7 @@ export interface ClosureRecord {
   finding_id: string;
   closed_at: string;
   closing_pr: string | null;
+  status: AuditStatus;
 }
 
 /** Shape of `.audits/closed.json`. */
