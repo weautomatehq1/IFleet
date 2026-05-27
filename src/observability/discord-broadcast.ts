@@ -24,12 +24,19 @@ const MAX_CONTENT_LEN = 1900;
 // N tasks back-to-back. Closes AUDIT-IFleet-2e7a838d / AUDIT-IFleet-7912f2d9.
 const MIN_INTERVAL_MS = 2000;
 
+// Cap on the number of pending (setTimeout-scheduled) sends per URL. A burst
+// of thousands of broadcastIFleet calls would otherwise queue indefinitely,
+// saturating memory and delaying other events for tens of minutes.
+// Closes AUDIT-IFleet-5a7c8562.
+const MAX_QUEUE_DEPTH = 50;
+
 // Per-URL state so the module-level flag doesn't leak across parallel test
 // runs (each test that mutates DISCORD_IFLEET_WEBHOOK gets its own slot).
 // Closes AUDIT-IFleet-40f6cad5.
 interface BroadcastState {
   warnedUnset: boolean;
   lastSentAt: number;
+  pendingCount: number;
 }
 const stateByUrl = new Map<string, BroadcastState>();
 
@@ -40,7 +47,7 @@ const UNSET_KEY = '__unset__';
 function getState(key: string): BroadcastState {
   let s = stateByUrl.get(key);
   if (!s) {
-    s = { warnedUnset: false, lastSentAt: 0 };
+    s = { warnedUnset: false, lastSentAt: 0, pendingCount: 0 };
     stateByUrl.set(key, s);
   }
   return s;
@@ -88,7 +95,17 @@ export function broadcastIFleet(msg: string): void {
   if (delay === 0) {
     sendNow(url, truncate(msg));
   } else {
-    setTimeout(() => sendNow(url, truncate(msg)), delay).unref();
+    if (state.pendingCount >= MAX_QUEUE_DEPTH) {
+      console.warn(
+        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
+      );
+      return;
+    }
+    state.pendingCount++;
+    setTimeout(() => {
+      state.pendingCount--;
+      sendNow(url, truncate(msg));
+    }, delay).unref();
   }
 }
 
