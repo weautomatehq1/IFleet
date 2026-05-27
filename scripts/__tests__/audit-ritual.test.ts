@@ -36,13 +36,14 @@ vi.mock('../../src/discord/audit-runner.js', () => ({
   resolveAuditIndexPath: vi.fn((repoPath: string) => `${repoPath}/.audits/index.json`),
   readAuditIndex: vi.fn(),
   writeAuditIndex: vi.fn(),
+  markFindingClosed: vi.fn(),
   openFindings: vi.fn((idx: AuditIndex) =>
     idx.findings.filter((f) => f.status === 'open' || f.status === 'reopened'),
   ),
 }));
 
 import { resolveRepoPath, AUDIT_ID_RE, reconcileMergedPRs } from '../audit-ritual.ts';
-import { readAuditIndex, writeAuditIndex } from '../../src/discord/audit-runner.js';
+import { readAuditIndex, markFindingClosed } from '../../src/discord/audit-runner.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -228,11 +229,12 @@ describe('audit-ritual — reconcileMergedPRs', () => {
 
     await reconcileMergedPRs(['IFleet']);
 
-    expect(vi.mocked(writeAuditIndex)).toHaveBeenCalledOnce();
-    const savedIndex = vi.mocked(writeAuditIndex).mock.calls[0]![1] as AuditIndex;
-    const closed = savedIndex.findings.find((f) => f.id === 'AUDIT-IFleet-aabbccdd');
-    expect(closed?.status).toBe('closed');
-    expect(closed?.closing_pr).toContain('/pull/99');
+    expect(vi.mocked(markFindingClosed)).toHaveBeenCalledOnce();
+    expect(vi.mocked(markFindingClosed)).toHaveBeenCalledWith(
+      expect.stringContaining('.audits/index.json'),
+      'AUDIT-IFleet-aabbccdd',
+      'https://github.com/weautomatehq1/IFleet/pull/99',
+    );
   });
 
   it('does not write index when no PR references a finding ID', async () => {
@@ -253,7 +255,7 @@ describe('audit-ritual — reconcileMergedPRs', () => {
 
     await reconcileMergedPRs(['IFleet']);
 
-    expect(vi.mocked(writeAuditIndex)).not.toHaveBeenCalled();
+    expect(vi.mocked(markFindingClosed)).not.toHaveBeenCalled();
   });
 
   it('skips a failed repo and continues with remaining repos', async () => {

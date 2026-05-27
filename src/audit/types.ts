@@ -82,3 +82,16 @@ export interface AuditIndex {
 export function emptyBySeverity(): Record<AuditSeverity, number> {
   return { CRITICAL: 0, IMPORTANT: 0, COSMETIC: 0 };
 }
+
+/** One entry in `.audits/closed.json` — written whenever a finding reaches a terminal state. */
+export interface ClosureRecord {
+  fingerprint: string;
+  finding_id: string;
+  closed_at: string;
+  closing_pr: string | null;
+}
+
+/** Shape of `.audits/closed.json`. */
+export interface ClosedIndex {
+  closures: ClosureRecord[];
+}

@@ -14,7 +14,7 @@ import type { TextChannel } from 'discord.js';
 import {
   resolveAuditIndexPath,
   readAuditIndex,
-  writeAuditIndex,
+  markFindingClosed,
   openFindings,
 } from '../src/discord/audit-runner.js';
 
@@ -127,15 +127,13 @@ export async function reconcileMergedPRs(repos: string[]): Promise<void> {
       if (finding.status === 'closed') continue;
       const pr = closedByPr.get(finding.id);
       if (!pr) continue;
-      finding.status = 'closed';
-      finding.closed_at = pr.mergedAt;
-      finding.closing_pr = pr.url;
+      // Route through markFindingClosed so closed.json stays in sync.
+      markFindingClosed(indexPath, finding.id, pr.url);
       changed++;
     }
 
     if (changed > 0) {
-      writeAuditIndex(indexPath, index);
-      console.log(`[audit-ritual] reconcile: ${repo} — marked ${changed} finding(s) fixed`);
+      console.log(`[audit-ritual] reconcile: ${repo} — marked ${changed} finding(s) closed`);
 
       if (process.env['IFLEET_KG_DATABASE_URL']) {
         try {
