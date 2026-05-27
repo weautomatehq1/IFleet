@@ -166,7 +166,7 @@ describe('UnifiedQueueAdapter', () => {
     }
   });
 
-  it('markCompleted records a pr_decision (verdict=merged) when prUrl contains a PR number', async () => {
+  it('markCompleted does not record a pr_decision — daemon.wireSprintCompletion owns that write', async () => {
     const { store, cleanup } = tmpStore();
     try {
       const t = ghTask('rec-1');
@@ -177,26 +177,7 @@ describe('UnifiedQueueAdapter', () => {
 
       await adapter.markCompleted(t, 'https://github.com/org/repo/pull/77');
 
-      const decisions = store.getPrDecisionsByRepo('org/repo');
-      assert.equal(decisions.length, 1);
-      assert.equal(decisions[0]!.taskId, 'rec-1');
-      assert.equal(decisions[0]!.prNumber, 77);
-      assert.equal(decisions[0]!.verdict, 'merged');
-    } finally {
-      cleanup();
-    }
-  });
-
-  it('markCompleted skips pr_decision recording when prUrl has no PR number', async () => {
-    const { store, cleanup } = tmpStore();
-    try {
-      const t = ghTask('rec-2');
-      store.insert(t);
-      const github = mockSource('github');
-      const discord = mockSource('discord');
-      const adapter = new UnifiedQueueAdapter(store, { github, discord });
-
-      await adapter.markCompleted(t, '');
+      // pr_decisions are written by daemon.ts wireSprintCompletion, not by the adapter.
       const decisions = store.getPrDecisionsByRepo('org/repo');
       assert.equal(decisions.length, 0);
     } finally {
