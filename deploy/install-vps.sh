@@ -4,7 +4,7 @@
 # Run AS ROOT on the VPS, ONCE. Re-running is mostly idempotent but TLS
 # issuance will skip if a cert already exists.
 #
-#   ssh root@187.124.77.142
+#   ssh root@${VPS_HOST}
 #   cd /opt/ifleet            # after first rsync from deploy.sh
 #   bash deploy/install-vps.sh
 #
