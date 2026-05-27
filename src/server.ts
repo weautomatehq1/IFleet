@@ -128,15 +128,16 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       store.updateState(taskId, 'failed', { reason: reason ?? 'cancelled' });
     },
     // verify / force_pr require the in-process verifier + orchestrator wiring
-    // that only the daemon owns. If they reach this public entry, fail loudly
-    // instead of optional-chaining into a silent no-op (AUDIT-IFleet-5bfc3a68).
+    // that only the daemon owns. If they reach this public entry, log loudly
+    // but do not throw — a throw after res.json(202) produces an unhandled
+    // exception log with no useful recovery path (AUDIT-IFleet-185399bf).
     onVerify: async (taskId) => {
-      throw new Error(
+      console.error(
         `[control-plane] verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onForcePr: async (taskId) => {
-      throw new Error(
+      console.error(
         `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
