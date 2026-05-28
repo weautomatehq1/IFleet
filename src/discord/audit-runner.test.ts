@@ -371,4 +371,22 @@ describe('closed.json bookkeeping', () => {
     ]);
     expect(closed).toBe(0);
   });
+
+  it('dedup: closing two different findings with the same fingerprint writes only one closed.json record — AUDIT-IFleet-a6f69e09', () => {
+    // Two separate findings share a fingerprint (e.g. re-scanned under a new ID)
+    writeAuditIndex(
+      indexPath,
+      makeIndex([
+        finding({ id: 'AUDIT-IFleet-dup0001', fingerprint: 'fp-shared' }),
+        finding({ id: 'AUDIT-IFleet-dup0002', fingerprint: 'fp-shared' }),
+      ]),
+    );
+    markFindingClosed(indexPath, 'AUDIT-IFleet-dup0001', 'pr-dup-1');
+    markFindingClosed(indexPath, 'AUDIT-IFleet-dup0002', 'pr-dup-2');
+    const data = readClosed();
+    // Second call is a no-op for closed.json — fingerprint already recorded
+    expect(data.closures).toHaveLength(1);
+    expect(data.closures[0]?.fingerprint).toBe('fp-shared');
+    expect(data.closures[0]?.finding_id).toBe('AUDIT-IFleet-dup0001');
+  });
 });
