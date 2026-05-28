@@ -13,6 +13,7 @@ export default defineConfig({
       'src/discord/**/*.test.ts',
       'src/agents/**/*.test.ts',
       'src/audit/**/*.test.ts',
+      // src/orchestrator tests use node:test format — run by the node --import tsx --test script
       // src/queue uses node:test, not vitest — a vitest import here will be silently ignored in CI
       'scripts/__tests__/**/*.test.ts',
       'dashboard/**/*.test.ts',
