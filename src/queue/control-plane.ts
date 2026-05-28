@@ -305,6 +305,9 @@ export function parseCommand(body: string): ControlCommand {
       if (typeof parsed.goal !== 'string' || parsed.goal.trim().length === 0) {
         throw new Error('sprint_goal requires goal');
       }
+      if (parsed.goal.length > 8000) {
+        throw new Error('sprint_goal: goal exceeds maximum length of 8000 characters');
+      }
       // Accept Discord audit fields either flat (legacy) or nested under
       // `source` (current client contract — DiscordCommandSource). Nested
       // takes precedence. Server normalizes to flat for downstream handlers.

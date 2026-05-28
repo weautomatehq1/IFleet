@@ -1,0 +1,92 @@
+{
+  "audit_id": "audit-20260528T041254Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-05-28T04:12:54Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-a1b2c3d4",
+      "severity": "CRITICAL",
+      "category": "risk",
+      "title": "rowToTask: unguarded JSON.parse on source_data and routing_hints crashes server on corrupt DB row",
+      "detail": "queue/store.ts rowToTask() calls JSON.parse() on source_data and routing_hints without try-catch. If any row in the SQLite tasks table contains corrupted JSON (manual edit, failed migration, partial write), every call that reads that task (pickNext, list, findByIdempotencyKey) will throw an uncaught exception and crash the daemon or control-plane request handler. The orchestrator/store.ts already uses the correct try-catch-with-log pattern.",
+      "file_globs": ["src/queue/store.ts"],
+      "fix_sketch": "Wrap each JSON.parse in rowToTask with try-catch; throw descriptive Error for source_data and routing_hints (non-recoverable), silently ignore malformed state_meta (non-critical field).",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:12:54Z",
+      "closed_at": "2026-05-28T04:16:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
+    },
+    {
+      "id": "AUDIT-IFleet-b2c3d4e5",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "discord ingest: InsertResult ignored — concurrent duplicate requests return mismatched task to second caller",
+      "detail": "queue/sources/discord.ts ingest() calls store.findByIdempotencyKey() for dedup, then does async Discord API work, then calls store.insert(). store.insert() itself also re-checks the idempotency key, but if a concurrent request already inserted, store.insert returns { inserted: false, existing } which discord.ts silently ignores, returning its own local draftTask (with a potentially different threadId than what is stored) to the caller.",
+      "file_globs": ["src/queue/sources/discord.ts"],
+      "fix_sketch": "Check the InsertResult from store.insert(); if !inserted && existing is set, return existing instead of draftTask.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:12:54Z",
+      "closed_at": "2026-05-28T04:16:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
+    },
+    {
+      "id": "AUDIT-IFleet-c3d4e5f6",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "loadReposConfig: unguarded JSON.parse produces unhelpful stack trace on bad config file",
+      "detail": "config/repos.ts loadReposConfig() calls JSON.parse(readFileSync(...)) with no try-catch. A malformed repos.json or a missing file produces a raw SyntaxError or ENOENT at startup with no indication of which file failed. Wrapping with a descriptive error message saves significant debugging time in production.",
+      "file_globs": ["src/config/repos.ts"],
+      "fix_sketch": "Wrap JSON.parse(readFileSync(...)) in try-catch and re-throw with a message that includes the file path.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:12:54Z",
+      "closed_at": "2026-05-28T04:16:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
+    },
+    {
+      "id": "AUDIT-IFleet-d4e5f6a7",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "pipeline runner: cost logging errors silently swallowed — operators never learn if cost tracking is broken",
+      "detail": "pipeline/runner.ts appendCostRecord() calls are followed by .catch(() => {}) with no logging. If the cost JSONL file becomes unwritable or disk fills up, the failure is invisible. The intent (never break the pipeline for logging) is correct, but errors should still be surfaced via console.warn so operators can notice broken cost tracking before the data gap becomes significant.",
+      "file_globs": ["src/pipeline/runner.ts"],
+      "fix_sketch": "Change .catch(() => {}) to .catch((err) => console.warn('[pipeline] cost logging failed:', err instanceof Error ? err.message : err)).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:12:54Z",
+      "closed_at": "2026-05-28T04:16:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
+    },
+    {
+      "id": "AUDIT-IFleet-e5f6a7b8",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "queue store: row.state cast to TaskState without validation — invalid DB value passes silently",
+      "detail": "queue/store.ts rowToTask() casts row.state directly to TaskState without checking it is one of the valid values ('pending'|'in_flight'|'done'|'failed'|'blocked'). A database with a manually-edited or migration-corrupted state string would pass this cast and silently propagate an invalid state value through the system, potentially causing incorrect branching in downstream state machines.",
+      "file_globs": ["src/queue/store.ts"],
+      "fix_sketch": "Add a validation helper that checks row.state against the known TaskState union values and throws a descriptive error if it is not valid.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:12:54Z",
+      "closed_at": "2026-05-28T04:16:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
+    },
+    {
+      "id": "AUDIT-IFleet-f6a7b8c9",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "sprint_goal: goal field has no maximum length — 64KB body limit is the only DoS guard",
+      "detail": "control-plane.ts parseCommand() checks that goal is non-empty but imposes no upper bound. A caller can submit a 64KB goal (the entire MAX_BODY_BYTES budget), which is stored verbatim in the DB and forwarded to the AI pipeline. The 64KB body cap prevents heap exhaustion but a tighter application-level limit (e.g. 8KB) would make the intent clearer and reduce junk in the DB.",
+      "file_globs": ["src/queue/control-plane.ts"],
+      "fix_sketch": "Add if (parsed.goal.length > 8000) throw new Error('goal exceeds maximum length') after the empty-check in parseCommand.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:12:54Z",
+      "closed_at": "2026-05-28T04:16:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
+    }
+  ]
+}

@@ -390,17 +390,48 @@ function normalizePriority(value: unknown): 'low' | 'normal' | 'high' {
   return 'normal';
 }
 
+const VALID_TASK_STATES: ReadonlySet<string> = new Set([
+  'pending',
+  'in_flight',
+  'done',
+  'failed',
+  'blocked',
+]);
+
 function rowToTask(row: TaskRow): QueuedTask {
+  let source: QueuedTask['source'];
+  try {
+    source = JSON.parse(row.source_data);
+  } catch (err) {
+    throw new Error(`rowToTask: corrupt source_data for task ${row.id}: ${String(err)}`);
+  }
+  let routingHints: QueuedTask['routingHints'];
+  try {
+    routingHints = JSON.parse(row.routing_hints);
+  } catch (err) {
+    throw new Error(`rowToTask: corrupt routing_hints for task ${row.id}: ${String(err)}`);
+  }
+  let stateMeta: QueuedTask['stateMeta'];
+  if (row.state_meta) {
+    try {
+      stateMeta = JSON.parse(row.state_meta);
+    } catch {
+      stateMeta = undefined;
+    }
+  }
+  if (!VALID_TASK_STATES.has(row.state)) {
+    throw new Error(`rowToTask: invalid state ${JSON.stringify(row.state)} for task ${row.id}`);
+  }
   return {
     id: row.id,
-    source: JSON.parse(row.source_data),
+    source,
     repo: row.repo,
     brief: row.brief,
     title: row.title,
-    routingHints: JSON.parse(row.routing_hints),
+    routingHints,
     createdAt: row.created_at,
     idempotencyKey: row.idempotency_key,
     state: row.state as TaskState,
-    stateMeta: row.state_meta ? JSON.parse(row.state_meta) : undefined,
+    stateMeta,
   };
 }

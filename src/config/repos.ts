@@ -22,7 +22,14 @@ export const DEFAULT_REPO_ID = 'weautomatehq1/IFleet';
  * (`{ "owner/name": { owner, name } }`). Migration is idempotent.
  */
 export function loadReposConfig(filePath: string): ReposMap {
-  const raw: unknown = JSON.parse(readFileSync(filePath, 'utf8'));
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    throw new Error(
+      `loadReposConfig: failed to read/parse ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   return migrateReposConfig(raw);
 }
 

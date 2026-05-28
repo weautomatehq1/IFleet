@@ -419,7 +419,9 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
       durationMs: attempt.endedAt - attempt.startedAt,
       startedAt: new Date(attempt.startedAt).toISOString(),
       worktreePath: input.worktreePath,
-    }).catch(() => {}); // never let cost logging break the pipeline
+    }).catch((err) =>
+      console.warn('[pipeline] cost logging failed:', err instanceof Error ? err.message : err),
+    ); // never let cost logging break the pipeline
   }
 }
 

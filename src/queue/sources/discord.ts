@@ -122,7 +122,12 @@ export class DiscordSource implements TaskSource {
         error: threadFailure instanceof Error ? threadFailure.message : String(threadFailure),
       };
     }
-    store.insert(draftTask);
+    const result = store.insert(draftTask);
+    // A concurrent request with the same idempotency key may have won the
+    // race between our findByIdempotencyKey check (above) and the insert.
+    // store.insert re-checks internally and returns the winner; prefer it so
+    // both callers observe the same stored task (same threadId, same state).
+    if (!result.inserted && result.existing) return result.existing;
     return draftTask;
   }
 
