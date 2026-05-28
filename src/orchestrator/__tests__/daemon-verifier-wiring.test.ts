@@ -191,6 +191,70 @@ test('VerifierController.onEvent fires the resolver on synthetic task.completed'
   }
 });
 
+// AUDIT-IFleet-402694a7 — unit tests for TaskContextRegistry alias
+// resolution. The class indexes records under the orchestrator's `tk_*`
+// primary key and exposes them via an alias (unified queue ID — Discord
+// ULID or GitHub node_id). Both namespaces must resolve the same record.
+test('TaskContextRegistry: record(primary, rec, alias) → get(alias) returns the record', () => {
+  const reg = new TaskContextRegistry();
+  const rec = { repoUrl: 'https://github.com/x/y', branch: 'feat/a', worktreePath: '/tmp/wt' };
+  reg.record('tk_primary', rec, 'alias_unified');
+  assert.deepEqual(reg.get('alias_unified'), rec);
+  assert.deepEqual(reg.get('tk_primary'), rec);
+});
+
+test('TaskContextRegistry: setSha(alias, sha) is stored on the primary record', () => {
+  const reg = new TaskContextRegistry();
+  reg.record(
+    'tk_primary',
+    { repoUrl: 'https://github.com/x/y', branch: 'feat/a', worktreePath: '/tmp/wt' },
+    'alias_unified',
+  );
+  reg.setSha('alias_unified', 'deadbeef');
+  assert.equal(reg.get('tk_primary')?.sha, 'deadbeef');
+  assert.equal(reg.get('alias_unified')?.sha, 'deadbeef');
+});
+
+test('TaskContextRegistry: delete(alias) removes both primary and alias', () => {
+  const reg = new TaskContextRegistry();
+  reg.record(
+    'tk_primary',
+    { repoUrl: 'https://github.com/x/y', branch: 'feat/a', worktreePath: '/tmp/wt' },
+    'alias_unified',
+  );
+  assert.equal(reg.size(), 1);
+  assert.equal(reg.delete('alias_unified'), true);
+  assert.equal(reg.size(), 0);
+  assert.equal(reg.get('tk_primary'), undefined);
+  assert.equal(reg.get('alias_unified'), undefined);
+});
+
+test('TaskContextRegistry: delete(primary) removes all aliases pointing at primary', () => {
+  const reg = new TaskContextRegistry();
+  const rec = { repoUrl: 'https://github.com/x/y', branch: 'feat/a', worktreePath: '/tmp/wt' };
+  reg.record('tk_primary', rec, 'alias_unified');
+  // A second record with its own alias — the primary delete should not
+  // disturb unrelated aliases.
+  reg.record('tk_other', { ...rec, branch: 'feat/b' }, 'alias_other');
+  assert.equal(reg.delete('tk_primary'), true);
+  assert.equal(reg.get('alias_unified'), undefined);
+  assert.equal(reg.get('tk_primary'), undefined);
+  // Unrelated entry survives.
+  assert.equal(reg.get('alias_other')?.branch, 'feat/b');
+  assert.equal(reg.size(), 1);
+});
+
+test('TaskContextRegistry: record without alias still resolves by primary', () => {
+  const reg = new TaskContextRegistry();
+  const rec = { repoUrl: 'https://github.com/x/y', branch: 'feat/a', worktreePath: '/tmp/wt' };
+  reg.record('tk_primary', rec);
+  assert.deepEqual(reg.get('tk_primary'), rec);
+  reg.setSha('tk_primary', 'cafebabe');
+  assert.equal(reg.get('tk_primary')?.sha, 'cafebabe');
+  assert.equal(reg.delete('tk_primary'), true);
+  assert.equal(reg.size(), 0);
+});
+
 test('onEvent ignores non-task.completed events', async () => {
   const fx = await makeFixture();
   try {
