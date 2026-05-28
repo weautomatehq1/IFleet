@@ -766,14 +766,16 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
       orchestrator.off('event', handler);
       unifiedToSprintId?.delete(task.id);
-      // Only evict verifier context on `cancelled` — on `failed` the operator
-      // may still call /force-pr to push the WIP branch up, and that path
-      // depends on the registry holding repoUrl/branch/worktreePath. Memory
-      // pressure from failed-sprint entries is bounded (failures are rare on
-      // the happy path) and the next successful daemon boot starts a fresh
-      // registry. AUDIT-IFleet-dae6c0e6.
+      // `cancelled`: evict immediately — no /force-pr path follows a cancel.
+      // `failed`: schedule a delayed eviction (60 min) so the operator's
+      // /force-pr call inside that window still resolves repoUrl/branch/
+      // worktreePath, but the entry doesn't leak for the life of the daemon.
+      // Without the delayed eviction the map grew monotonically across every
+      // failed sprint. AUDIT-IFleet-44d12a0d / dae6c0e6.
       if (event.kind === 'sprint.cancelled') {
         verifierCtx?.delete(task.id);
+      } else {
+        setTimeout(() => verifierCtx?.delete(task.id), 60 * 60 * 1000).unref();
       }
       // sprint.failed / sprint.cancelled events carry only { from, to } in
       // payload — the actual error/reason lives on SprintState. Read it from
