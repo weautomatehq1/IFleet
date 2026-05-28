@@ -272,7 +272,13 @@ export function appendToClosedJson(indexPath: string, finding: AuditFinding): vo
     closing_pr: finding.closing_pr ?? null,
     status: finding.status,
   };
-  data.closures.push(record);
+  // Idempotent: skip if this fingerprint is already recorded.
+  // Cap: if closures grows beyond 10 000 entries, consider archiving older records.
+  // For now we rely on fingerprint dedup to keep growth bounded.
+  const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+  if (!alreadyRecorded) {
+    data.closures.push(record);
+  }
   const tmp = join(dirname(closedPath), `.closed.json.tmp-${process.pid}-${Date.now()}`);
   writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   renameSync(tmp, closedPath);
