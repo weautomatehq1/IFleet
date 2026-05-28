@@ -87,6 +87,20 @@
       "opened_at": "2026-05-28T04:12:54Z",
       "closed_at": "2026-05-28T04:16:00Z",
       "closing_pr": "audit/nightly-2026-05-28"
+    },
+    {
+      "id": "AUDIT-IFleet-g7h8i9j0",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "test fixtures: temp git repos inherit host commit.gpgsign=true, breaking tests in signed-commit environments",
+      "detail": "daemon-verifier-wiring.test.ts, manager.test.ts, and health.test.ts create throwaway git repos and commit to them. They configure user.email/user.name but not commit.gpgsign. In environments where the global git config sets commit.gpgsign=true (as in this CI environment), the test commits fail with a signing error, breaking the entire test suite. The fix is to set commit.gpgsign=false locally on each test repo immediately after init.",
+      "file_globs": ["src/orchestrator/__tests__/daemon-verifier-wiring.test.ts", "src/repos/__tests__/manager.test.ts", "src/repos/__tests__/health.test.ts"],
+      "fix_sketch": "Add git config commit.gpgsign false to each test repo's setup, after user.email/user.name config.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-28T04:26:00Z",
+      "closed_at": "2026-05-28T04:26:00Z",
+      "closing_pr": "audit/nightly-2026-05-28"
     }
   ]
 }

@@ -7,14 +7,15 @@
     "AUDIT-IFleet-c3d4e5f6",
     "AUDIT-IFleet-d4e5f6a7",
     "AUDIT-IFleet-e5f6a7b8",
-    "AUDIT-IFleet-f6a7b8c9"
+    "AUDIT-IFleet-f6a7b8c9",
+    "AUDIT-IFleet-g7h8i9j0"
   ],
   "audits": [
     {
       "audit_id": "audit-20260528T041254Z",
       "scanned_at": "2026-05-28T04:12:54Z",
-      "findings_count": 6,
-      "by_severity": { "CRITICAL": 2, "IMPORTANT": 3, "COSMETIC": 1 },
+      "findings_count": 7,
+      "by_severity": { "CRITICAL": 2, "IMPORTANT": 4, "COSMETIC": 1 },
       "all_fixed": true
     }
   ]
