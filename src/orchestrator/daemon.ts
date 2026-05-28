@@ -1041,12 +1041,31 @@ function legacyQueueShim(_legacy: GitHubQueue): import('../queue/types.js').Queu
   };
 }
 
-// AUDIT-IFleet-1b8126b6 — minimal sanity-check on WORKER_MODELS values.
-// Known model shorthand names accepted by the pipeline factory's mapModel().
-// Unknown values are still allowed (forward-compatibility with new models)
-// but emit a one-line warn so a typo like "sonet-4.6" surfaces immediately
-// at boot instead of failing opaquely at account-pool resolution.
-const KNOWN_MODEL_SHORTHAND = new Set(['opus-4.7', 'sonnet-4.6', 'haiku-4.5']);
+// AUDIT-IFleet-1b8126b6 / dc8a89c5 / c29996f1 — minimal sanity-check on
+// worker model IDs from BOTH bootstrap paths: the WORKER_MODELS env var
+// (dot-separated aliases like `opus-4.7`) and config/workers.json (full
+// model IDs like `claude-opus-4-7`). Unknown values are still allowed
+// (forward-compatibility with new models) but emit a one-line warn so a
+// typo like "sonet-4.6" surfaces immediately at boot instead of failing
+// opaquely at account-pool resolution.
+const KNOWN_MODEL_SHORTHAND = new Set([
+  // Short aliases (WORKER_MODELS env var)
+  'opus-4.7', 'sonnet-4.6', 'haiku-4.5',
+  // Full model IDs (config/workers.json)
+  'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
+]);
+
+function warnUnknownModels(source: string, models: ReadonlyArray<string>): void {
+  for (const m of models) {
+    if (!KNOWN_MODEL_SHORTHAND.has(m)) {
+      console.warn(
+        `[daemon] ${source} contains unknown model id: \`${m}\` ` +
+          `(known: ${Array.from(KNOWN_MODEL_SHORTHAND).join(', ')}). ` +
+          `Forwarding to pool anyway; verify pipeline factory mapModel() supports it.`,
+      );
+    }
+  }
+}
 
 function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
   // Preferred bootstrap path: read config/workers.json so the initial value
@@ -1057,7 +1076,20 @@ function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
       const raw = readFileSync(configPath, 'utf8');
       const parsed = JSON.parse(raw) as { workers?: ReadonlyArray<WorkerConfig> };
       const enabled = (parsed.workers ?? []).filter((w) => w.enabled);
-      if (enabled.length > 0) return enabled;
+      if (enabled.length > 0) {
+        for (const w of enabled) {
+          warnUnknownModels(`workers.json[${w.id}].models`, w.models ?? []);
+        }
+        return enabled;
+      }
+      // AUDIT-IFleet-1543b30a — surface the silent fall-through when the
+      // config file exists but every worker is disabled. Without this warn
+      // the operator only learns from boot-time worker counts that the
+      // config wasn't honored.
+      console.warn(
+        `[daemon] loadInitialWorkers: ${configPath} has no enabled workers ` +
+          `— falling back to env / hardcoded bootstrap`,
+      );
     } catch (err) {
       console.warn(
         `[daemon] loadInitialWorkers: could not read ${configPath} (${
@@ -1076,15 +1108,7 @@ function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
         .map((m) => m.trim())
         .filter((m) => m.length > 0)
     : ['opus-4.7', 'sonnet-4.6', 'haiku-4.5'];
-  for (const m of models) {
-    if (!KNOWN_MODEL_SHORTHAND.has(m)) {
-      console.warn(
-        `[daemon] WORKER_MODELS contains unknown model shorthand: \`${m}\` ` +
-          `(known: ${Array.from(KNOWN_MODEL_SHORTHAND).join(', ')}). ` +
-          `Forwarding to pool anyway; verify pipeline factory mapModel() supports it.`,
-      );
-    }
-  }
+  warnUnknownModels('WORKER_MODELS', models);
   const cfg: WorkerConfig = {
     id: 'claude-max-1',
     provider: 'claude',
