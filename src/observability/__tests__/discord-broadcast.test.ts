@@ -41,12 +41,16 @@ const { broadcastIFleet, __resetBroadcastStateForTests } = await import('../disc
 const WEBHOOK_URL = 'https://discord.com/api/webhooks/1234/token';
 const HTTP_WEBHOOK_URL = 'http://localhost:9999/webhook';
 
+// All sends now go through setTimeout (even delay=0) so fake timers are
+// required in every test that asserts on HTTP call counts.
 beforeEach(() => {
   __resetBroadcastStateForTests();
   vi.clearAllMocks();
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   delete process.env['DISCORD_IFLEET_WEBHOOK'];
 });
 
@@ -58,6 +62,7 @@ describe('broadcastIFleet — no-op paths', () => {
   it('is a no-op when DISCORD_IFLEET_WEBHOOK is unset', () => {
     delete process.env['DISCORD_IFLEET_WEBHOOK'];
     broadcastIFleet('hello');
+    vi.runAllTimers();
     expect(mockHttpRequest).not.toHaveBeenCalled();
   });
 
@@ -79,6 +84,7 @@ describe('broadcastIFleet — HTTP wiring', () => {
   it('fires an HTTPS request to the webhook URL', () => {
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
     broadcastIFleet('hello');
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledOnce();
     const [opts] = mockHttpRequest.mock.calls[0] as [{ hostname: string; method: string; path: string }, unknown];
     expect(opts.hostname).toBe('discord.com');
@@ -89,6 +95,7 @@ describe('broadcastIFleet — HTTP wiring', () => {
   it('sends body as JSON with content field', () => {
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
     broadcastIFleet('task done');
+    vi.advanceTimersByTime(1);
     expect(mockReqWrite).toHaveBeenCalledOnce();
     const body = JSON.parse(mockReqWrite.mock.calls[0]![0] as string) as { content: string };
     expect(body.content).toBe('task done');
@@ -97,6 +104,7 @@ describe('broadcastIFleet — HTTP wiring', () => {
   it('uses http.request for http:// webhook URLs (local dev)', () => {
     process.env['DISCORD_IFLEET_WEBHOOK'] = HTTP_WEBHOOK_URL;
     broadcastIFleet('local test');
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledOnce();
     const [opts] = mockHttpRequest.mock.calls[0] as [{ hostname: string; port: string }, unknown];
     expect(opts.hostname).toBe('localhost');
@@ -112,6 +120,7 @@ describe('broadcastIFleet — HTTP wiring', () => {
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
     const huge = 'x'.repeat(2500);
     broadcastIFleet(huge);
+    vi.advanceTimersByTime(1);
     expect(mockReqWrite).toHaveBeenCalledOnce();
     const body = JSON.parse(mockReqWrite.mock.calls[0]![0] as string) as { content: string };
     expect(body.content.length).toBeLessThanOrEqual(1900);
@@ -124,35 +133,38 @@ describe('broadcastIFleet — HTTP wiring', () => {
 // ---------------------------------------------------------------------------
 
 describe('broadcastIFleet — rate limiter', () => {
-  it('sends immediately when no prior send in window', () => {
+  it('sends when no prior send in window (after timer fires)', () => {
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
     broadcastIFleet('first');
+    expect(mockHttpRequest).toHaveBeenCalledTimes(0); // pending via setTimeout(fn, 0)
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledOnce();
   });
 
   it('defers the second send (setTimeout) when called within MIN_INTERVAL_MS', () => {
-    vi.useFakeTimers();
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
 
     broadcastIFleet('first');
+    // First send scheduled via setTimeout(fn, 0) — not yet fired
+    expect(mockHttpRequest).toHaveBeenCalledTimes(0);
+
+    vi.advanceTimersByTime(1); // fire the delay=0 callback
     expect(mockHttpRequest).toHaveBeenCalledTimes(1);
 
     broadcastIFleet('second');
-    // Second call is scheduled, not yet fired
+    // Second call is scheduled with delay~=MIN_INTERVAL_MS — not yet fired
     expect(mockHttpRequest).toHaveBeenCalledTimes(1);
 
     // Advance time past the rate-limit window
     vi.runAllTimers();
     expect(mockHttpRequest).toHaveBeenCalledTimes(2);
-
-    vi.useRealTimers();
   });
 
   it('sends immediately again after MIN_INTERVAL_MS has elapsed', () => {
-    vi.useFakeTimers();
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
 
     broadcastIFleet('first');
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledTimes(1);
 
     // Advance past the 2s minimum interval
@@ -160,53 +172,74 @@ describe('broadcastIFleet — rate limiter', () => {
     __resetBroadcastStateForTests(); // reset state to simulate fresh URL slot
 
     broadcastIFleet('third');
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledTimes(2);
-
-    vi.useRealTimers();
   });
 
   it('per-URL rate limiting — different URLs do not share rate-limit state', () => {
     process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
     broadcastIFleet('via https url');
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledTimes(1);
 
     // Reset and use HTTP URL — should send immediately (separate state slot)
     __resetBroadcastStateForTests();
     process.env['DISCORD_IFLEET_WEBHOOK'] = HTTP_WEBHOOK_URL;
     broadcastIFleet('via http url');
+    vi.advanceTimersByTime(1);
     expect(mockHttpRequest).toHaveBeenCalledTimes(2);
   });
 });
 
-describe('broadcastIFleet — queue depth cap', () => {
-  it('drops messages when queue depth exceeds cap', () => {
-    vi.useFakeTimers();
-    process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
+// ---------------------------------------------------------------------------
+// Queue depth cap (AUDIT-IFleet-cd19ee4c)
+// Verifies that the pendingCount cap applies uniformly to ALL sends —
+// including delay=0 (immediate-path) sends that previously bypassed the cap.
+// ---------------------------------------------------------------------------
 
-    // Capture console.warn calls to verify drop messages
+describe('broadcastIFleet — queue depth cap', () => {
+  it('drops messages once pendingCount reaches MAX_QUEUE_DEPTH (50)', () => {
+    process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // Send 55 messages — first will send immediately, remaining 54 will queue
-    // but only 49 can queue (50 total pending including first), so last 5 drop
-    for (let i = 0; i < 55; i++) {
-      broadcastIFleet(`message ${i}`);
-    }
+    // Queue MAX_QUEUE_DEPTH messages (50). The first has delay=0, rest deferred.
+    for (let i = 0; i < 50; i++) broadcastIFleet(`msg-${i}`);
 
-    // First message sends immediately (delay=0)
-    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
-    // Messages 2-50 are queued (delay>0, pendingCount < 50)
-    // Messages 51-55 should be dropped with warning
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/queue depth.*>=.*dropping message/),
-    );
+    // Nothing has fired yet — all are pending via setTimeout
+    expect(mockHttpRequest).toHaveBeenCalledTimes(0);
 
-    // Advance timers to drain the queue
+    // 51st send hits cap (pendingCount == 50 >= 50) and is dropped
+    broadcastIFleet('should-be-dropped');
+    expect(warnSpy.mock.calls.some((c) => String(c[0]).includes('dropping message'))).toBe(true);
+
+    // Drain the queue — only the 50 queued sends fire
     vi.runAllTimers();
+    expect(mockHttpRequest).toHaveBeenCalledTimes(50);
 
-    // After draining, all 50 queued messages should have sent
+    warnSpy.mockRestore();
+  });
+
+  it('counts delay=0 sends toward the cap — immediate path no longer bypasses it', () => {
+    process.env['DISCORD_IFLEET_WEBHOOK'] = WEBHOOK_URL;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Fill cap: first message would have been an immediate send under old code.
+    // Under the new unified path it still increments pendingCount.
+    for (let i = 0; i < 50; i++) broadcastIFleet(`msg-${i}`);
+
+    // Fire just the delay=0 first send — pendingCount drops back to 49
+    vi.advanceTimersByTime(1);
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+
+    // Now one slot is free — next send queues successfully (no warning)
+    warnSpy.mockClear();
+    broadcastIFleet('fits-in-queue');
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    // Drain remaining
+    vi.runAllTimers();
     expect(mockHttpRequest).toHaveBeenCalledTimes(51);
 
     warnSpy.mockRestore();
-    vi.useRealTimers();
   });
 });

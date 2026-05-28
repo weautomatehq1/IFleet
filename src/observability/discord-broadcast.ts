@@ -88,25 +88,24 @@ export function broadcastIFleet(msg: string): void {
   // Rate-limit: schedule the send so it lands ≥ MIN_INTERVAL_MS after the
   // last send for the same URL. Caller still returns synchronously; the
   // setTimeout keeps the fire-and-forget contract.
+  //
+  // Always use the setTimeout path (even for delay=0) so pendingCount covers
+  // both immediate and delayed sends uniformly. Closes AUDIT-IFleet-cd19ee4c.
   const state = getState(url);
   const now = Date.now();
   const delay = Math.max(0, state.lastSentAt + MIN_INTERVAL_MS - now);
   state.lastSentAt = now + delay;
-  if (delay === 0) {
-    sendNow(url, truncate(msg));
-  } else {
-    if (state.pendingCount >= MAX_QUEUE_DEPTH) {
-      console.warn(
-        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
-      );
-      return;
-    }
-    state.pendingCount++;
-    setTimeout(() => {
-      state.pendingCount--;
-      sendNow(url, truncate(msg));
-    }, delay).unref();
+  if (state.pendingCount >= MAX_QUEUE_DEPTH) {
+    console.warn(
+      `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
+    );
+    return;
   }
+  state.pendingCount++;
+  setTimeout(() => {
+    state.pendingCount--;
+    sendNow(url, truncate(msg));
+  }, delay).unref();
 }
 
 function sendNow(url: string, msg: string): void {
