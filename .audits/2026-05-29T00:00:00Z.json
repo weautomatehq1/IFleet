@@ -1,0 +1,64 @@
+{
+  "audit_id": "audit-20260529T000000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-05-29T00:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-85b48d03",
+      "severity": "CRITICAL",
+      "category": "risk",
+      "title": "Unsafe port number parsing with Number() allows NaN to reach server.listen",
+      "detail": "server.ts:58 and daemon.ts:79 used Number(env['CONTROL_PLANE_PORT'] ?? default) without validation. An invalid env value like 'abc' silently produced NaN, causing server.listen(NaN) to fail unpredictably at runtime rather than at startup.",
+      "file_globs": ["src/server.ts", "src/orchestrator/daemon.ts"],
+      "fix_sketch": "Replaced Number() with parseInt(str, 10) guarded by Number.isFinite() range check. Throws at startup if out of valid port range.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-05-29T00:00:00Z",
+      "closed_at": "2026-05-29T00:05:00Z",
+      "closing_pr": "audit/nightly-2026-05-29"
+    },
+    {
+      "id": "AUDIT-IFleet-e3f698d5",
+      "severity": "CRITICAL",
+      "category": "risk",
+      "title": "Unsafe tick interval parsing with Number() allows NaN in setInterval",
+      "detail": "daemon.ts:537 used Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS) without validation. NaN passed to setInterval() causes Node.js to treat it as 1ms, creating a hot-loop that consumes 100% CPU.",
+      "file_globs": ["src/orchestrator/daemon.ts"],
+      "fix_sketch": "Replaced Number() with parseInt(str, 10) with a minimum 100ms guard. Throws at startup on invalid value.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-05-29T00:00:00Z",
+      "closed_at": "2026-05-29T00:05:00Z",
+      "closing_pr": "audit/nightly-2026-05-29"
+    },
+    {
+      "id": "AUDIT-IFleet-507d7ec5",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Unsafe max-attempts parsing with Number() silently disables retry cap",
+      "detail": "store.ts:263 used Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5) without validation. If the env var was set to a non-numeric value, maxAttempts became NaN and attempts >= NaN is always false in both JS and SQLite, so the retry cap never fired.",
+      "file_globs": ["src/queue/store.ts"],
+      "fix_sketch": "Replaced Number() with parseInt(str, 10) with isFinite validation. Falls back to default 5 with a console.warn on invalid value (does not throw, since recoverStale is non-critical path).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-29T00:00:00Z",
+      "closed_at": "2026-05-29T00:05:00Z",
+      "closing_pr": "audit/nightly-2026-05-29"
+    },
+    {
+      "id": "AUDIT-IFleet-2def75a7",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Signal handler shutdown promise rejection is unhandled",
+      "detail": "server.ts:156-157 used void shutdown().then(() => process.exit(0)). If shutdown() rejected, the rejection was swallowed and process.exit(0) was never called, leaving the process hanging indefinitely on SIGTERM/SIGINT.",
+      "file_globs": ["src/server.ts"],
+      "fix_sketch": "Added .catch() handlers that log the error and call process.exit(1) to ensure the process always terminates on signal.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-05-29T00:00:00Z",
+      "closed_at": "2026-05-29T00:05:00Z",
+      "closing_pr": "audit/nightly-2026-05-29"
+    }
+  ]
+}

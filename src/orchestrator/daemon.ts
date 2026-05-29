@@ -76,7 +76,11 @@ async function main(): Promise<void> {
   const hmacSecret = requireEnv('IFLEET_HMAC_SECRET');
   const discordToken = requireEnv('DISCORD_BOT_TOKEN');
   const githubToken = requireEnv('GITHUB_TOKEN');
-  const port = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
+  const portStr = process.env['CONTROL_PLANE_PORT'];
+  const port = portStr !== undefined ? parseInt(portStr, 10) : DEFAULT_DAEMON_PORT;
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid CONTROL_PLANE_PORT: ${portStr}`);
+  }
 
   console.warn('[daemon] booting IFleet daemon');
 
@@ -534,7 +538,11 @@ async function main(): Promise<void> {
   // process can exit with a non-zero code instead of masking it under exit(0).
   // AUDIT-IFleet-e96f2978.
   let shutdownErrors = 0;
-  const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  const tickStr = process.env['IFLEET_DAEMON_TICK_MS'];
+  const tickIntervalMs = tickStr !== undefined ? parseInt(tickStr, 10) : DEFAULT_TICK_MS;
+  if (!Number.isFinite(tickIntervalMs) || tickIntervalMs < 100) {
+    throw new Error(`Invalid IFLEET_DAEMON_TICK_MS: ${tickStr} (must be >= 100)`);
+  }
   void runTickLoop(
     unified,
     orchestrator,

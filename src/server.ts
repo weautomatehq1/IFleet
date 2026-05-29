@@ -55,7 +55,11 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   const secret = env['IFLEET_HMAC_SECRET'];
   if (!secret) throw new Error('IFLEET_HMAC_SECRET is required');
 
-  const port = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
+  const portStr = env['CONTROL_PLANE_PORT'];
+  const port = portStr !== undefined ? parseInt(portStr, 10) : 3001;
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid CONTROL_PLANE_PORT: ${portStr}`);
+  }
   const store = deps.store ?? new TaskStore(env['IFLEET_STATE_DIR'] ? undefined : defaultTasksDbPath());
 
   // Crash-recovery sweep: any task left `in_flight` past the threshold (30
@@ -153,8 +157,18 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     await cp.stop();
     store.close();
   };
-  process.once('SIGTERM', () => void shutdown().then(() => process.exit(0)));
-  process.once('SIGINT', () => void shutdown().then(() => process.exit(0)));
+  process.once('SIGTERM', () => {
+    shutdown().then(() => process.exit(0)).catch((err) => {
+      console.error('[control-plane] shutdown error on SIGTERM:', err);
+      process.exit(1);
+    });
+  });
+  process.once('SIGINT', () => {
+    shutdown().then(() => process.exit(0)).catch((err) => {
+      console.error('[control-plane] shutdown error on SIGINT:', err);
+      process.exit(1);
+    });
+  });
 
   return { url, port, store, stop: shutdown };
 }

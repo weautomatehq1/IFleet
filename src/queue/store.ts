@@ -260,7 +260,11 @@ export class TaskStore {
    * pickNext() which only consumes 'pending'.
    */
   recoverStale(maxAgeMs: number = DEFAULT_STALE_MS): number {
-    const maxAttempts = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
+    const maxAttemptsStr = process.env['IFLEET_MAX_ATTEMPTS'];
+    const maxAttemptsParsed = maxAttemptsStr !== undefined ? parseInt(maxAttemptsStr, 10) : 5;
+    const maxAttempts = Number.isFinite(maxAttemptsParsed) && maxAttemptsParsed >= 1
+      ? maxAttemptsParsed
+      : (console.warn(`[store] Invalid IFLEET_MAX_ATTEMPTS: ${maxAttemptsStr}, using default 5`), 5);
     const cutoff = Date.now() - maxAgeMs;
     const now = Date.now();
     // Tasks that have hit the attempt cap are marked failed to prevent infinite
