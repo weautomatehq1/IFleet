@@ -20,6 +20,7 @@ import { createDiscordClient } from './client.js';
 import { HmacControlPlaneClient } from './hmac-client.js';
 import type { ChannelRouter } from '../contracts/channel-router.js';
 import type { ReactionDeps } from './handlers/reaction-add.js';
+import { requireEnv } from '../utils/env.js';
 
 export interface DiscordBootstrap {
   router: ChannelRouter;
@@ -64,13 +65,6 @@ export async function startDiscordBot(bootstrap: DiscordBootstrap): Promise<() =
   return shutdown;
 }
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) {
-    throw new Error(`[discord] missing env var: ${name}`);
-  }
-  return v;
-}
 
 // CLI entry: invoked when this module is the node entrypoint. Production wiring
 // of ChannelRouter (T4) and DiscordOut (T5) lives in src/server.ts (T2) — this

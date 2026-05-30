@@ -71,7 +71,13 @@ export async function withKgClient<T>(fn: (client: PoolClient) => Promise<T>): P
 /**
  * Encode a JS number[] as the pgvector text literal: `[0.1,0.2,...]`.
  * The driver sends this as text and Postgres casts it via the `vector` type.
+ * Throws if any value is NaN or non-finite to prevent silent pgvector syntax errors.
  */
 export function encodeVector(values: ReadonlyArray<number>): string {
+  for (let i = 0; i < values.length; i++) {
+    if (!Number.isFinite(values[i])) {
+      throw new Error(`encodeVector: value at index ${i} is not finite (${values[i]})`);
+    }
+  }
   return '[' + values.join(',') + ']';
 }

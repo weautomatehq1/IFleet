@@ -84,6 +84,8 @@ export class UnifiedQueueAdapter {
         return this.sources.github;
       case 'discord':
         return this.sources.discord;
+      default:
+        throw new Error(`[unified-queue] unknown task source kind: ${(task.source as { kind: string }).kind}`);
     }
   }
 }
