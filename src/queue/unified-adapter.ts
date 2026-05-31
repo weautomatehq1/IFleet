@@ -52,17 +52,41 @@ export class UnifiedQueueAdapter {
 
   async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
     this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
-    await this.sourceFor(task).markCompleted(task, prUrl, totalTokens);
+    try {
+      await this.sourceFor(task).markCompleted(task, prUrl, totalTokens);
+    } catch (err) {
+      console.warn(
+        `[unified-queue] markCompleted notification failed for ${task.id} (${task.source.kind}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
     this.store.updateState(task.id, 'failed', { reason, completedAt: Date.now() });
-    await this.sourceFor(task).markFailed(task, reason);
+    try {
+      await this.sourceFor(task).markFailed(task, reason);
+    } catch (err) {
+      console.warn(
+        `[unified-queue] markFailed notification failed for ${task.id} (${task.source.kind}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async markBlocked(task: QueuedTask, capability: string): Promise<void> {
     this.store.updateState(task.id, 'blocked', { capability });
-    await this.sourceFor(task).markBlocked(task, capability);
+    try {
+      await this.sourceFor(task).markBlocked(task, capability);
+    } catch (err) {
+      console.warn(
+        `[unified-queue] markBlocked notification failed for ${task.id} (${task.source.kind}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**

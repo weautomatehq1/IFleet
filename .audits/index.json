@@ -1,0 +1,27 @@
+{
+  "last_updated": "2026-05-31T04:11:30Z",
+  "audits": [
+    {
+      "audit_id": "audit-20260531T041052Z",
+      "repo": "IFleet",
+      "scanned_at": "2026-05-31T04:10:52Z",
+      "branch": "audit/nightly-2026-05-31",
+      "summary": {
+        "total": 8,
+        "critical": 0,
+        "important": 5,
+        "cosmetic": 3,
+        "fixed": 7,
+        "open": 1
+      },
+      "open_findings": [
+        {
+          "id": "AUDIT-IFleet-e664f9f3",
+          "severity": "COSMETIC",
+          "title": "Nonce ledger per-process memory loses replay protection on restart",
+          "status": "open"
+        }
+      ]
+    }
+  ]
+}

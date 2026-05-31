@@ -377,6 +377,10 @@ async function main(): Promise<void> {
       let resolvedId = taskId;
       if (taskId.startsWith('__channel_current__:')) {
         const channelId = taskId.slice('__channel_current__:'.length);
+        if (!/^\d{5,32}$/.test(channelId)) {
+          console.warn('[daemon] onCancel: invalid channelId in sentinel:', channelId);
+          return;
+        }
         const candidates = store.list({ channelId, state: 'in_flight' }, 1);
         if (candidates.length === 0) {
           broadcastIFleet(`⚠ /cancel — no in-flight task in <#${channelId}> to cancel.`);
