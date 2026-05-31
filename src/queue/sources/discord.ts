@@ -183,11 +183,18 @@ export class DiscordSource implements TaskSource {
    * from markFailed and shadowed the real failure reason in pm2 logs.
    */
   private async resolveThread(task: QueuedTask): Promise<string> {
-    if (task.source.kind !== 'discord') {
-      throw new Error(`DiscordSource cannot mark a ${task.source.kind} task`);
+    if (!task.source || task.source.kind !== 'discord') {
+      throw new Error(`DiscordSource cannot mark a ${task.source?.kind ?? 'null'} task`);
     }
     if (task.source.threadId) return task.source.threadId;
-    const { threadId } = await this.opts.out.postTaskCreated(task);
+    let threadId: string | undefined;
+    try {
+      ({ threadId } = await this.opts.out.postTaskCreated(task));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[discord-source] task ${task.id}: postTaskCreated threw — skipping Discord side-effect: ${reason}`);
+      return '';
+    }
     if (!threadId) {
       console.warn(
         `[discord-source] task ${task.id}: postTaskCreated returned no threadId — skipping Discord side-effect`,

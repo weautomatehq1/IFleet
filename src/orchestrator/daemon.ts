@@ -48,6 +48,7 @@ import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
 import { UnifiedQueueAdapter } from '../queue/unified-adapter.js';
 import { FileChannelRouter } from '../repos/router.js';
 import { titleToBranchName } from '../utils/branch-name.js';
+import { requireEnv } from '../utils/env.js';
 import type { OrchestratorEvent, SprintId, TaskId, WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
@@ -1120,11 +1121,6 @@ function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
   return [cfg];
 }
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`[daemon] missing env var: ${name}`);
-  return v;
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

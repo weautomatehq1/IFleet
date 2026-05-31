@@ -125,20 +125,25 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
 
 /**
  * Update the status (and optionally closed_at / closing_pr) of a finding.
- * No-ops if the finding doesn't exist.
+ * Returns true when a row was actually updated, false when the id was not found.
  */
 export async function dbUpdateFindingStatus(
   id: string,
   status: AuditStatus,
   extra: { closing_pr?: string; closed_at?: string } = {},
-): Promise<void> {
+): Promise<boolean> {
   const pool = getKgPool();
-  await pool.query(
+  const result = await pool.query(
     `UPDATE audit_findings
      SET status = $2, closed_at = COALESCE($3, closed_at), closing_pr = COALESCE($4, closing_pr)
      WHERE id = $1`,
     [id, status, extra.closed_at ?? null, extra.closing_pr ?? null],
   );
+  if (result.rowCount === 0) {
+    console.warn(`[audit-store] dbUpdateFindingStatus: finding ${id} not found — no rows updated`);
+    return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

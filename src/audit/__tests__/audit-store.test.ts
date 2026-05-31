@@ -327,10 +327,10 @@ describe('dbUpdateFindingStatus', () => {
     expect(params[3]).toBe('https://github.com/org/repo/pull/42');
   });
 
-  it('does not throw when finding does not exist (no-op)', async () => {
+  it('returns false when finding does not exist', async () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 0 });
     await expect(
       dbUpdateFindingStatus('AUDIT-IFleet-nonexistent', 'open'),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 });

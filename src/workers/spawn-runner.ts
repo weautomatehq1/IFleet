@@ -21,6 +21,7 @@ export interface RunnerOptions {
   classifyExit?: (state: FinalizeState) => WorkerResult | undefined;
   stderrTailLines?: number;
   killGraceMs?: number;
+  /** @internal Test-only override for the spawn implementation. Not for production use. */
   spawnImpl?: SpawnLike;
 }
 

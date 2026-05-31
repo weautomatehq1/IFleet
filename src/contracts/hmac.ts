@@ -34,13 +34,17 @@ export function verifyPayload(
   if (typeof providedSignatureHex !== 'string' || providedSignatureHex.length === 0) {
     return false;
   }
-  let provided: Buffer;
-  try {
-    provided = Buffer.from(providedSignatureHex, 'hex');
-  } catch {
-    return false;
-  }
+  // Always compute expected first so timing is constant regardless of whether
+  // the provided hex is parseable.
   const expected = Buffer.from(signPayload(args, secret), 'hex');
-  if (expected.length === 0 || provided.length !== expected.length) return false;
-  return timingSafeEqual(expected, provided);
+  // Pad provided to expected length so timingSafeEqual never short-circuits on
+  // length mismatch — prevents timing side-channel that reveals signature length.
+  const raw = Buffer.from(providedSignatureHex, 'hex');
+  const provided = raw.length === expected.length ? raw : Buffer.alloc(expected.length);
+  // A zero-length expected means the HMAC function failed — reject immediately.
+  if (expected.length === 0) return false;
+  const matches = timingSafeEqual(expected, provided);
+  // A mis-sized provided buffer was padded to zeros above; those always fail
+  // the comparison. Return false explicitly to avoid returning a padding match.
+  return matches && raw.length === expected.length;
 }
