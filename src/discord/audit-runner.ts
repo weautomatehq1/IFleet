@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { withClosedJsonLock } from '../audit/closed-json-lock.js';
 import {
   AUDIT_FIX_GOAL_RE,
   AUDIT_ID_PREFIX,
@@ -246,33 +247,36 @@ export function markFindingsFixing(indexPath: string, ids: readonly string[]): n
  * truncated closed.json on disk.
  */
 export function appendToClosedJson(indexPath: string, finding: AuditFinding): void {
-  const closedPath = join(dirname(indexPath), 'closed.json');
-  let data: ClosedIndex = { closures: [] };
-  if (existsSync(closedPath)) {
-    try {
-      data = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
-      if (!Array.isArray(data.closures)) data.closures = [];
-    } catch {
-      data = { closures: [] };
+  const closedDir = dirname(indexPath);
+  const closedPath = join(closedDir, 'closed.json');
+  withClosedJsonLock(closedDir, () => {
+    let data: ClosedIndex = { closures: [] };
+    if (existsSync(closedPath)) {
+      try {
+        data = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
+        if (!Array.isArray(data.closures)) data.closures = [];
+      } catch {
+        data = { closures: [] };
+      }
     }
-  }
-  const record: ClosureRecord = {
-    fingerprint: finding.fingerprint,
-    finding_id: finding.id,
-    closed_at: finding.closed_at ?? new Date().toISOString(),
-    closing_pr: finding.closing_pr ?? null,
-    status: finding.status,
-  };
-  // Idempotent: skip if this fingerprint is already recorded.
-  // Cap: if closures grows beyond 10 000 entries, consider archiving older records.
-  // For now we rely on fingerprint dedup to keep growth bounded.
-  const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
-  if (!alreadyRecorded) {
-    data.closures.push(record);
-  }
-  const tmp = join(dirname(closedPath), `.closed.json.tmp-${process.pid}-${Date.now()}`);
-  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-  renameSync(tmp, closedPath);
+    const record: ClosureRecord = {
+      fingerprint: finding.fingerprint,
+      finding_id: finding.id,
+      closed_at: finding.closed_at ?? new Date().toISOString(),
+      closing_pr: finding.closing_pr ?? null,
+      status: finding.status,
+    };
+    // Idempotent: skip if this fingerprint is already recorded.
+    // Cap: if closures grows beyond 10 000 entries, consider archiving older records.
+    // For now we rely on fingerprint dedup to keep growth bounded.
+    const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+    if (!alreadyRecorded) {
+      data.closures.push(record);
+    }
+    const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
+    writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    renameSync(tmp, closedPath);
+  });
 }
 
 /**
@@ -358,20 +362,23 @@ export function markFindingsClosed(
   if (changed === 0) return 0;
   writeAuditIndex(indexPath, index);
 
-  const closedPath = join(dirname(indexPath), 'closed.json');
-  let cdata: ClosedIndex = { closures: [] };
-  if (existsSync(closedPath)) {
-    try {
-      cdata = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
-      if (!Array.isArray(cdata.closures)) cdata.closures = [];
-    } catch {
-      cdata = { closures: [] };
+  const closedDir = dirname(indexPath);
+  const closedPath = join(closedDir, 'closed.json');
+  withClosedJsonLock(closedDir, () => {
+    let cdata: ClosedIndex = { closures: [] };
+    if (existsSync(closedPath)) {
+      try {
+        cdata = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
+        if (!Array.isArray(cdata.closures)) cdata.closures = [];
+      } catch {
+        cdata = { closures: [] };
+      }
     }
-  }
-  cdata.closures.push(...records);
-  const tmp = join(dirname(closedPath), `.closed.json.tmp-${process.pid}-${Date.now()}`);
-  writeFileSync(tmp, `${JSON.stringify(cdata, null, 2)}\n`, 'utf8');
-  renameSync(tmp, closedPath);
+    cdata.closures.push(...records);
+    const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
+    writeFileSync(tmp, `${JSON.stringify(cdata, null, 2)}\n`, 'utf8');
+    renameSync(tmp, closedPath);
+  });
   return changed;
 }
 
