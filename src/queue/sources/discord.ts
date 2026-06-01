@@ -147,7 +147,9 @@ export class DiscordSource implements TaskSource {
       const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
       const findingMatch = task.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);
       const label = findingMatch ? ` \`${findingMatch[1]}\` fixed →` : '';
-      await this.opts.out.postChannelMessage(channelId, `✅${label} ${prUrl}${tokenStr}`).catch(() => {});
+      await this.opts.out.postChannelMessage(channelId, `✅${label} ${prUrl}${tokenStr}`).catch((err: unknown) => {
+        console.warn('[discord-source] postChannelMessage failed:', err instanceof Error ? err.message : String(err));
+      });
     }
   }
 

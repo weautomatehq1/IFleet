@@ -46,10 +46,28 @@ export async function readCostLog(repoRoot: string): Promise<CostRecord[]> {
     return content
       .split('\n')
       .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as CostRecord);
+      .flatMap((line) => {
+        try {
+          const r = JSON.parse(line) as unknown;
+          return isValidCostRecord(r) ? [r] : [];
+        } catch {
+          return [];
+        }
+      });
   } catch {
     return [];
   }
+}
+
+function isValidCostRecord(r: unknown): r is CostRecord {
+  if (typeof r !== 'object' || r === null) return false;
+  const rec = r as Record<string, unknown>;
+  return (
+    typeof rec['sprintId'] === 'string' &&
+    typeof rec['taskId'] === 'string' &&
+    typeof rec['totalCostUsd'] === 'number' &&
+    typeof rec['durationMs'] === 'number'
+  );
 }
 
 export function summarizeCosts(records: CostRecord[]): CostSummary {

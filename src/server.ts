@@ -52,7 +52,7 @@ export interface RunningServer {
 
 export async function startServer(deps: ServerDeps = {}): Promise<RunningServer> {
   const env = deps.env ?? process.env;
-  const secret = env['IFLEET_HMAC_SECRET'];
+  const secret = (env['IFLEET_HMAC_SECRET'] ?? '').trim();
   if (!secret) throw new Error('IFLEET_HMAC_SECRET is required');
 
   const port = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
