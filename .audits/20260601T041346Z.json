@@ -1,0 +1,50 @@
+{
+  "audit_id": "audit-20260601T041346Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-06-01T04:13:46Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-36423d55",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Whitespace-only HMAC secret bypasses required-secret check in startServer",
+      "detail": "In src/server.ts line 55-56, `if (!secret)` is truthy for a whitespace-only string such as `'   '`. An operator who accidentally sets IFLEET_HMAC_SECRET to spaces would pass the guard, causing signPayload/verifyPayload to use a near-empty secret that could be brute-forced. The fix is to trim before the guard.",
+      "file_globs": ["src/server.ts"],
+      "fix_sketch": "Trim the secret before checking: `const secret = (env['IFLEET_HMAC_SECRET'] ?? '').trim(); if (!secret) throw new Error('IFLEET_HMAC_SECRET is required')`",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-01T04:13:46Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d396c373",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Unsafe JSON.parse cast in readCostLog allows NaN cost totals in summarizeCosts",
+      "detail": "src/utils/costs.ts line 49 casts `JSON.parse(line) as CostRecord` without validating that `totalCostUsd` or `durationMs` are numbers. A corrupted or hand-edited line that omits those fields causes `summarizeCosts` to silently produce NaN for grandTotalUsd, breaking budget tracking downstream. The cast should be guarded.",
+      "file_globs": ["src/utils/costs.ts"],
+      "fix_sketch": "After parsing, validate required numeric fields: wrap in a helper that returns `null` for malformed records and `.filter(Boolean)` the result before returning from readCostLog.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-01T04:13:46Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f28b2e67",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Silent swallow of postChannelMessage error loses observability on Discord side-effects",
+      "detail": "src/queue/sources/discord.ts line 150 catches postChannelMessage failures with `.catch(() => {})`, discarding the error entirely. While the call is intentionally best-effort, PM2 log rotation may silently bury the failure. Adding a warn log preserves debuggability without changing behavior.",
+      "file_globs": ["src/queue/sources/discord.ts"],
+      "fix_sketch": "Replace `.catch(() => {})` with `.catch((err) => console.warn('[discord-source] postChannelMessage failed:', err instanceof Error ? err.message : String(err)))`",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-01T04:13:46Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}

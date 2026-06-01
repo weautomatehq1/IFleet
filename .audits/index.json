@@ -1,0 +1,50 @@
+{
+  "repo": "IFleet",
+  "last_updated": "2026-06-01T04:15:22Z",
+  "open_findings": 0,
+  "by_severity": { "CRITICAL": 0, "IMPORTANT": 0, "COSMETIC": 0 },
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-36423d55",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Whitespace-only HMAC secret bypasses required-secret check in startServer",
+      "detail": "In src/server.ts line 55-56, !secret is truthy for a whitespace-only string. An operator who accidentally sets IFLEET_HMAC_SECRET to spaces would pass the guard. Fixed by trimming before the guard.",
+      "file_globs": ["src/server.ts"],
+      "fix_sketch": "Trim the secret before checking",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-01T04:13:46Z",
+      "closed_at": "2026-06-01T04:15:22Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d396c373",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Unsafe JSON.parse cast in readCostLog allows NaN cost totals in summarizeCosts",
+      "detail": "src/utils/costs.ts line 49 cast JSON.parse result without validating numeric fields. Fixed by adding isValidCostRecord guard and flatMap to skip malformed lines.",
+      "file_globs": ["src/utils/costs.ts"],
+      "fix_sketch": "Added isValidCostRecord type guard, flatMap skips malformed lines",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-01T04:13:46Z",
+      "closed_at": "2026-06-01T04:15:22Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f28b2e67",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Silent swallow of postChannelMessage error loses observability on Discord side-effects",
+      "detail": "src/queue/sources/discord.ts line 150 caught postChannelMessage failures silently. Fixed by adding console.warn log.",
+      "file_globs": ["src/queue/sources/discord.ts"],
+      "fix_sketch": "Replace .catch(() => {}) with .catch(err => console.warn(...))",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-01T04:13:46Z",
+      "closed_at": "2026-06-01T04:15:22Z",
+      "closing_pr": null
+    }
+  ]
+}
