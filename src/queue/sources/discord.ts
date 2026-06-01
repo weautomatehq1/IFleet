@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { extractAuditFindingId } from '../../contracts/audit-finding.js';
 import type { ChannelRouter } from '../../contracts/channel-router.js';
 import type { DiscordOut } from '../../contracts/discord-out.js';
 import type { QueuedTask, TaskSource as TaskSourceType } from '../../contracts/task.js';
@@ -145,8 +146,8 @@ export class DiscordSource implements TaskSource {
     if (prUrl && prUrl !== 'already-resolved' && task.source.kind === 'discord') {
       const channelId = task.source.channelId;
       const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
-      const findingMatch = task.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);
-      const label = findingMatch ? ` \`${findingMatch[1]}\` fixed →` : '';
+      const findingId = extractAuditFindingId(task.brief ?? '');
+      const label = findingId ? ` \`${findingId}\` fixed →` : '';
       await this.opts.out.postChannelMessage(channelId, `✅${label} ${prUrl}${tokenStr}`).catch(() => {});
     }
   }

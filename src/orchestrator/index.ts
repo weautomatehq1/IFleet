@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
 import { DEFAULT_REPO_ID, loadReposConfig, type ReposMap } from '../config/repos';
+import { extractAuditFindingId } from '../contracts/audit-finding.js';
 import type { DiscordOut } from '../contracts/discord-out.js';
 import type { QueuedTask } from '../contracts/task.js';
 import { postTaskDoneNotification } from '../observability/task-done-notify.js';
@@ -296,8 +297,8 @@ export class Orchestrator {
           if (completedTask?.source.kind === 'discord' && pr) {
             const channelId = completedTask.source.channelId;
             const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';
-            const findingMatch = completedTask.brief?.match(/\[audit-fix:(AUDIT-[^\]]+)\]/);
-            const findingStr = findingMatch ? ` \`${findingMatch[1]}\` fixed →` : '';
+            const findingId = extractAuditFindingId(completedTask.brief ?? '');
+            const findingStr = findingId ? ` \`${findingId}\` fixed →` : '';
             await out.postChannelMessage(channelId, `✅${findingStr} ${pr}${tokenStr}`).catch(() => {});
           }
           return;
