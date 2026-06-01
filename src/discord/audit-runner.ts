@@ -14,8 +14,11 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import {
+  AUDIT_FIX_GOAL_RE,
+  AUDIT_ID_PREFIX,
   AUDIT_STATUSES,
   emptyBySeverity,
+  extractAuditFindingId,
   isTerminalAuditStatus,
   type AuditFinding,
   type AuditIndex,
@@ -28,7 +31,10 @@ import {
 // Re-export so existing importers (`import { AuditFinding } from '.../audit-runner.js'`)
 // keep working without touching every call site.
 export {
+  AUDIT_FIX_GOAL_RE,
+  AUDIT_ID_PREFIX,
   AUDIT_STATUSES,
+  extractAuditFindingId,
   type AuditFinding,
   type AuditIndex,
   type AuditSeverity,
@@ -39,16 +45,6 @@ export {
 
 /** Severity ordering for list grouping and auto-mode dispatch (worst first). */
 const SEVERITY_ORDER: readonly AuditSeverity[] = ['CRITICAL', 'IMPORTANT', 'COSMETIC'];
-
-// Audit finding ID prefix — all findings in .audits/index.json start with this
-const AUDIT_ID_PREFIX = 'AUDIT-';
-
-/**
- * Regex that recognises an audit-fix task. `/audit-fix` prefixes every
- * synthesized brief with `[audit-fix:<finding id>]`; the pipeline runner uses
- * this to know a completed task should close a finding in `index.json`.
- */
-export const AUDIT_FIX_GOAL_RE = new RegExp(`\\[audit-fix:(${AUDIT_ID_PREFIX}[^\\]]+)\\]`);
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -128,11 +124,6 @@ export function openFindings(index: AuditIndex): AuditFinding[] {
   return index.findings
     .filter((f) => f.status === 'open' || f.status === 'reopened')
     .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
-}
-
-/** Extract the finding id from an audit-fix task goal, or `null` if absent. */
-export function extractAuditFindingId(goal: string): string | null {
-  return goal.match(AUDIT_FIX_GOAL_RE)?.[1] ?? null;
 }
 
 // ---------------------------------------------------------------------------
