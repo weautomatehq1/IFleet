@@ -14,6 +14,7 @@ import {
   extractAuditFindingId,
   markFindingClosed,
   resolveAuditIndexPath,
+  setFindingsStatus,
 } from '../discord/audit-runner.js';
 import { dbUpdateFindingStatus } from '../audit/audit-store.js';
 import type {
@@ -244,6 +245,16 @@ export class DefaultPipelineRunner implements PipelineRunner {
 
     if (input.abortSignal.aborted) return cancelled(attempts);
 
+    // Audit-fix tasks: flip the finding from `fixing` → `verifying` before
+    // entering the verifier+doctor loop. Fills the historically-dead
+    // `verifying` enum slot so the audit timeline distinguishes
+    // "editor finished, verifier is checking" from "still waiting for editor".
+    // Step 4 of the Lane G build order will reset `verifying`-or-`fixing`
+    // back to `reopened` on doctor-cap failure; until then a stuck finding
+    // sits in `verifying` instead of `fixing` — same orphan, more accurate
+    // label.
+    maybeMarkAuditFindingVerifying(input);
+
     // Verify + doctor cycles (max 2 doctor invocations per task)
     while (true) {
       const verifyResult = await input.verify.run(input.worktreePath, input.routing.verify);
@@ -460,6 +471,45 @@ function maybeCloseAuditFinding(input: PipelineInput, prUrl: string | null): voi
   }).catch((err) => {
     console.warn(
       `[pipeline] dbUpdateFindingStatus(closed) failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  });
+}
+
+/**
+ * Flip an audit-fix task's finding from `fixing` → `verifying` at verifier
+ * entry. Best-effort: a file or DB failure here only affects the audit
+ * timeline; the pipeline itself continues regardless. `setFindingsStatus`
+ * is a no-op when the finding is already terminal or already in the target
+ * state, so calling this on a non-audit task or a finding already in
+ * `verifying` is safe.
+ */
+function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
+  if (!input.repoRoot) return;
+  const findingId = extractAuditFindingId(input.task.body);
+  if (!findingId) return;
+  try {
+    const updated = setFindingsStatus(
+      resolveAuditIndexPath(input.repoRoot),
+      [findingId],
+      'verifying',
+    );
+    if (updated > 0) {
+      console.warn(`[pipeline] audit finding ${findingId} → verifying`);
+    }
+  } catch (err) {
+    console.warn(
+      `[pipeline] audit-fix verifying-flip failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  // Mirror to Supabase so /audit-status on the VPS sees the in-flight state.
+  // Best-effort: DB failure does not unwind the file write.
+  void dbUpdateFindingStatus(findingId, 'verifying').catch((err) => {
+    console.warn(
+      `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
