@@ -263,34 +263,39 @@ export class TaskStore {
     const maxAttempts = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
     const cutoff = Date.now() - maxAgeMs;
     const now = Date.now();
-    // Tasks that have hit the attempt cap are marked failed to prevent infinite
-    // retry loops on permanently-failing tasks (AUDIT-IFleet-942cd45c).
-    const failedResult = this.db
-      .prepare(
-        `UPDATE tasks
-            SET state = 'failed',
-                state_meta = json_object('reason', 'max-attempts', 'attempts', attempts, 'failed_at', @now),
-                completed_at = @now
-          WHERE state = 'in_flight'
-            AND picked_at IS NOT NULL
-            AND picked_at < @cutoff
-            AND attempts >= @maxAttempts`,
-      )
-      .run({ now, cutoff, maxAttempts });
-    // Remaining stale tasks (below cap) are reset to pending with incremented attempts.
-    const recoveredResult = this.db
-      .prepare(
-        `UPDATE tasks
-            SET state = 'pending',
-                state_meta = json_object('recovered_at', @now, 'previous_state', 'in_flight'),
-                picked_at = NULL,
-                attempts = attempts + 1
-          WHERE state = 'in_flight'
-            AND picked_at IS NOT NULL
-            AND picked_at < @cutoff`,
-      )
-      .run({ now, cutoff });
-    return failedResult.changes + recoveredResult.changes;
+    // Both UPDATEs run in a single transaction so a concurrent pickNext() cannot
+    // observe the intermediate state where a task is pending but has attempts >= maxAttempts.
+    const runRecovery = this.db.transaction(() => {
+      // Tasks that have hit the attempt cap are marked failed to prevent infinite
+      // retry loops on permanently-failing tasks (AUDIT-IFleet-942cd45c).
+      const failedResult = this.db
+        .prepare(
+          `UPDATE tasks
+              SET state = 'failed',
+                  state_meta = json_object('reason', 'max-attempts', 'attempts', attempts, 'failed_at', @now),
+                  completed_at = @now
+            WHERE state = 'in_flight'
+              AND picked_at IS NOT NULL
+              AND picked_at < @cutoff
+              AND attempts >= @maxAttempts`,
+        )
+        .run({ now, cutoff, maxAttempts });
+      // Remaining stale tasks (below cap) are reset to pending with incremented attempts.
+      const recoveredResult = this.db
+        .prepare(
+          `UPDATE tasks
+              SET state = 'pending',
+                  state_meta = json_object('recovered_at', @now, 'previous_state', 'in_flight'),
+                  picked_at = NULL,
+                  attempts = attempts + 1
+            WHERE state = 'in_flight'
+              AND picked_at IS NOT NULL
+              AND picked_at < @cutoff`,
+        )
+        .run({ now, cutoff });
+      return failedResult.changes + recoveredResult.changes;
+    });
+    return runRecovery() as number;
   }
 
   updateState(taskId: string, state: TaskState, meta?: Record<string, unknown>): void {
@@ -394,7 +399,13 @@ export class TaskStore {
         created_at: createdAt,
       });
 
-    return this.getPrDecisionByTaskPr(input.taskId, input.prNumber)!;
+    const row = this.getPrDecisionByTaskPr(input.taskId, input.prNumber);
+    if (!row) {
+      throw new Error(
+        `pr_decisions row missing after INSERT for task ${input.taskId} pr ${input.prNumber}`,
+      );
+    }
+    return row;
   }
 
   /** Look up an existing PR decision for the (taskId, prNumber) pair. */
@@ -467,17 +478,28 @@ function normalizePriority(value: unknown): 'low' | 'normal' | 'high' {
   return 'normal';
 }
 
+function safeJsonParse(raw: string, fallback: unknown, label: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`[store] JSON.parse failed for ${label}:`, err);
+    return fallback;
+  }
+}
+
 function rowToTask(row: TaskRow): QueuedTask {
   return {
     id: row.id,
-    source: JSON.parse(row.source_data),
+    source: safeJsonParse(row.source_data, { kind: 'unknown' }, `task ${row.id} source_data`) as QueuedTask['source'],
     repo: row.repo,
     brief: row.brief,
     title: row.title,
-    routingHints: JSON.parse(row.routing_hints),
+    routingHints: safeJsonParse(row.routing_hints, {}, `task ${row.id} routing_hints`) as QueuedTask['routingHints'],
     createdAt: row.created_at,
     idempotencyKey: row.idempotency_key,
     state: row.state as TaskState,
-    stateMeta: row.state_meta ? JSON.parse(row.state_meta) : undefined,
+    stateMeta: row.state_meta
+      ? (safeJsonParse(row.state_meta, undefined, `task ${row.id} state_meta`) as Record<string, unknown> | undefined)
+      : undefined,
   };
 }

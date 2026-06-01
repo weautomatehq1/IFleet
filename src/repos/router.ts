@@ -54,7 +54,8 @@ export class FileChannelRouter implements ChannelRouter {
 }
 
 function toRoute(c: RawChannel, reposDir: string): ChannelRoute {
-  const [owner, name] = c.repo.split('/');
+  // REPO_RE validated upstream in parseChannel — split always yields two elements.
+  const [owner, name] = c.repo.split('/', 2) as [string, string];
   const workDir = `${reposDir}/${owner}-${name}`;
   return {
     channelId: c.channelId,

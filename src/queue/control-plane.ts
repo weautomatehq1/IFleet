@@ -352,7 +352,7 @@ export function parseCommand(body: string): ControlCommand {
       return cmd;
     }
     case 'cancel': {
-      if (typeof parsed.taskId !== 'string') throw new Error('cancel requires taskId');
+      if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('cancel requires a non-empty taskId');
       const cmd: ControlCommand = { type: 'cancel', taskId: parsed.taskId };
       if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
       // Accept Discord audit fields either flat or nested under `source` so
@@ -370,19 +370,19 @@ export function parseCommand(body: string): ControlCommand {
       return cmd;
     }
     case 'status': {
-      if (typeof parsed.taskId !== 'string') throw new Error('status requires taskId');
+      if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('status requires a non-empty taskId');
       return { type: 'status', taskId: parsed.taskId };
     }
     case 'approve': {
-      if (typeof parsed.taskId !== 'string') throw new Error('approve requires taskId');
+      if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('approve requires a non-empty taskId');
       return { type: 'approve', taskId: parsed.taskId };
     }
     case 'verify': {
-      if (typeof parsed.taskId !== 'string') throw new Error('verify requires taskId');
+      if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('verify requires a non-empty taskId');
       return { type: 'verify', taskId: parsed.taskId };
     }
     case 'force_pr': {
-      if (typeof parsed.taskId !== 'string') throw new Error('force_pr requires taskId');
+      if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('force_pr requires a non-empty taskId');
       const cmd: ControlCommand = { type: 'force_pr', taskId: parsed.taskId };
       if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
       return cmd;
