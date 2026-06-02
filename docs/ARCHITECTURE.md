@@ -87,14 +87,26 @@ Haiku architect → Haiku. Configured in
 
 ## Source layout (target)
 
+> Verified against `tree -L 2 src/` as of 2026-06-02 (T7 audit). `src/` is the source of truth.
+
 ```
 src/
+├── agents/             specialist agent modules
+│   ├── architect/      plan generation
+│   ├── canary/         disagreement-rate canary alerts
+│   ├── indexer/        KG indexer (ADR-0003)
+│   ├── rituals/        scheduled standup / retro posts (PM2 cron)
+│   └── verifier/       Docker sandbox verifier (ADR-0002)
+├── audit/              audit scan + fingerprint tooling
+├── classifier/         brief → model routing
+├── config/             runtime config loading
+├── contracts/          shared type contracts
+├── discord/            Discord client + event handlers
+│   └── handlers/
+├── mcp/                MCP stdio server tools
+│   └── tools/
+├── observability/      event log, Discord status cards
 ├── orchestrator/       routing brain, state machine, cancellation
-├── workers/
-│   ├── claude.ts       spawns claude -p, parses stream-json
-│   └── codex.ts        spawns codex exec --json
-├── queue/
-│   └── github.ts       reads/writes GitHub Issues as the queue
 ├── pipeline/
 │   ├── architect.ts
 │   ├── plan-reviewer.ts  M2 — vets plan before editor; veto with structured reasons
@@ -102,10 +114,17 @@ src/
 │   ├── diff-reviewer.ts  cross-provider review of editor's diff (was reviewer.ts pre-M2)
 │   ├── reviewer.ts       deprecated shim re-exporting diff-reviewer; remove next release
 │   └── doctor.ts         on CI failure
+├── queue/              GitHub Issues queue adapter
+│   └── sources/
+├── repos/              per-repo config and helpers
+├── utils/              shared utilities
 ├── verify/
 │   ├── ci.ts           typecheck + lint + test runner
 │   └── playwright.ts   UI tasks only
-├── classifier/         brief → model routing
-├── observability/      event log, Discord status cards
-└── secrets/            per-project env injection
+└── workers/
+    ├── claude.ts       spawns claude -p, parses stream-json
+    ├── codex.ts        spawns codex exec --json
+    └── adapters/       future worker backends (vLLM, Ollama, MLX, API)
 ```
+
+> Note: `src/secrets/` documented in the pre-build target is absent — env injection is handled via PM2 `baseEnv` in `ecosystem.config.cjs`.
