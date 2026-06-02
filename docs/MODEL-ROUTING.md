@@ -1,3 +1,9 @@
+> ⚠️ **Superseded** — the canonical routing policy is `~/.claude/skills/CANONICAL-PATTERN.md` Section 3 (correctness-first matrix). The Phase B Opus cap documented below was a cost-first guard from PR #41 and is now policy-superseded; code alignment (Phase C) ships in a future sprint. Until that ships, Phase B remains the live policy IFleet's classifier enforces. The manual pipeline (`~/.claude/skills/audit-fix/subagents/triager.md`) routes per the canonical matrix today.
+>
+> Supersedure protocol: see canonical-pattern Section 7. This note is removed when `src/classifier/index.ts` aligns to canonical.
+
+---
+
 # Model Routing — Phase B Reference
 
 > This doc covers the routing policy shipped in PR #41. It is the authoritative
