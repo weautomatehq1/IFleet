@@ -60,3 +60,6 @@ docs/handoff-*.md
 # pnpm is the authoritative lockfile (pnpm-lock.yaml). package-lock.json is
 # accidentally generated when someone runs `npm install` in this repo.
 package-lock.json
+
+# splittasks per-session scratch — never commit
+splits/
