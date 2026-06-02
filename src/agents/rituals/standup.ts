@@ -230,6 +230,7 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
+  console.warn('[ifleet-standup] starting…');
   postStandup().catch((err) => {
     console.error('[standup] failed:', err);
     process.exit(1);
