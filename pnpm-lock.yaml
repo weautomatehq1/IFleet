@@ -47,6 +47,9 @@ importers:
       tree-sitter-typescript:
         specifier: ^0.23.2
         version: 0.23.2(tree-sitter@0.21.1)
+      tsx:
+        specifier: ^4.0.0
+        version: 4.22.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -75,9 +78,6 @@ importers:
       ts-prune:
         specifier: ^0.10.3
         version: 0.10.3
-      tsx:
-        specifier: ^4.0.0
-        version: 4.22.0
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
