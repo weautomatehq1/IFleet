@@ -1,75 +1,78 @@
 {
+  "repo": "IFleet",
   "last_updated": "2026-06-02T04:11:40Z",
-  "audits": [
+  "open_findings": 3,
+  "by_severity": {
+    "CRITICAL": 0,
+    "IMPORTANT": 2,
+    "COSMETIC": 1
+  },
+  "findings": [
     {
-      "audit_id": "audit-20260531T041052Z",
-      "repo": "IFleet",
-      "scanned_at": "2026-05-31T04:10:52Z",
-      "branch": "audit/nightly-2026-05-31",
-      "summary": {
-        "total": 8,
-        "critical": 0,
-        "important": 5,
-        "cosmetic": 3,
-        "fixed": 7,
-        "open": 1
-      },
-      "open_findings": [
-        {
-          "id": "AUDIT-IFleet-e664f9f3",
-          "severity": "COSMETIC",
-          "title": "Nonce ledger per-process memory loses replay protection on restart",
-          "status": "open"
-        }
-      ]
+      "id": "AUDIT-IFleet-e664f9f3",
+      "severity": "COSMETIC",
+      "title": "Nonce ledger per-process memory loses replay protection on restart",
+      "status": "open",
+      "scan_metadata": {
+        "audit_id": "audit-20260531T041052Z",
+        "scanned_at": "2026-05-31T04:10:52Z",
+        "branch": "audit/nightly-2026-05-31"
+      }
     },
     {
-      "audit_id": "audit-20260602T041140Z",
-      "repo": "IFleet",
-      "scanned_at": "2026-06-02T04:11:40Z",
-      "branch": "audit/nightly-2026-06-02",
-      "summary": {
-        "total": 5,
-        "critical": 0,
-        "important": 4,
-        "cosmetic": 1,
-        "fixed": 3,
-        "open": 2
-      },
-      "open_findings": [
-        {
-          "id": "AUDIT-IFleet-c9d0e1f2",
-          "severity": "IMPORTANT",
-          "title": "Git push failures in onForcePr proceed unconditionally to PR creation",
-          "status": "open"
-        },
-        {
-          "id": "AUDIT-IFleet-g3h4i5j6",
-          "severity": "IMPORTANT",
-          "title": "unifiedToSprintId lookup intent non-obvious without annotation",
-          "status": "open"
-        }
-      ],
-      "fixed_findings": [
-        {
-          "id": "AUDIT-IFleet-a1b2c3d4",
-          "severity": "IMPORTANT",
-          "title": "WorkerRegistry.loadFromDisk() silently swallows config load errors",
-          "status": "fixed"
-        },
-        {
-          "id": "AUDIT-IFleet-e5f6a7b8",
-          "severity": "IMPORTANT",
-          "title": "Discord channel broadcast errors silently swallowed in markCompleted",
-          "status": "fixed"
-        },
-        {
-          "id": "AUDIT-IFleet-k7l8m9n0",
-          "severity": "COSMETIC",
-          "title": "WorkerRegistry loadFromDisk catch block lacks comment",
-          "status": "fixed"
-        }
-      ]
+      "id": "AUDIT-IFleet-c9d0e1f2",
+      "severity": "IMPORTANT",
+      "title": "Git push failures in onForcePr proceed unconditionally to PR creation",
+      "status": "open",
+      "scan_metadata": {
+        "audit_id": "audit-20260602T041140Z",
+        "scanned_at": "2026-06-02T04:11:40Z",
+        "branch": "audit/nightly-2026-06-02"
+      }
+    },
+    {
+      "id": "AUDIT-IFleet-g3h4i5j6",
+      "severity": "IMPORTANT",
+      "title": "unifiedToSprintId lookup intent non-obvious without annotation",
+      "status": "open",
+      "scan_metadata": {
+        "audit_id": "audit-20260602T041140Z",
+        "scanned_at": "2026-06-02T04:11:40Z",
+        "branch": "audit/nightly-2026-06-02"
+      }
+    },
+    {
+      "id": "AUDIT-IFleet-a1b2c3d4",
+      "severity": "IMPORTANT",
+      "title": "WorkerRegistry.loadFromDisk() silently swallows config load errors",
+      "status": "fixed",
+      "scan_metadata": {
+        "audit_id": "audit-20260602T041140Z",
+        "scanned_at": "2026-06-02T04:11:40Z",
+        "branch": "audit/nightly-2026-06-02"
+      }
+    },
+    {
+      "id": "AUDIT-IFleet-e5f6a7b8",
+      "severity": "IMPORTANT",
+      "title": "Discord channel broadcast errors silently swallowed in markCompleted",
+      "status": "fixed",
+      "scan_metadata": {
+        "audit_id": "audit-20260602T041140Z",
+        "scanned_at": "2026-06-02T04:11:40Z",
+        "branch": "audit/nightly-2026-06-02"
+      }
+    },
+    {
+      "id": "AUDIT-IFleet-k7l8m9n0",
+      "severity": "COSMETIC",
+      "title": "WorkerRegistry loadFromDisk catch block lacks comment",
+      "status": "fixed",
+      "scan_metadata": {
+        "audit_id": "audit-20260602T041140Z",
+        "scanned_at": "2026-06-02T04:11:40Z",
+        "branch": "audit/nightly-2026-06-02"
+      }
     }
   ]
 }
