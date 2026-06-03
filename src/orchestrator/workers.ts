@@ -46,7 +46,8 @@ export class WorkerRegistry {
       const raw = readFileSync(this.configPath, 'utf8');
       const parsed = JSON.parse(raw) as WorkersFile;
       this.workers = (parsed.workers ?? []).filter((w) => w.enabled);
-    } catch {
+    } catch (err) {
+      console.warn(`[WorkerRegistry] failed to load config from ${this.configPath}: ${String(err)} — booting with zero workers`);
       this.workers = [];
     }
   }
