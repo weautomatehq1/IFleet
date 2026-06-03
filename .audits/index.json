@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-02T04:11:40Z",
+  "last_updated": "2026-06-03T21:50:49Z",
   "open_findings": 3,
   "by_severity": {
     "CRITICAL": 0,
@@ -43,42 +43,6 @@
         "branch": "audit/nightly-2026-06-02"
       },
       "fingerprint": "ab40908ca06c2e6600c02c8d9dc0a73380bef6ed97e1e3b90edaed0357a6c2de"
-    },
-    {
-      "id": "AUDIT-IFleet-a1b2c3d4",
-      "severity": "IMPORTANT",
-      "title": "WorkerRegistry.loadFromDisk() silently swallows config load errors",
-      "status": "fixed",
-      "scan_metadata": {
-        "audit_id": "audit-20260602T041140Z",
-        "scanned_at": "2026-06-02T04:11:40Z",
-        "branch": "audit/nightly-2026-06-02"
-      },
-      "fingerprint": "ffec2e2d43e97338972b03680a4b2f630a6f57b37a9604224fb6138bc43c4731"
-    },
-    {
-      "id": "AUDIT-IFleet-e5f6a7b8",
-      "severity": "IMPORTANT",
-      "title": "Discord channel broadcast errors silently swallowed in markCompleted",
-      "status": "fixed",
-      "scan_metadata": {
-        "audit_id": "audit-20260602T041140Z",
-        "scanned_at": "2026-06-02T04:11:40Z",
-        "branch": "audit/nightly-2026-06-02"
-      },
-      "fingerprint": "790dc9a781848abc383d8b1f7334306933cfb90b70698d3cb81cebca47f7351f"
-    },
-    {
-      "id": "AUDIT-IFleet-k7l8m9n0",
-      "severity": "COSMETIC",
-      "title": "WorkerRegistry loadFromDisk catch block lacks comment",
-      "status": "fixed",
-      "scan_metadata": {
-        "audit_id": "audit-20260602T041140Z",
-        "scanned_at": "2026-06-02T04:11:40Z",
-        "branch": "audit/nightly-2026-06-02"
-      },
-      "fingerprint": "3ea1174481e0d0522f4a36993ff731ef32e0828c186299f206601b846e582aa3"
     }
   ]
 }
