@@ -14,6 +14,7 @@ import {
   extractAuditFindingId,
   markFindingClosed,
   resolveAuditIndexPath,
+  setFindingsStatus,
 } from '../discord/audit-runner.js';
 import { dbUpdateFindingStatus } from '../audit/audit-store.js';
 import type {
@@ -244,6 +245,16 @@ export class DefaultPipelineRunner implements PipelineRunner {
 
     if (input.abortSignal.aborted) return cancelled(attempts);
 
+    // Audit-fix tasks: flip the finding from `fixing` → `verifying` before
+    // entering the verifier+doctor loop. Fills the historically-dead
+    // `verifying` enum slot so the audit timeline distinguishes
+    // "editor finished, verifier is checking" from "still waiting for editor".
+    // TODO(https://github.com/weautomatehq1/IFleet/issues/308): reset
+    // verifying→reopened on doctor-cap failure. Until that lands, a stuck
+    // finding sits in `verifying` — same orphan, more accurate label than
+    // `fixing`.
+    maybeMarkAuditFindingVerifying(input);
+
     // Verify + doctor cycles (max 2 doctor invocations per task)
     while (true) {
       const verifyResult = await input.verify.run(input.worktreePath, input.routing.verify);
@@ -464,6 +475,52 @@ function maybeCloseAuditFinding(input: PipelineInput, prUrl: string | null): voi
       }`,
     );
   });
+}
+
+/**
+ * Flip an audit-fix task's finding from `fixing` → `verifying` at verifier
+ * entry. Best-effort: a file or DB failure here only affects the audit
+ * timeline; the pipeline itself continues regardless.
+ *
+ * Terminal-state safety: both the file write (`setFindingsStatus`) and the DB
+ * mirror (`dbUpdateFindingStatus` with `refuseFromTerminal: true`) skip rows
+ * already in a terminal state (closed / fixed / stale), so calling this on a
+ * non-audit task or a finding the closer already terminated is a no-op rather
+ * than a regression.
+ */
+function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
+  if (!input.repoRoot) return;
+  const findingId = extractAuditFindingId(input.task.body);
+  if (!findingId) return;
+  try {
+    const updated = setFindingsStatus(
+      resolveAuditIndexPath(input.repoRoot),
+      [findingId],
+      'verifying',
+    );
+    if (updated > 0) {
+      console.warn(`[pipeline] audit finding ${findingId} → verifying`);
+    }
+  } catch (err) {
+    console.warn(
+      `[pipeline] audit-fix verifying-flip failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  // Mirror to Supabase so /audit-status on the VPS sees the in-flight state.
+  // `refuseFromTerminal` adds AND status NOT IN ('closed','fixed','stale') to
+  // the WHERE clause so a terminal row stays terminal even if a stale fixing
+  // task races into the verifier loop late.
+  void dbUpdateFindingStatus(findingId, 'verifying', { refuseFromTerminal: true }).catch(
+    (err) => {
+      console.warn(
+        `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    },
+  );
 }
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {

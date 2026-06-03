@@ -125,18 +125,32 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
 
 /**
  * Update the status (and optionally closed_at / closing_pr) of a finding.
- * Returns true when a row was actually updated, false when the id was not found.
+ * Returns true when a row was actually updated, false when the id was not found
+ * — or, when `refuseFromTerminal` is set, when the existing row is already in a
+ * terminal state and the SQL guard blocked the update.
+ *
+ * `refuseFromTerminal` is the opt-in safety knob for the verifier+doctor loop,
+ * which mirrors a `fixing` → `verifying` flip into Supabase. Without the guard
+ * a terminal row (closed / fixed / stale) would silently regress to
+ * `verifying`. Existing call sites — markFindingClosed's mirror to `closed`,
+ * the Discord `/audit fixing` handler, and the explicit reopen-to-`open` path
+ * — keep the previous unconditional behaviour by leaving the flag unset.
  */
 export async function dbUpdateFindingStatus(
   id: string,
   status: AuditStatus,
-  extra: { closing_pr?: string; closed_at?: string } = {},
+  extra: { closing_pr?: string; closed_at?: string; refuseFromTerminal?: boolean } = {},
 ): Promise<boolean> {
   const pool = getKgPool();
+  // SQL literal — TERMINAL_SQL_LIST is built from static enum values, never
+  // user input. Same guard pattern as dbUpsertFindings's ON CONFLICT clause.
+  const terminalGuard = extra.refuseFromTerminal
+    ? ` AND status NOT IN (${TERMINAL_SQL_LIST})`
+    : '';
   const result = await pool.query(
     `UPDATE audit_findings
      SET status = $2, closed_at = COALESCE($3, closed_at), closing_pr = COALESCE($4, closing_pr)
-     WHERE id = $1`,
+     WHERE id = $1${terminalGuard}`,
     [id, status, extra.closed_at ?? null, extra.closing_pr ?? null],
   );
   if (result.rowCount === 0) {

@@ -333,4 +333,31 @@ describe('dbUpdateFindingStatus', () => {
       dbUpdateFindingStatus('AUDIT-IFleet-nonexistent', 'open'),
     ).resolves.toBe(false);
   });
+
+  it('omits the terminal-state guard by default', async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+    await dbUpdateFindingStatus('AUDIT-IFleet-test001', 'closed');
+
+    const [sql] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).not.toContain('NOT IN');
+  });
+
+  it('appends the terminal-state guard when refuseFromTerminal=true', async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+    await dbUpdateFindingStatus('AUDIT-IFleet-test001', 'verifying', {
+      refuseFromTerminal: true,
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("AND status NOT IN ('closed', 'fixed', 'stale')");
+  });
+
+  it('returns false when refuseFromTerminal guard blocks the update', async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0 });
+    await expect(
+      dbUpdateFindingStatus('AUDIT-IFleet-terminated', 'verifying', {
+        refuseFromTerminal: true,
+      }),
+    ).resolves.toBe(false);
+  });
 });
