@@ -1,6 +1,9 @@
 /**
  * PM2 ecosystem config — Discord-first IFleet topology.
  *
+ * Audit-verified 2026-05-25: no duplicate out_file/error_file keys; all
+ * scheduled audit entries point to scripts/audit-ritual.ts (not standup.ts).
+ *
  * Two long-running processes:
  *
  *   control-plane  — HTTP listener for the Discord bot's HMAC-signed
