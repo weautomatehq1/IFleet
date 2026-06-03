@@ -249,10 +249,10 @@ export class DefaultPipelineRunner implements PipelineRunner {
     // entering the verifier+doctor loop. Fills the historically-dead
     // `verifying` enum slot so the audit timeline distinguishes
     // "editor finished, verifier is checking" from "still waiting for editor".
-    // Step 4 of the Lane G build order will reset `verifying`-or-`fixing`
-    // back to `reopened` on doctor-cap failure; until then a stuck finding
-    // sits in `verifying` instead of `fixing` — same orphan, more accurate
-    // label.
+    // TODO(https://github.com/weautomatehq1/IFleet/issues/308): reset
+    // verifying→reopened on doctor-cap failure. Until that lands, a stuck
+    // finding sits in `verifying` — same orphan, more accurate label than
+    // `fixing`.
     maybeMarkAuditFindingVerifying(input);
 
     // Verify + doctor cycles (max 2 doctor invocations per task)
