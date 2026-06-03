@@ -408,6 +408,95 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
   });
 });
 
+describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
+  // Closes ADR-0004 §Known-Limitations items 1 (M4.6 mode override category
+  // protection) and 3 (M4.8 reviewer derivation after mode overrides).
+  // See src/classifier/index.ts — the `categoryOverrideTriggered` flag plus
+  // reviewer-derivation move after the mode-override block.
+
+  it('M4.6 — auth + mode:tdd: architect stays Opus (category override #1 wins over mode demotion)', () => {
+    // "auth" + "security" are HIGH_KEYWORDS (category override #1). Rule 1
+    // also matches and routes architect to Opus. mode:tdd normally pins
+    // architect to Sonnet, but M4.6 blocks the demotion because the category
+    // override fired. Editor override from mode:tdd (sonnet) still applies.
+    const result = classifyTask({
+      title: 'security audit of auth middleware',
+      body: 'check the auth flow',
+      labels: ['auto:ship', 'mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.editor.model, 'claude-sonnet-4-6');
+  });
+
+  it('M4.6 — stripe + mode:ulw: architect stays Opus (payments category, scorer trigger)', () => {
+    // "stripe" + "payment" → HIGH_KEYWORDS score 6 → baseTier=opus → flag
+    // triggered via the scorer path (no rule match for stripe). mode:ulw
+    // would demote architect to Sonnet; M4.6 blocks the architect demotion.
+    const result = classifyTask({
+      title: 'wire up stripe payment intents',
+      body: '',
+      labels: ['auto:ship', 'mode:ulw'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+  });
+
+  it('M4.6 — SQL rule + mode:deslop: architect stays Opus (migration category, rule trigger)', () => {
+    // users.sql matches rule 4 (fileGlobs include **/*.sql / migrations/** /
+    // supabase/**) which routes architect → Opus. The rule's globs contain
+    // category needles (sql / migrations / supabase), so the M4.6 rule
+    // trigger fires. mode:deslop would demote architect to Haiku; M4.6
+    // blocks it. Editor override (mode:deslop → sonnet) still applies.
+    const result = classifyTask({
+      title: 'add seed file users.sql to the repo',
+      body: 'seed data for local dev',
+      labels: ['auto:ship', 'mode:deslop'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.editor.model, 'claude-sonnet-4-6');
+  });
+
+  it('M4.6 negative — non-category mode override still applies (fix typo + mode:tdd → sonnet)', () => {
+    // No HIGH_KEYWORDS hit, no rule match → baseTier=haiku → flag NOT set.
+    // mode:tdd's architect=sonnet pin therefore applies normally.
+    const result = classifyTask({
+      title: 'fix typo',
+      body: '',
+      labels: ['auto:ship', 'mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+
+  it('M4.8 — fix typo + mode:ralph: reviewer mirrors final architect (sonnet), not pre-mode haiku', () => {
+    // Pre-M4.8: reviewer was derived BEFORE the mode-override block, so
+    // architect=haiku → reviewer=haiku, then mode:ralph promoted architect
+    // to sonnet — leaving reviewer (haiku) weaker than architect (sonnet)
+    // and violating the canonical §2.5 "reviewer not weaker than architect"
+    // invariant. Post-M4.8: reviewer is derived from the final architect.
+    const result = classifyTask({
+      title: 'fix typo',
+      body: '',
+      labels: ['auto:ship', 'mode:ralph'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+  });
+
+  it('M4.8 — complexity:high + mode:tdd: reviewer tracks demoted architect (sonnet), not pre-mode opus', () => {
+    // complexity:high alone does NOT trigger M4.6 (only baseTier === opus
+    // or a category-rule match does). So mode:tdd legitimately demotes the
+    // complexity:high-promoted architect from opus to sonnet. Reviewer must
+    // track the final architect (sonnet); pre-M4.8 it would have stayed at
+    // opus (over-spec'd) because reviewer derivation ran before the demotion.
+    const result = classifyTask({
+      title: 'do a thing',
+      body: '',
+      labels: ['auto:ship', 'complexity:high', 'mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+  });
+});
+
 describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-reviewer.md)', () => {
   // Floor table (canonical §2.5 — "Haiku or Sonnet" for plan-reviewer):
   //   architect=opus   → planReviewer=sonnet (cheap pre-gate floor)
