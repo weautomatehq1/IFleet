@@ -269,107 +269,13 @@ async function main(): Promise<void> {
       );
     },
     onForcePr: async (taskId, reason) => {
-      // Operator override: log the deliberate bypass into the events table so
-      // observability can render the action. Verifier state is not mutated —
-      // the verifier_runs row stays `failed`; this row is the audit trail.
-      // AUDIT-IFleet-73a3a883 / 9b44a71a — previous form only appended the
-      // event and never actually opened the PR. Now we resolve the task's
-      // branch from TaskContextRegistry and shell out to `gh pr create`.
-      // If branch context is missing (registry already evicted, GitHub
-      // source without a worktree), log and skip — don't crash the daemon.
-      let sprintId: SprintId | undefined;
-      try {
-        // Try unified store first (Discord-source tasks live here only).
-        const unified = store.getById(taskId);
-        sprintId = unifiedToSprintId.get(taskId);
-        if (sprintId) {
-          orchestratorStore.appendEvent({
-            ts: Date.now(),
-            sprintId,
-            taskId: taskId as TaskId,
-            kind: 'verifier.force_pr',
-            payload: { reason: reason ?? null },
-          });
-        } else {
-          // Fall back to orchestrator-store lookup for the legacy path
-          // (some tk_-keyed callers; keep the audit row landing).
-          const tk = orchestratorStore.loadTask(taskId as TaskId);
-          if (tk) {
-            sprintId = tk.sprintId;
-            orchestratorStore.appendEvent({
-              ts: Date.now(),
-              sprintId: tk.sprintId,
-              taskId: tk.id,
-              kind: 'verifier.force_pr',
-              payload: { reason: reason ?? null },
-            });
-          }
-        }
-        const ctx = verifierCtx.get(taskId);
-        if (!ctx) {
-          console.warn(
-            `[daemon] onForcePr(${taskId}): no branch context in TaskContextRegistry — audit event logged but PR not opened`,
-          );
-          return;
-        }
-        // Derive repo slug ("owner/repo") from the repoUrl the registry
-        // captured at bootstrap. Form: https://github.com/<owner>/<repo>.
-        const repoSlug = ctx.repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
-        const [owner, repo] = repoSlug.split('/', 2);
-        if (!owner || !repo) {
-          console.warn(
-            `[daemon] onForcePr(${taskId}): could not parse owner/repo from ${ctx.repoUrl}`,
-          );
-          return;
-        }
-        const title = unified?.title ?? `Force-PR for ${taskId}`;
-        // Wrap user-controlled fields in backticks so a reason like
-        // "<!-- broken markdown" can't escape the body context.
-        // AUDIT-IFleet-def3f18a.
-        const body =
-          `Force-PR override dispatched via Discord.\n\n` +
-          `- Task: \`${taskId}\`\n` +
-          `- Reason: \`${(reason ?? '(none)').replace(/`/g, "'")}\`\n` +
-          `- Verifier status: \`failed\` (deliberate operator bypass)\n`;
-        // Push the branch first — onForcePr can fire from a failed-verifier
-        // worktree that the normal PR path never reached, so origin may not
-        // have the head yet. Best-effort: if push fails (already up to date,
-        // worktree gone, etc.) the subsequent pulls.create will surface a
-        // clearer error than a stale push warning.
-        try {
-          await execFileAsync('git', ['push', '-u', 'origin', ctx.branch], { cwd: ctx.worktreePath });
-        } catch (pushErr) {
-          console.warn(
-            `[daemon] onForcePr(${taskId}): git push failed (may already be pushed): ${
-              pushErr instanceof Error ? pushErr.message : String(pushErr)
-            }`,
-          );
-        }
-        // Use the existing Octokit client (already authenticated with
-        // GITHUB_TOKEN) instead of shelling to `gh`, which isn't installed on
-        // the VPS daemon image. AUDIT-IFleet-63347c06.
-        try {
-          await octokit.rest.pulls.create({
-            owner,
-            repo,
-            base: 'main',
-            head: ctx.branch,
-            title,
-            body,
-          });
-        } catch (err) {
-          // 422 = already exists; other 4xx/5xx codes are real errors — both
-          // get logged as warn here so the operator sees the message on
-          // Discord follow-up without crashing the daemon.
-          console.warn(
-            `[daemon] onForcePr(${taskId}): pulls.create failed (PR may already exist): ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      } catch (err) {
-        console.warn('[daemon] onForcePr append failed:', err);
-      }
+      await handleForcePr(taskId, reason, {
+        store,
+        orchestratorStore,
+        unifiedToSprintId,
+        verifierCtx,
+        octokit,
+      });
     },
     onCancel: async (taskId, reason) => {
       // Resolve `__channel_current__:<channelId>` sentinel emitted by
@@ -912,6 +818,182 @@ export function wrapFactoryWithVerifierContext(
     };
     return bootstrap;
   };
+}
+
+/**
+ * Dependencies for {@link handleForcePr}. `execFile` and `broadcast` default
+ * to the module-level production wiring; tests inject stubs.
+ */
+export interface ForcePrDeps {
+  store: TaskStore;
+  orchestratorStore: StateStore;
+  unifiedToSprintId: Map<string, SprintId>;
+  verifierCtx: TaskContextRegistry;
+  octokit: Pick<Octokit, 'rest'>;
+  execFile?: typeof execFileAsync;
+  broadcast?: (msg: string) => void;
+}
+
+type ForcePrPushOutcome = 'success' | 'already-up-to-date' | 'failed';
+
+/**
+ * Operator override handler. Logs the deliberate verifier bypass into the
+ * events table, pushes the task's branch to origin, and opens a PR via the
+ * Octokit client.
+ *
+ * Push outcomes (AUDIT-IFleet-c9d0e1f2):
+ *   - success: branch pushed, proceed to pulls.create
+ *   - already-up-to-date: branch already at this SHA on origin (benign,
+ *     git exits 0 with "Everything up-to-date"), proceed to pulls.create
+ *   - failed: real push error (auth, network, branch protection, worktree
+ *     gone) — abort the force-PR and tell the operator via broadcastIFleet.
+ *     Do NOT call pulls.create, which would emit a misleading "PR may
+ *     already exist" message when the real cause is upstream of PR creation
+ *     entirely.
+ *
+ * Extracted from the inline onForcePr callback so the push-outcome branches
+ * can be exercised in unit tests without booting the daemon.
+ */
+export async function handleForcePr(
+  taskId: string,
+  reason: string | undefined,
+  deps: ForcePrDeps,
+): Promise<void> {
+  const {
+    store,
+    orchestratorStore,
+    unifiedToSprintId,
+    verifierCtx,
+    octokit,
+    execFile = execFileAsync,
+    broadcast = broadcastIFleet,
+  } = deps;
+  let sprintId: SprintId | undefined;
+  try {
+    const unified = store.getById(taskId);
+    sprintId = unifiedToSprintId.get(taskId);
+    if (sprintId) {
+      orchestratorStore.appendEvent({
+        ts: Date.now(),
+        sprintId,
+        taskId: taskId as TaskId,
+        kind: 'verifier.force_pr',
+        payload: { reason: reason ?? null },
+      });
+    } else {
+      const tk = orchestratorStore.loadTask(taskId as TaskId);
+      if (tk) {
+        sprintId = tk.sprintId;
+        orchestratorStore.appendEvent({
+          ts: Date.now(),
+          sprintId: tk.sprintId,
+          taskId: tk.id,
+          kind: 'verifier.force_pr',
+          payload: { reason: reason ?? null },
+        });
+      }
+    }
+    const ctx = verifierCtx.get(taskId);
+    if (!ctx) {
+      console.warn(
+        `[daemon] onForcePr(${taskId}): no branch context in TaskContextRegistry — audit event logged but PR not opened`,
+      );
+      return;
+    }
+    const repoSlug = ctx.repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+    const [owner, repo] = repoSlug.split('/', 2);
+    if (!owner || !repo) {
+      console.warn(
+        `[daemon] onForcePr(${taskId}): could not parse owner/repo from ${ctx.repoUrl}`,
+      );
+      return;
+    }
+    const title = unified?.title ?? `Force-PR for ${taskId}`;
+    const body =
+      `Force-PR override dispatched via Discord.\n\n` +
+      `- Task: \`${taskId}\`\n` +
+      `- Reason: \`${(reason ?? '(none)').replace(/`/g, "'")}\`\n` +
+      `- Verifier status: \`failed\` (deliberate operator bypass)\n`;
+    // Push the branch first — onForcePr can fire from a failed-verifier
+    // worktree that the normal PR path never reached, so origin may not
+    // have the head yet. Three outcomes:
+    //   - success: branch pushed, proceed to pulls.create
+    //   - already-up-to-date: branch already at this SHA on origin (benign),
+    //     proceed to pulls.create
+    //   - failed: real push error (auth, network, branch protection, worktree
+    //     gone) — abort the force-PR and tell the operator. Do NOT call
+    //     pulls.create, which would emit a misleading "PR may already exist"
+    //     message when the real cause is upstream of PR creation entirely.
+    // (AUDIT-IFleet-c9d0e1f2 closed by this change.)
+    let pushOutcome: ForcePrPushOutcome = 'success';
+    let pushErrorMessage = '';
+    try {
+      const { stdout, stderr } = await execFile(
+        'git',
+        ['push', '-u', 'origin', ctx.branch],
+        { cwd: ctx.worktreePath },
+      );
+      if (
+        /Everything up-to-date/i.test(stderr ?? '') ||
+        /Everything up-to-date/i.test(stdout ?? '')
+      ) {
+        pushOutcome = 'already-up-to-date';
+      }
+    } catch (pushErr) {
+      pushOutcome = 'failed';
+      pushErrorMessage = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      console.warn(
+        `[daemon] onForcePr(${taskId}): git push failed, aborting force-PR: ${pushErrorMessage}`,
+      );
+    }
+    if (pushOutcome === 'failed') {
+      if (sprintId) {
+        try {
+          orchestratorStore.appendEvent({
+            ts: Date.now(),
+            sprintId,
+            taskId: taskId as TaskId,
+            kind: 'verifier.force_pr_aborted',
+            payload: { reason: reason ?? null, cause: 'push_failed', error: pushErrorMessage },
+          });
+        } catch (err) {
+          console.warn('[daemon] onForcePr abort event append failed:', err);
+        }
+      }
+      const abortMsg =
+        `⛔ /force-pr ABORTED — \`${taskId}\` — \`git push origin ${ctx.branch}\` failed; PR NOT opened. ` +
+        `Reason: \`${(reason ?? '(none)').replace(/`/g, "'")}\`. ` +
+        `Recovery: investigate push failure (auth, network, branch protection, worktree state), then retry /force-pr if appropriate. ` +
+        `Push error: ${pushErrorMessage || '(no message)'}`;
+      try {
+        broadcast(abortMsg);
+      } catch (err) {
+        console.warn('[daemon] onForcePr abort broadcast failed:', err);
+      }
+      return;
+    }
+    // Use the existing Octokit client (already authenticated with
+    // GITHUB_TOKEN) instead of shelling to `gh`, which isn't installed on
+    // the VPS daemon image. AUDIT-IFleet-63347c06.
+    try {
+      await octokit.rest.pulls.create({
+        owner,
+        repo,
+        base: 'main',
+        head: ctx.branch,
+        title,
+        body,
+      });
+    } catch (err) {
+      console.warn(
+        `[daemon] onForcePr(${taskId}): pulls.create failed (PR may already exist): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  } catch (err) {
+    console.warn('[daemon] onForcePr append failed:', err);
+  }
 }
 
 async function resolveVerifierContext(
