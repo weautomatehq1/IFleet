@@ -82,7 +82,7 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
     }
   };
 
-  let sessionId = '';
+  let sessionId: string | undefined;
   const sessionDeferred = createDeferred<string>();
   const resultDeferred = createDeferred<WorkerResult>();
   sessionDeferred.promise.catch(() => {
@@ -95,7 +95,7 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
   const handleLine = (line: string): void => {
     if (line.length === 0) return;
     opts.parseLine(line, (e) => {
-      if (e.kind === 'init' && sessionId === '') {
+      if (e.kind === 'init' && sessionId === undefined) {
         sessionId = e.sessionId;
         sessionDeferred.resolve(sessionId);
       }
@@ -131,10 +131,16 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
   };
 
   if (opts.signal) {
-    if (opts.signal.aborted) {
+    const onAbort = (): void => {
       void cancel();
+      if (!sessionDeferred.settled) {
+        sessionDeferred.reject(new Error('worker cancelled before session init'));
+      }
+    };
+    if (opts.signal.aborted) {
+      onAbort();
     } else {
-      opts.signal.addEventListener('abort', () => void cancel(), { once: true });
+      opts.signal.addEventListener('abort', onAbort, { once: true });
     }
   }
 
@@ -156,7 +162,7 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
           exitCode: code,
           signal,
           stderrTail,
-          sessionId,
+          sessionId: sessionId ?? '',
         });
         if (!sessionDeferred.settled) sessionDeferred.resolve(result.sessionId);
         resultDeferred.resolve(result);
@@ -165,7 +171,7 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
         if (!sessionDeferred.settled) sessionDeferred.reject(err);
       }
     } else {
-      const state: FinalizeState = { startedAt, endedAt, exitCode: code, signal, stderrTail, sessionId };
+      const state: FinalizeState = { startedAt, endedAt, exitCode: code, signal, stderrTail, sessionId: sessionId ?? '' };
       // Give the adapter a chance to reclassify an expected non-zero exit
       // (rate limit) into a result rather than a crash.
       const reclassified = opts.classifyExit?.(state);

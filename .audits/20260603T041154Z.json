@@ -1,0 +1,64 @@
+{
+  "audit_id": "audit-20260603T041154Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-06-03T04:11:54Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-f5f9c763",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Number() on env vars silently produces NaN for non-numeric input",
+      "detail": "daemon.ts lines 80 and 542 use Number() to parse CONTROL_PLANE_PORT and IFLEET_DAEMON_TICK_MS. If either env var is set to a non-numeric string, Number() returns NaN — the port binding silently fails and setInterval(NaN) degrades to a 1ms spin-loop. No validation or fallback is applied.",
+      "file_globs": ["src/orchestrator/daemon.ts"],
+      "fix_sketch": "Replace Number() with validated parseInt: parse with parseInt(v, 10) and throw if !Number.isFinite(port) || port <= 0.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-03T04:11:54Z",
+      "closed_at": "2026-06-03T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-3681c1b2",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "sessionDeferred in spawn-runner.ts has no timeout — hangs if worker never emits init",
+      "detail": "runStreaming() resolves sessionDeferred when a worker emits an 'init' event (line 99-100) or settles it on process close (lines 161-165). If the spawned process hangs indefinitely — never emitting init and never closing — any caller awaiting handle.sessionId will block forever with no timeout or error. The AbortSignal / cancel() path only helps if the caller provides one.",
+      "file_globs": ["src/workers/spawn-runner.ts"],
+      "fix_sketch": "When AbortSignal fires, also reject sessionDeferred if it hasn't settled yet.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-03T04:11:54Z",
+      "closed_at": "2026-06-03T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-924fb8f0",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "NO_CHANGES_NEEDED_RE can match sentinel inside markdown code blocks in editor output",
+      "detail": "The regex /(^|\\n)\\s*NO_CHANGES_NEEDED\\s*($|\\n)/ in pipeline/runner.ts matches whenever NO_CHANGES_NEEDED appears on its own line anywhere in the editor output, including inside a fenced code block. A false positive here causes the pipeline to short-circuit with status=already_resolved even when the task was not completed — silently dropping the finding without any fix applied.",
+      "file_globs": ["src/pipeline/runner.ts"],
+      "fix_sketch": "Tighten regex to /^\\s*NO_CHANGES_NEEDED\\s*$/ and test against output.trim() so it only matches when the entire output is the sentinel.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-03T04:11:54Z",
+      "closed_at": "2026-06-03T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d468e127",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Dead sessionId initialization in spawn-runner.ts",
+      "detail": "Line 85 declares `let sessionId = ''` but this empty-string value is never used — it is always overwritten when the 'init' event fires (line 99). The initialization is a red herring that implies sessionId has a meaningful default, when in practice an unsettled sessionDeferred means no init event has arrived.",
+      "file_globs": ["src/workers/spawn-runner.ts"],
+      "fix_sketch": "Change to `let sessionId: string | undefined;` and use `sessionId ?? ''` at callsites that need a string.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-03T04:11:54Z",
+      "closed_at": "2026-06-03T04:15:00Z",
+      "closing_pr": null
+    }
+  ]
+}

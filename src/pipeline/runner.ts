@@ -33,7 +33,7 @@ const DEFAULT_REVIEWER_MAX_ROUNDS = 2;
  * the output indicates the editor verified the fix is already in place. The
  * runner short-circuits to status=already_resolved when this matches.
  */
-const NO_CHANGES_NEEDED_RE = /(^|\n)\s*NO_CHANGES_NEEDED\s*($|\n)/;
+const NO_CHANGES_NEEDED_RE = /^\s*NO_CHANGES_NEEDED\s*$/;
 
 export class DefaultPipelineRunner implements PipelineRunner {
   async run(input: PipelineInput): Promise<PipelineResult> {
@@ -234,7 +234,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         // failed). Anything else with no diff is a silent tool-use failure
         // (claude -p dropped its edits without explanation).
         // Closes AUDIT-IFleet-77fe96e2.
-        if (NO_CHANGES_NEEDED_RE.test(editor.attempt.output)) {
+        if (NO_CHANGES_NEEDED_RE.test(editor.attempt.output.trim())) {
           maybeCloseAuditFinding(input, null);
           return alreadyResolved(attempts);
         }

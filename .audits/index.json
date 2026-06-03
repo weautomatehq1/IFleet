@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-31T04:11:30Z",
+  "last_updated": "2026-06-03T04:15:00Z",
   "audits": [
     {
       "audit_id": "audit-20260531T041052Z",
@@ -22,6 +22,21 @@
           "status": "open"
         }
       ]
+    },
+    {
+      "audit_id": "audit-20260603T041154Z",
+      "repo": "IFleet",
+      "scanned_at": "2026-06-03T04:11:54Z",
+      "branch": "audit/nightly-2026-06-03",
+      "summary": {
+        "total": 4,
+        "critical": 0,
+        "important": 3,
+        "cosmetic": 1,
+        "fixed": 4,
+        "open": 0
+      },
+      "open_findings": []
     }
   ]
 }
