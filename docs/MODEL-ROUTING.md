@@ -79,7 +79,7 @@ Editor overrides from `routing.json` are independent of the architect tier math 
 | Base tier | haiku |
 | Label bumps | none |
 | Architect | **haiku** |
-| Editor | bumpTier(haiku, −1) = **haiku** |
+| Editor | bumpTier(haiku, −1) = haiku, **then floored at sonnet** (canonical §2.4 / IFleet mandatory rule 3 — never Haiku for editing code) |
 | Reviewer | matches architect → **haiku** |
 
 ---

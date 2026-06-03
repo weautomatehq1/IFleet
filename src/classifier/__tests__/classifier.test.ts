@@ -195,6 +195,22 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 
+  it('MEDIUM_KEYWORD + complexity:low stays at sonnet (no override, no demotion)', () => {
+    // Phase C decision: complexity:low has no demoting effect anywhere in
+    // classifier code — neither on category-override Opus (test above) nor
+    // on non-override sonnet/haiku paths. Pins canonical §3.2: complexity:low
+    // is not an override; the matrix row that matches applies. "feature
+    // toggle" scores +1 → sonnet; complexity:low does not push it to haiku.
+    // If a future ADR wants complexity:low to bump non-override tiers down,
+    // change this test deliberately rather than letting drift happen silently.
+    const result = classifyTask({
+      title: 'add a new feature toggle',
+      body: '',
+      labels: ['auto:ship', 'complexity:low'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+
   it('chore label bumps tier down one', () => {
     const result = classifyTask({
       title: 'add a new feature toggle',
@@ -251,7 +267,7 @@ describe('classifyTask — labels & verify', () => {
   });
 });
 
-describe('classifyTask — rule override + complexity hint (post-M4.5 canonical alignment)', () => {
+describe('classifyTask — rule override + complexity hint (issue #43, post-M4.5 canonical alignment)', () => {
   it('SQL rule (architect→opus) + complexity:low: architect stays opus (migration override #1 wins)', () => {
     // Pre-Phase C this test asserted the cap demoted to sonnet. Post-M4.5 /
     // ADR-0004: canonical §3.2 override #1 (migration category → Opus regardless
