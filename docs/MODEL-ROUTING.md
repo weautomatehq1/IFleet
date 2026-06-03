@@ -1,13 +1,8 @@
-> ⚠️ **Superseded** — the canonical routing policy is `~/.claude/skills/CANONICAL-PATTERN.md` Section 3 (correctness-first matrix). The Phase B Opus cap documented below was a cost-first guard from PR #41 and is now policy-superseded; code alignment (Phase C) ships in a future sprint. Until that ships, Phase B remains the live policy IFleet's classifier enforces. The manual pipeline (`~/.claude/skills/audit-fix/subagents/triager.md`) routes per the canonical matrix today.
->
-> Supersedure protocol: see canonical-pattern Section 7. This note is removed when `src/classifier/index.ts` aligns to canonical.
+# Model Routing — Reference (post-M4.5 canonical alignment)
 
----
-
-# Model Routing — Phase B Reference
-
-> This doc covers the routing policy shipped in PR #41. It is the authoritative
-> reference for which model each pipeline role gets on any given issue.
+> Implementation of the canonical correctness-first routing matrix from `~/.claude/skills/CANONICAL-PATTERN.md` §3.
+> Policy decisions live in [ADR-0004](adr/0004-canonical-routing-alignment.md); this doc describes the runtime behaviour of `src/classifier/index.ts` against that policy.
+> History: the Phase B Opus cap (PR #41) was the previous policy; it is retired by ADR-0004 (PR #<NNN>, 2026-06-03). The cap rationale and worked examples below have been rewritten to reflect the live canonical-aligned classifier.
 
 ## The three roles
 
@@ -23,15 +18,15 @@ Tiers without any labels set (no `complexity:*`, no `priority:*`, no `chore`/`do
 
 | Scorer signal | Architect | Editor | Reviewer |
 |---|---|---|---|
-| No keywords (score 0) | haiku | haiku | haiku |
-| Medium keywords only (score 1–2) | sonnet | haiku | sonnet |
-| High keyword present (score ≥ 3) | sonnet *(capped from opus)* | haiku | sonnet |
+| No keywords (score 0) | haiku | sonnet *(editor floor)* | haiku |
+| Medium keywords only (score 1–2) | sonnet | sonnet | sonnet |
+| High keyword present (score ≥ 3) | opus | sonnet | opus |
 
 **High keywords** (each scores +3): `auth`, `security`, `migration`, `rls`, `critical`, `oauth`, `encryption`, `payment`, `stripe`, `supabase`
 
 **Medium keywords** (each scores +1): `refactor`, `feature`, `component`, `api`, `route`, `integration`, `hook`, `service`
 
-The scorer alone can never push architect above sonnet. Only `complexity:high` unlocks opus for architect (see Phase B cap below).
+Per canonical §3.2 override #1 (category ∈ {security, auth, payments, migration} → Opus regardless of severity), any high-keyword hit promotes the architect to Opus directly — no `complexity:high` label is required. The editor stays at the Sonnet floor (canonical §2.4 / IFleet mandatory rule 3). The reviewer mirrors the architect tier (canonical "reviewer not weaker than architect").
 
 ---
 
@@ -39,40 +34,35 @@ The scorer alone can never push architect above sonnet. Only `complexity:high` u
 
 | Label | Effect on architect | Effect on editor | Effect on reviewer |
 |---|---|---|---|
-| `complexity:high` | Forces **opus** regardless of score | one tier below architect → **sonnet** | Mirrors architect → **opus** |
-| `complexity:low` | No direct effect; Phase B cap still applies (cannot reach opus) | follows architect | follows architect |
-| `priority:high` | Bumps scored tier +1 (opus cap still applies) | follows architect tier | follows architect |
+| `complexity:high` | Forces **opus** regardless of score (manual operator override for cases the scorer underestimates) | one tier below architect → **sonnet** | Mirrors architect → **opus** |
+| `complexity:low` | Parsed but no demoting effect on a category override — canonical §3.2 override #1 wins "regardless of severity" | follows architect | follows architect |
+| `priority:high` | Bumps scored tier +1 (can promote to opus when scored tier is sonnet) | follows architect tier | follows architect |
 | `priority:low` | Parsed but no routing effect in current implementation | — | — |
-| `chore` / `docs` / `chore:*` / `docs:*` | Bumps scored tier −1 (floor: haiku) | follows architect | follows architect |
+| `chore` / `docs` / `chore:*` / `docs:*` | Bumps scored tier −1 (floor: haiku) | follows architect (editor floor at sonnet still applies) | follows architect |
 | `model:opus/sonnet/haiku/codex` | Parsed but **not yet wired** into routing (reserved) | — | — |
 
-### Phase B opus cap (the key constraint)
+### Override precedence (canonical §3.2)
 
-```
-architectModel = opus   →   capped to sonnet
-                 UNLESS complexity:high is set
-```
+Highest wins:
 
-This cap fires in two places in `src/classifier/index.ts`:
-1. After scoring: `baseTier === 'opus' ? 'sonnet' : baseTier`
-2. After routing.json rule application: `if (complexity !== 'high' && architectModel === TIERS.opus)`
-
-No path other than `complexity:high` can produce an opus architect. Not scorer keywords, not `routing.json` rules, not `priority:high`.
+1. Any `category` keyword in {`security`, `auth`, `payments`, `migration`} → **Opus** regardless of severity. (Detected today via the HIGH_KEYWORDS scorer; future enhancement: explicit `category:*` labels.)
+2. `CRITICAL` severity → **Opus** regardless of category. (Detected today via the `critical` HIGH_KEYWORD or `complexity:high` label.)
+3. Otherwise the matrix row that matches.
 
 ### routing.json explicit overrides
 
-`config/routing.json` rules are keyword/glob-based and apply **after** scoring but **before** the final Phase B cap. The cap always gets the last word on architect model.
+`config/routing.json` rules are keyword/glob-based and apply **after** scoring. Rule-driven Opus assignments are honored unconditionally (no cap).
 
 Current rules that affect model selection:
 
 | Match | Role overridden | Model set |
 |---|---|---|
-| `architect`, `design`, `security`, `auth`, `migration`, `rls`, `critical` | architect | opus (then capped to sonnet unless `complexity:high`) |
+| `architect`, `design`, `security`, `auth`, `migration`, `rls`, `critical` | architect | opus |
 | `refactor`, `rename`, `boilerplate`, `test gen`, `stub`, `format` | editor | sonnet |
 | `*.tsx`, `*.css`, `app/**`, `components/**` | editor | sonnet + playwright verify |
-| `*.sql`, `migrations/**`, `supabase/**` | architect | opus (then capped to sonnet unless `complexity:high`) |
+| `*.sql`, `migrations/**`, `supabase/**` | architect | opus |
 
-Editor overrides from `routing.json` are **not** subject to the Phase B cap — they can set editor to sonnet independently of the tier math.
+Editor overrides from `routing.json` are independent of the architect tier math — they can pin the editor model regardless of the architect's score.
 
 ---
 
@@ -103,30 +93,31 @@ Editor overrides from `routing.json` are **not** subject to the Phase B cap — 
 |---|---|
 | Keyword score | `refactor` (+1) + `component` (+1) = 2 → sonnet |
 | Base tier | sonnet |
-| Phase B cap | sonnet ≠ opus, no cap |
 | Architect | **sonnet** |
 | routing.json | `refactor` matches editor-sonnet rule → editor = **sonnet** (explicit) |
 | Reviewer | matches architect → **sonnet** |
 
 ---
 
-### 3 — Heavy work explicitly marked
+### 3 — Heavy work, scorer recognises it
 
 **Issue title:** "Replace OAuth provider and update session middleware"
-**Labels:** `complexity:high`
+**Labels:** *(none)*
 
 | Step | Value |
 |---|---|
 | Keyword score | `oauth` (+3) = 3 → opus |
 | Base tier | opus |
-| complexity:high | overrides Phase B cap → architect = **opus** |
+| Override #1 | `auth` / `oauth` category → architect = **opus** (canonical §3.2) |
 | Architect | **opus** |
-| Editor | bumpTier(opus, −1) = **sonnet** |
+| Editor | sonnet (editor floor) |
 | Reviewer | matches architect → **opus** |
+
+The `complexity:high` label is not needed here — the scorer already recognised this as a security/auth finding and the canonical override #1 routed it to Opus. Use `complexity:high` only when the scorer underestimates (no HIGH_KEYWORDS in the title but operator knows it's load-bearing).
 
 ---
 
-### 4 — Heavy-looking text, operator wants cheap
+### 4 — Heavy-looking text, operator hint says "go cheap"
 
 **Issue title:** "Implement Stripe billing and update auth flow"
 **Labels:** `complexity:low`
@@ -134,13 +125,14 @@ Editor overrides from `routing.json` are **not** subject to the Phase B cap — 
 | Step | Value |
 |---|---|
 | Keyword score | `stripe` (+3) + `auth` (+3) = 6 → opus |
-| Base tier | opus (capped immediately) |
-| Architect (initial) | sonnet (Phase B: baseTier === opus → sonnet) |
-| routing.json | `auth` rule tries to set architect = opus |
-| Phase B final cap | complexity !== 'high' → resets architect to **sonnet** |
-| Architect | **sonnet** |
-| Editor | bumpTier(sonnet, −1) = **haiku** |
-| Reviewer | matches architect → **sonnet** |
+| Base tier | opus |
+| Override #1 | `auth` / `payments` category → architect = **opus** (canonical §3.2 wins regardless of severity) |
+| `complexity:low` | parsed but cannot demote the override |
+| Architect | **opus** |
+| Editor | sonnet (editor floor) |
+| Reviewer | matches architect → **opus** |
+
+`complexity:low` cannot override a category-driven Opus assignment. The override-precedence rule (canonical §3.2) is explicit: category override #1 wins "regardless of severity." If the operator genuinely needs to downshift this finding — e.g. the title says `stripe` but the actual work is cosmetic CSS in a Stripe-themed file — split it into two findings with more accurate titles.
 
 ---
 
@@ -200,13 +192,17 @@ See `docs/briefs/_examples/` for one full example per mode.
 
 ## When to add `complexity:high`
 
-Use it sparingly — it hits the 5-hour Claude Max rate limit and blocks all other fleet lanes until the session resets.
+`complexity:high` is now a **manual operator override** for cases the scorer underestimates. The HIGH_KEYWORDS scorer already promotes typical security/auth/payments/migration findings to Opus via canonical §3.2 override #1; you only need the label when the title doesn't surface a HIGH_KEYWORD but the work is still load-bearing.
 
-- **Security or auth rewrites** — OAuth flows, session token handling, RLS policies, encryption key rotation
-- **Cross-system migrations** — database schema changes, multi-service refactors, anything that touches a production data path irreversibly
-- **Multi-system orchestration logic** — changes that span three or more services, background workers, or external APIs where a silent failure cascades
+Examples where `complexity:high` is still useful:
 
-If you're unsure, start without the label. Add it only if a first sonnet pass produces a shallow or incorrect plan.
+- **Architectural changes with bland titles** — "refactor the orchestrator state machine" scores `refactor` (+1) → sonnet, but the work might be load-bearing enough to want Opus.
+- **Cross-system orchestration without HIGH_KEYWORDS** — changes spanning three or more services where the title doesn't mention auth/security/payments/migration.
+- **Multi-file logic refactors hitting subtle invariants** — title says "rename helper" but the rename touches reviewer-gate logic.
+
+Pre-M4.5 guidance said to use the label sparingly because of single-account rate-limit risk. That risk is now mitigated by the 5-account Claude Max pool — one Opus-heavy sprint no longer stalls the fleet. The strict-mode review gate (`/codex-review` + Claude `verifier` in parallel) catches regressions before merge, making the cheaper tiers safe and the Opus tier worth the marginal token cost for genuinely architectural work.
+
+If you're unsure, start without the label. Add it only if the first pass produces a shallow or incorrect plan and the title doesn't already trigger a HIGH_KEYWORD.
 
 ---
 
@@ -223,9 +219,10 @@ If you're unsure, start without the label. Add it only if a first sonnet pass pr
 
 ## References
 
-- **PR #41** — `feat(classifier): complexity:high label gates architect opus` — the merge that shipped Phase B routing
-- **Issue #43** — follow-up: review logic hardening (tracked separately, being closed by T2)
-- **Issue #44** — follow-up: `complexity:low` explicit tests (tracked separately, being closed by T2)
+- **[ADR-0004](adr/0004-canonical-routing-alignment.md)** — canonical routing alignment (Phase C migration); supersedes the Phase B Opus cap rationale
+- **`~/.claude/skills/CANONICAL-PATTERN.md`** §3 — the canonical correctness-first routing matrix this doc implements
+- **PR #41** — original Phase B cap (retired by ADR-0004); kept here for history
+- **Issue #43 / Issue #44** — closed by the Phase B test hardening pass; tests now pin canonical-aligned behaviour
 - **`config/routing.json`** — live routing rules; edit here to add keyword/glob overrides
 - **`src/classifier/index.ts`** — routing engine; this doc describes what the code actually does
 - **`src/queue/labels.ts`** — label parsing; defines all recognized `key:value` label shapes

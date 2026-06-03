@@ -10,7 +10,7 @@ This repo inherits global rules from `~/.claude/CLAUDE.md`. Single-seat operatio
 
 IFleet implements the canonical pattern at `~/.claude/skills/CANONICAL-PATTERN.md`. Where this doc and the canonical spec conflict, the canonical spec wins and the conflict is a bug to file (label: `realign:<area>`).
 
-Specifically: the routing policy in `docs/MODEL-ROUTING.md` (Phase B Opus cap) is superseded by the canonical correctness-first matrix; code alignment ships in a future sprint (tracked as Phase C migration). Until then, both policies are documented; the manual pipeline routes per canonical, IFleet routes per Phase B. The supersedure protocol is documented in canonical-pattern Section 7.
+The routing policy in `docs/MODEL-ROUTING.md` is the canonical correctness-first matrix (M4.5 Phase C migration shipped 2026-06-03, see [ADR-0004](docs/adr/0004-canonical-routing-alignment.md)). The Phase B Opus cap retired with that PR. Both the manual `/audit-*` pipeline and IFleet's classifier route per the same matrix today. The supersedure protocol (canonical §7) was the mechanism that let the two implementations stay coherent while the code change was tracked separately from the spec change.
 
 ## Identity
 

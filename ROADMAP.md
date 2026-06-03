@@ -23,7 +23,7 @@ Before any month-1 code: **commit to "single shared trace, specialist roles insi
 | **M2 ✅ Done (2026-05-20, PR #132)** | Plan-Reviewer agent (NOT diff-reviewer — that exists). Renames existing reviewer→diff-reviewer | 20% of plans get reviewer feedback; bugs caught pre-verifier |
 | **M3 ✅ Done (2026-05-20, PR #134)** | Cross-repo knowledge graph (tree-sitter + Postgres + pgvector). Architect `query_code_graph` tool | Architect `cost_usd` per task on eval-set replays -30-50% vs M1 baseline |
 | **M4** | Behavioral fingerprinting + PR rejection learning (shared `pr_decisions` + `verifier_runs` tables) | 50% of merged PRs have fingerprint diff; reviewer preference cards for top 3 reviewers |
-| **M4.5 (Phase C routing migration)** | Update `src/classifier/index.ts` + `config/routing.json` to match canonical correctness-first matrix; remove Phase B Opus cap; write ADR-0004 superseding PR #41 Phase B rationale; remove supersedure note from `docs/MODEL-ROUTING.md` | Classifier output for security/auth/payments/migration matches canonical-pattern Section 3 on the eval set |
+| **M4.5 ✅ Done (2026-06-03)** | Phase C routing migration: removed Phase B Opus cap from `src/classifier/index.ts`; updated test suite to canonical-aligned assertions; landed [ADR-0004](docs/adr/0004-canonical-routing-alignment.md) superseding PR #41 Phase B rationale; rewrote MODEL-ROUTING.md body; flipped CANONICAL-PIPELINE.md Route status ⚠️ → ✅ | Classifier output for security/auth/payments/migration routes to Opus per canonical-pattern §3.2 override #1 |
 | **M5** | Goal-driven mode (Proposer + budget gate + #ifleet-proposals channel) | ≥1 approved+merged proposal/week, 0 noise complaints |
 | **M6** | Cross-repo coherence (drift detector) + economic routing (Thompson sampling bandit) | Drift PRs >70% merge rate; cost per task -25% |
 
@@ -48,7 +48,7 @@ M1 (verifier) ──┬─→ M2 (plan-reviewer) ─→ M3 (KG) ─→ M4 (finge
 - **Plan-Reviewer before KG** because reviewer-veto is cheap to add (prompt-level) and catches bugs the KG would have to architect around.
 - **KG before fingerprinting** because fingerprint diffs are useful only when the architect has context-correct plans (KG provides this).
 - **Goal-driven mode last** because it produces noise faster than humans can triage if the underlying pipeline isn't reliable.
-- **M4.5 inserted because** the canonical pattern at `~/.claude/skills/CANONICAL-PATTERN.md` was authored 2026-06-02 and IFleet's Phase B routing is now policy-superseded. Code alignment can happen any time but should land before M5 ships the Proposer, because the Proposer's recommendations will route through the classifier.
+- **M4.5 shipped 2026-06-03** to align IFleet's classifier with the canonical correctness-first routing matrix authored in the 2026-06-02 realignment session (PR #299). Phase B Opus cap retired; live behaviour now matches canonical §3 on the HIGH_KEYWORDS surface (security/auth/payments/migration). M5 Proposer can safely route through the classifier without inheriting the policy-superseded cap.
 
 ## The one commit to make tomorrow
 

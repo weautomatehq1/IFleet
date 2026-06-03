@@ -48,7 +48,7 @@ Control plane (Discord / web / GitHub issue) →
 
 ## Routing rules
 
-**Policy intent — canonical correctness-first matrix** (per `~/.claude/skills/CANONICAL-PATTERN.md` §3). This is the spec IFleet is aligning to; the live classifier still enforces Phase B until M4.5 (Phase C migration) ships. For the live cost-first Phase B policy that runs today, see [`docs/MODEL-ROUTING.md`](MODEL-ROUTING.md) — that doc carries the supersedure header. For the runtime config the classifier reads, see [`config/routing.json`](../config/routing.json).
+**Canonical correctness-first matrix** (per `~/.claude/skills/CANONICAL-PATTERN.md` §3, implemented in IFleet's classifier per [ADR-0004](adr/0004-canonical-routing-alignment.md)). The live classifier enforces this matrix as of 2026-06-03 (M4.5 Phase C migration). For the runtime config the classifier reads, see [`config/routing.json`](../config/routing.json); for worked examples and label gates, see [`docs/MODEL-ROUTING.md`](MODEL-ROUTING.md).
 
 | Pattern | Model | Rationale |
 |---|---|---|
@@ -72,7 +72,7 @@ Control plane (Discord / web / GitHub issue) →
 
 ## Pipeline per task (4 roles — M2)
 
-1. **Architect** — model chosen per the [Routing rules](#routing-rules) matrix above (canonical correctness-first; live behaviour follows Phase B until M4.5 ships). Reads brief, writes plan, posts to issue, waits for ✅.
+1. **Architect** — model chosen per the [Routing rules](#routing-rules) matrix above (canonical correctness-first, live as of 2026-06-03). Reads brief, writes plan, posts to issue, waits for ✅.
 2. **Plan-Reviewer** *(new in M2 — [02-plan-reviewer.md](elevation/upgrades/02-plan-reviewer.md))* — Haiku/Sonnet (per routing floor). Reads architect's plan + applicable invariants + recent learnings. Outputs strict JSON: `approve` or `veto` with structured `reasons[]`. After 2 vetoes the runner escalates to a human via `@Sebastian` ping.
 3. **Editor** (Codex or Sonnet) — writes code in an isolated worktree.
 4. **Diff-Reviewer** (the opposite provider) — reads diff in a fresh session, posts review. Implementation lives in `src/pipeline/diff-reviewer.ts` (was `reviewer.ts` before M2).
