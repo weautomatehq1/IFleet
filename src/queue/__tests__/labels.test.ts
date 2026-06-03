@@ -75,6 +75,78 @@ describe('parseLabels', () => {
       }
     }
   });
+
+  // M4.7 (ADR-0004 §Known-Limitations item 2): explicit category/severity
+  // label parsing for canonical §3.2 overrides #1 and #2.
+  it('parses category:security and category:AUTH (case insensitive)', () => {
+    assert.equal(parseLabels(['category:security']).category, 'security');
+    assert.equal(parseLabels(['category:AUTH']).category, 'auth');
+    assert.equal(parseLabels(['Category:Payments']).category, 'payments');
+    assert.equal(parseLabels(['category:migration']).category, 'migration');
+  });
+
+  it('parses severity:critical and severity:Cosmetic (case insensitive)', () => {
+    assert.equal(parseLabels(['severity:critical']).severity, 'critical');
+    assert.equal(parseLabels(['severity:Cosmetic']).severity, 'cosmetic');
+    assert.equal(parseLabels(['Severity:IMPORTANT']).severity, 'important');
+  });
+
+  it('ignores category:unknown gracefully (no throw, no value set)', () => {
+    const originalWarn = console.warn;
+    let warned = false;
+    console.warn = () => {
+      warned = true;
+    };
+    try {
+      const hints = parseLabels(['category:foo']);
+      assert.equal(hints.category, undefined);
+      assert.ok(warned, 'expected a dev-log warning for unknown category value');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('ignores severity:unknown gracefully (no throw, no value set)', () => {
+    const originalWarn = console.warn;
+    let warned = false;
+    console.warn = () => {
+      warned = true;
+    };
+    try {
+      const hints = parseLabels(['severity:bogus']);
+      assert.equal(hints.severity, undefined);
+      assert.ok(warned, 'expected a dev-log warning for unknown severity value');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('multiple category labels: first wins', () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const hints = parseLabels(['category:security', 'category:payments']);
+      assert.equal(hints.category, 'security');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('category and severity coexist with existing complexity/priority labels', () => {
+    const hints = parseLabels([
+      'category:auth',
+      'severity:critical',
+      'complexity:high',
+      'priority:high',
+      'auto:ship',
+    ]);
+    assert.equal(hints.category, 'auth');
+    assert.equal(hints.severity, 'critical');
+    assert.equal(hints.priority, 'high');
+    // complexity:* is parsed by classifier.parseComplexity, not labels.ts;
+    // assertion here just confirms the new fields don't clobber existing ones.
+    assert.equal(hints.autonomy, 'auto');
+  });
 });
 
 describe('parseRequiredCapabilities', () => {

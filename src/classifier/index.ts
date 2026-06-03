@@ -87,6 +87,12 @@ const MEDIUM_KEYWORDS = [
 // rule (migration category) is detected as a category override too.
 const CATEGORY_NEEDLES = [...HIGH_KEYWORDS, 'sql'];
 
+// M4.7 (ADR-0004 §Known-Limitations item 2): canonical §3.2 override #1
+// category vocabulary, used when an operator labels an issue `category:*`
+// explicitly. Matches the parser whitelist in `src/queue/labels.ts`.
+const OPUS_CATEGORIES: ReadonlySet<NonNullable<import('../queue/types.ts').RoutingHints['category']>> =
+  new Set(['security', 'auth', 'payments', 'migration'] as const);
+
 const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus'];
 
 // Inverse lookup: given a model string, return the tier it represents.
@@ -210,6 +216,24 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   // override for cases the scorer underestimates; `complexity:low` has no effect
   // on the category override (canonical §3.2 override #1 wins regardless of severity).
   let architectTier: Tier = baseTier;
+
+  // M4.7 (ADR-0004 §Known-Limitations item 2): explicit `category:*` /
+  // `severity:*` label-driven overrides. Canonical §3.2 override #1
+  // (category ∈ {security, auth, payments, migration} → Opus regardless of
+  // severity) and override #2 (CRITICAL severity → Opus regardless of
+  // category) are direct signals from the operator — they don't require a
+  // title keyword to fire. Both also set M4.6's `categoryOverrideTriggered`
+  // flag so the downstream mode-override block refuses to demote the
+  // architect below Opus.
+  if (hints.category && OPUS_CATEGORIES.has(hints.category)) {
+    architectTier = 'opus';
+    categoryOverrideTriggered = true;
+  }
+  if (hints.severity === 'critical') {
+    architectTier = 'opus';
+    categoryOverrideTriggered = true;
+  }
+
   if (complexity === 'high') architectTier = 'opus';
 
   const rawEditorTier = bumpTier(architectTier, -1);

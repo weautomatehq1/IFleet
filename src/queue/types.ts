@@ -32,6 +32,18 @@ export interface RoutingHints {
   priority: 'low' | 'normal' | 'high';
   verify: VerifyKind[];
   autonomy: 'auto' | 'review';
+  /**
+   * Explicit category label (canonical §3.2 override #1). When set to one of
+   * {security, auth, payments, migration}, the classifier promotes the
+   * architect to Opus regardless of severity or mode (M4.7).
+   */
+  category?: 'security' | 'auth' | 'payments' | 'migration';
+  /**
+   * Explicit severity label (canonical §3.2 override #2). When set to
+   * 'critical', the classifier promotes the architect to Opus regardless of
+   * category or mode (M4.7).
+   */
+  severity?: 'critical' | 'important' | 'cosmetic';
 }
 
 export type VerifyKind = 'typecheck' | 'lint' | 'test' | 'playwright' | 'screenshot';

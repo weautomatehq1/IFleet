@@ -12,9 +12,15 @@ import {
 
 const MODELS = new Set(['opus', 'sonnet', 'haiku', 'codex'] as const);
 const PRIORITIES = new Set(['low', 'normal', 'high'] as const);
+// M4.7 (ADR-0004 §Known-Limitations item 2): explicit category/severity label
+// vocabularies. Mirrors canonical §3.2 override #1 (category) and #2 (severity).
+const CATEGORIES = new Set(['security', 'auth', 'payments', 'migration'] as const);
+const SEVERITIES = new Set(['critical', 'important', 'cosmetic'] as const);
 
 type Model = NonNullable<RoutingHints['model']>;
 type Priority = RoutingHints['priority'];
+type Category = NonNullable<RoutingHints['category']>;
+type Severity = NonNullable<RoutingHints['severity']>;
 
 const DEFAULT_VERIFY: VerifyKind[] = ['typecheck', 'lint', 'test'];
 
@@ -24,6 +30,10 @@ export function parseLabels(labels: readonly string[]): RoutingHints {
   let autonomy: RoutingHints['autonomy'] = 'auto';
   let verifyOverride: VerifyKind[] | undefined;
   let verifyNone = false;
+  // M4.7: explicit category/severity label parsing. Multiple category labels —
+  // first match wins (don't try to combine). Unknown values are logged + ignored.
+  let category: Category | undefined;
+  let severity: Severity | undefined;
 
   for (const raw of labels) {
     const label = raw.toLowerCase().trim();
@@ -51,6 +61,22 @@ export function parseLabels(labels: readonly string[]): RoutingHints {
           verifyOverride = mergeVerify(verifyOverride, [value]);
         }
         break;
+      case 'category':
+        if (isCategory(value)) {
+          // First match wins — leave existing assignment in place.
+          if (category === undefined) category = value;
+        } else {
+          // Hot path: never throw on operator typos. One-line dev log only.
+          console.warn(`[labels] ignoring unknown category label: category:${value}`);
+        }
+        break;
+      case 'severity':
+        if (isSeverity(value)) {
+          if (severity === undefined) severity = value;
+        } else {
+          console.warn(`[labels] ignoring unknown severity label: severity:${value}`);
+        }
+        break;
       default:
         break;
     }
@@ -67,6 +93,8 @@ export function parseLabels(labels: readonly string[]): RoutingHints {
 
   const hints: RoutingHints = { priority, verify, autonomy };
   if (model !== undefined) hints.model = model;
+  if (category !== undefined) hints.category = category;
+  if (severity !== undefined) hints.severity = severity;
   return hints;
 }
 
@@ -80,6 +108,14 @@ function isPriority(value: string): value is Priority {
 
 function isVerifyKind(value: string): value is VerifyKind {
   return value === 'typecheck' || value === 'lint' || value === 'test' || value === 'playwright' || value === 'screenshot';
+}
+
+function isCategory(value: string): value is Category {
+  return (CATEGORIES as Set<string>).has(value);
+}
+
+function isSeverity(value: string): value is Severity {
+  return (SEVERITIES as Set<string>).has(value);
 }
 
 export function parseRequiredCapabilities(labels: readonly string[]): string[] {
