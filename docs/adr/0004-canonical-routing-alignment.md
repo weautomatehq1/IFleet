@@ -66,7 +66,7 @@ This ADR is that follow-up. It records the decision to align IFleet's classifier
 4. Editor remains Sonnet-floor (canonical §2.4 + IFleet mandatory rule 3 from CLAUDE.md). No change.
 5. `config/routing.json` requires no change — its rules already assign Opus to security/migration/SQL globs; the cap that prevented them from taking effect was code-side only.
 
-The supersedure note on `docs/MODEL-ROUTING.md` is removed; the body is rewritten to describe the canonical matrix as the live policy. Related doc updates land in the same commit (ARCHITECTURE.md "policy intent vs live behaviour" hedge removed, CLAUDE.md Phase B caveat removed, ROADMAP.md M4.5 marked shipped, CANONICAL-PIPELINE.md "Route to model" ⚠️ → ✅, `~/.claude/skills/CANONICAL-PATTERN.md` Footnotes entry added).
+The supersedure note on `docs/MODEL-ROUTING.md` is removed; the body is rewritten to describe the canonical matrix as the live policy on the scorer + routing.json rule paths. Related doc updates land in the same commit (ARCHITECTURE.md "policy intent vs live behaviour" hedge removed and scoped to scorer/rule paths, CLAUDE.md Phase B caveat removed and scoped, ROADMAP.md M4.5 marked shipped, CANONICAL-PIPELINE.md "Route to model" reframed as scoped ⚠️ ship with M4.6/M4.7/M4.8 follow-ups tracked, `~/.claude/skills/CANONICAL-PATTERN.md` Footnotes entry added).
 
 ## Rationale
 
@@ -83,7 +83,7 @@ The supersedure note on `docs/MODEL-ROUTING.md` is removed; the body is rewritte
 **Cost impact (estimated):** more Opus runs for security/auth/payments/migration findings. Pre-Phase C, these routed through Sonnet by default unless `complexity:high` was labeled. Post-Phase C, they default to Opus. Best estimate based on closure-log labels: ~25-35% of audit findings touch a HIGH_KEYWORDS surface (auth, security, migration, SQL, RLS, payments, encryption, Supabase). Those will now consume Opus tokens against the Claude Max plan rather than Sonnet. Flat-rate plan, so no $$ delta — the delta is rate-limit-window consumption.
 
 **Rate-limit risk mitigation:**
-- Pool architecture supports multi-account rotation via `src/orchestrator/account-pool.ts`; today's enabled count is 1 (`claude-max-1` in `config/workers.json`) with one additional seat (`claude-max-2`) defined but disabled pending profile setup. Long-term target per ARCHITECTURE.md Constraints is 5 seats × ~3 concurrent = ~15 lanes.
+- Pool architecture supports multi-account rotation via `src/workers/account-pool.ts`; today's enabled count is 1 (`claude-max-1` in `config/workers.json`) with one additional seat (`claude-max-2`) defined but disabled pending profile setup. Long-term target per ARCHITECTURE.md Constraints is 5 seats × ~3 concurrent = ~15 lanes.
 - The OMC rate-limit-wait wrapper pauses sprints cleanly when a window hits rather than failing them — sprints resume when the window resets. In single-seat operation this still pauses the fleet during the wait, but doesn't lose work.
 - If Opus-window consumption becomes a bottleneck before additional seats are enabled, the canonical §3.6 cost-tuning signal applies: monitor the closure log for Haiku-fixed PRs sent back for revision. If revision rate stays below ~1 in 5, the matrix is correctly tuned. Above that, narrow the bottom two matrix rows (canonical §3.6); operationally that buys headroom by shifting Haiku-eligible work back to Sonnet, which is a cost-side rebalance that doesn't require a code change to the cap itself.
 
