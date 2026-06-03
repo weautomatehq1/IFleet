@@ -202,11 +202,13 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     task.mode ?? detectExplicitMode({ labels: task.labels, body: task.body });
 
   const rawScore = scoreKeywords(text);
+  const hasHighKeyword = HIGH_KEYWORDS.some(kw => text.includes(kw));
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
-  // M4.6 trigger #1: scorer-driven Opus assignment (HIGH_KEYWORDS hit
-  // produced score ≥3, optionally combined with priority bumps). This is
-  // canonical §3.2 override #1 firing through the scorer path.
-  if (baseTier === 'opus') categoryOverrideTriggered = true;
+  // M4.6 trigger #1: canonical category keyword present in text (HIGH_KEYWORDS
+  // hit). MEDIUM_KEYWORD aggregation and priority:high bumping a non-category
+  // score to opus do NOT set this flag — only an actual HIGH_KEYWORD signal
+  // indicates canonical §3.2 override #1 is in play.
+  if (hasHighKeyword) categoryOverrideTriggered = true;
 
   // Architect escalation policy (canonical correctness-first, post-M4.5 / ADR-0004):
   // the scorer is allowed to promote the architect to opus on its own — high-risk
@@ -379,11 +381,10 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   // "Haiku or Sonnet" for the Plan-Reviewer — it's a cheap pre-gate that runs
   // BEFORE the Editor, not a full diff review. Same provider as the architect:
   // this is in-flight plan critique, not a cross-provider diff review.
-  const architectTierFinal: Tier = modelToTier(architectModel) ?? architectTier;
   const planReviewerTier: Tier =
-    architectTierFinal === 'opus'
+    reviewerTier === 'opus'
       ? 'sonnet'
-      : architectTierFinal === 'sonnet'
+      : reviewerTier === 'sonnet'
         ? 'haiku'
         : 'haiku';
   const planReviewer: WorkerSpec = makeSpec(

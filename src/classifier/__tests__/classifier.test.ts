@@ -513,7 +513,7 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
   });
 
   it('M4.8 — complexity:high + mode:tdd: reviewer tracks demoted architect (sonnet), not pre-mode opus', () => {
-    // complexity:high alone does NOT trigger M4.6 (only baseTier === opus
+    // complexity:high alone does NOT trigger M4.6 (only a HIGH_KEYWORD hit
     // or a category-rule match does). So mode:tdd legitimately demotes the
     // complexity:high-promoted architect from opus to sonnet. Reviewer must
     // track the final architect (sonnet); pre-M4.8 it would have stayed at
@@ -525,6 +525,30 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
     });
     assert.equal(result.architect.model, 'claude-sonnet-4-6');
     assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+  });
+
+  it('b8e860b0 — MEDIUM_KEYWORD aggregate (score≥3) + mode:tdd: mode demotion is honored (no HIGH_KEYWORD)', () => {
+    // 5 MEDIUM_KEYWORDS push rawScore to 5 → baseTier=opus, but no HIGH_KEYWORD
+    // present → hasHighKeyword=false → categoryOverrideTriggered stays false →
+    // mode:tdd architect demotion to sonnet is honored.
+    const result = classifyTask({
+      title: 'refactor the feature components in the integration service',
+      body: '',
+      labels: ['mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+
+  it('b8e860b0 — priority:high bumps single MEDIUM_KEYWORD to opus + mode:tdd: mode demotion is honored (no HIGH_KEYWORD)', () => {
+    // priority:high bumps sonnet→opus on a single MEDIUM_KEYWORD (refactor),
+    // but no HIGH_KEYWORD → hasHighKeyword=false → categoryOverrideTriggered
+    // not set → mode:tdd demotion to sonnet applies.
+    const result = classifyTask({
+      title: 'fix the refactor bug',
+      body: '',
+      labels: ['priority:high', 'mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
   });
 });
 
