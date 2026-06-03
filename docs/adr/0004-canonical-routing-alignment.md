@@ -89,7 +89,7 @@ The supersedure note on `docs/MODEL-ROUTING.md` is removed; the body is rewritte
 
 **Doc supersedure trail:**
 - `docs/MODEL-ROUTING.md` rewritten in this PR; old supersedure header removed. The doc now describes the canonical matrix as the live policy with a one-line pointer to this ADR for history.
-- `~/.claude/skills/CANONICAL-PATTERN.md` Footnotes section gets the "§3 routing aligned with `IFleet/src/classifier/index.ts` on 2026-06-03 (ADR-0004)" entry per canonical §7 step 4. The merge PR number is recorded in `git log --follow` on this ADR file rather than baked into the prose.
+- `~/.claude/skills/CANONICAL-PATTERN.md` Footnotes section gets the "§3 routing **partially aligned** with `IFleet/src/classifier/index.ts` on 2026-06-03 (ADR-0004)" entry per canonical §7 step 4, with the scoped-ship qualifier matching this ADR's Known-Limitations section. The merge PR number is recorded in `git log --follow` on this ADR file rather than baked into the prose.
 - `docs/CANONICAL-PIPELINE.md` "Route to model" row reframed: previously ⚠️ "tracked supersedure" (Phase B cap awaiting Phase C); now ⚠️ "scoped ship" — scorer + routing.json paths are canonical-aligned, mode/category/severity paths tracked as M4.6/M4.7/M4.8 in §Known-Limitations below.
 - ROADMAP.md M4.5 row marked `✅ Scoped ship (2026-06-03)` (no merge PR number baked into prose — recoverable via `git log --follow`).
 
