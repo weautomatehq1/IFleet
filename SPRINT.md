@@ -59,4 +59,4 @@ Canary disagreement alerter shipped via `feat/canary-disagreement-alerting` (07b
 
 Once M4 fingerprinting is validated (≥50% fingerprint coverage, preference cards live), M5 ships the Proposer: autonomous goal generation + #ifleet-proposals channel + budget gate. See `ROADMAP.md` for M5–M6 dependency chain.
 
-**Note:** Before M5 ships, M4.5 (Phase C routing migration) interrupts to align `src/classifier/index.ts` with the canonical pattern's correctness-first routing matrix. See ROADMAP.md M4.5 row. Estimated 2-3 days of focused work.
+**Note:** M4.5 (Phase C routing migration) scoped-ship 2026-06-03 — `src/classifier/index.ts` aligns with the canonical correctness-first routing matrix on the scorer + routing.json rule paths. See [ADR-0004](docs/adr/0004-canonical-routing-alignment.md) for the superseding decision and the M4.6/M4.7/M4.8 follow-ups (mode/category/severity paths). M5 Proposer can route through the classifier without inheriting the retired Phase B cap, with operator awareness that `mode:tdd`/`ulw`/`ralph`/`deslop` can still downshift a canonical-Opus assignment until M4.6 lands.
