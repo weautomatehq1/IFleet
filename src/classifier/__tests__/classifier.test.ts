@@ -466,6 +466,37 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
     assert.equal(result.architect.model, 'claude-sonnet-4-6');
   });
 
+  it('M4.6 negative — rule match via non-category keyword does NOT set flag (redesign architecture + mode:tdd → sonnet)', () => {
+    // Codex review of PR #301 caught this: the original trigger-#2 implementation
+    // inspected the matched rule's ENTIRE declared keyword list. Rule 1 mixes
+    // architectural-design keywords ("architect", "design") with canonical
+    // category keywords ("security", "auth", "migration", "rls", "critical").
+    // A title that matches rule 1 via "architect" (substring of "architecture")
+    // would flip the flag and block the mode:tdd demotion — even though the
+    // task is not in a canonical §3.2 override #1 category. The fix tracks the
+    // specific matched keyword and only flips the flag when THAT keyword is a
+    // category needle. This test pins the canonical-correct behavior.
+    const result = classifyTask({
+      title: 'redesign the application architecture',
+      body: '',
+      labels: ['mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+  });
+
+  it('M4.6 negative — rule match via "design" + mode:deslop → haiku (no category override)', () => {
+    // Second Codex-review-suggested test. "component" is a MEDIUM_KEYWORD
+    // (score 1 → sonnet baseTier), "design" matches rule 1. Neither signal
+    // is a canonical category needle, so mode:deslop's architect=haiku pin
+    // must apply unimpeded.
+    const result = classifyTask({
+      title: 'design a new dashboard component',
+      body: '',
+      labels: ['mode:deslop'],
+    });
+    assert.equal(result.architect.model, 'claude-haiku-4-5-20251001');
+  });
+
   it('M4.8 — fix typo + mode:ralph: reviewer mirrors final architect (sonnet), not pre-mode haiku', () => {
     // Pre-M4.8: reviewer was derived BEFORE the mode-override block, so
     // architect=haiku → reviewer=haiku, then mode:ralph promoted architect

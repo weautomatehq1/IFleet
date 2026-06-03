@@ -181,15 +181,6 @@ function globToSubstrings(glob: string): string[] {
   return needles;
 }
 
-function matchesGlobs(text: string, globs: string[]): boolean {
-  for (const g of globs) {
-    for (const needle of globToSubstrings(g)) {
-      if (text.includes(needle)) return true;
-    }
-  }
-  return false;
-}
-
 export function classifyTask(task: ClassifyInput): RoutingDecision {
   const text = `${task.title} ${task.body}`.toLowerCase();
   const hints = parseLabels(task.labels);
@@ -234,14 +225,32 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   let editorModel: string = TIERS[editorTier];
 
   // Rules act as explicit overrides on top of the scorer. First match wins
-  // globally so rule order in routing.json still has meaning.
+  // globally so rule order in routing.json still has meaning. We also track
+  // which specific keyword / fileGlob actually hit — M4.6 trigger #2 below
+  // needs the precise matched signal, not the rule's whole declared list,
+  // to avoid blocking mode demotions on tasks that match a mixed-keyword
+  // rule via a non-category keyword like "architect" or "design".
   let matchedRule: RoutingRule | undefined;
+  let matchedKeyword: string | undefined;
+  let matchedGlob: string | undefined;
   for (const rule of config.rules) {
-    const keywordHit =
-      rule.match.keywords?.some((kw) => text.includes(kw.toLowerCase())) ?? false;
-    const globHit = rule.match.fileGlobs ? matchesGlobs(text, rule.match.fileGlobs) : false;
+    const keywordHit = rule.match.keywords?.find((kw) => text.includes(kw.toLowerCase()));
+    let globHit: string | undefined;
+    if (rule.match.fileGlobs) {
+      for (const g of rule.match.fileGlobs) {
+        for (const needle of globToSubstrings(g)) {
+          if (text.includes(needle)) {
+            globHit = g;
+            break;
+          }
+        }
+        if (globHit) break;
+      }
+    }
     if (keywordHit || globHit) {
       matchedRule = rule;
+      matchedKeyword = keywordHit;
+      matchedGlob = globHit;
       break;
     }
   }
@@ -255,20 +264,18 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
       editorProvider = provider;
       editorModel = model;
     }
-    // M4.6 trigger #2: a rule that routes architect → Opus AND whose match
-    // signal (keyword list or fileGlob list) overlaps a canonical category
-    // (auth/security/migration/payments/rls/critical/oauth/encryption/
-    // stripe/supabase/sql). Inferring category from the rule's match shape
-    // — explicit `category:*` labels are out of scope here (tracked
-    // separately as M4.7).
+    // M4.6 trigger #2: a rule that routes architect → Opus AND whose
+    // ACTUAL matched signal (the specific keyword that hit, or the specific
+    // glob that hit) overlaps a canonical category needle (auth/security/
+    // migration/payments/rls/critical/oauth/encryption/stripe/supabase/sql).
+    // We inspect the matched signal, not the rule's declared keyword list,
+    // so a rule that mixes architectural-design keywords (architect/design)
+    // with category keywords (auth/security/migration) only flips the flag
+    // when the canonical category keyword is the one that actually hit.
+    // Explicit `category:*` labels are out of scope here — tracked as M4.7.
     if (matchedRule.route.role === 'architect' && matchedRule.route.model === TIERS.opus) {
-      const haystack = [
-        ...(matchedRule.match.keywords ?? []),
-        ...(matchedRule.match.fileGlobs ?? []),
-      ]
-        .join(' ')
-        .toLowerCase();
-      if (CATEGORY_NEEDLES.some((needle) => haystack.includes(needle))) {
+      const signal = (matchedKeyword ?? matchedGlob ?? '').toLowerCase();
+      if (signal && CATEGORY_NEEDLES.some((needle) => signal.includes(needle))) {
         categoryOverrideTriggered = true;
       }
     }
