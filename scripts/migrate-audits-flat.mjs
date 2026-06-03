@@ -8,6 +8,7 @@
 // Usage: node scripts/migrate-audits-flat.mjs [path-to-index.json]
 //   Default path: <repo-root>/.audits/index.json
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,9 +41,38 @@ try {
   process.exit(1);
 }
 
-// --- Idempotency check ---
+// --- Derive fingerprint for a finding that lacks one ---
+function deriveFingerprint(f) {
+  return createHash('sha256')
+    .update(`${f.id ?? ''}:${f.title ?? ''}:${f.severity ?? ''}`)
+    .digest('hex');
+}
+
+// --- Idempotency check (flat + all fingerprints present) ---
 if (Array.isArray(parsed.findings)) {
-  console.log(`migrate-audits-flat: already flat — top-level findings[] present in ${indexPath}`);
+  const missing = parsed.findings.filter((f) => typeof f.fingerprint !== 'string' || !f.fingerprint);
+  if (missing.length === 0) {
+    console.log(`migrate-audits-flat: already flat — top-level findings[] present in ${indexPath}`);
+    process.exit(0);
+  }
+  // Backfill missing fingerprints on an already-flat file.
+  for (const f of parsed.findings) {
+    if (typeof f.fingerprint !== 'string' || !f.fingerprint) {
+      f.fingerprint = deriveFingerprint(f);
+    }
+  }
+  const dir = dirname(indexPath);
+  const tmp = join(dir, `.index.json.tmp-migrate-${process.pid}-${Date.now()}`);
+  try {
+    writeFileSync(tmp, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
+    renameSync(tmp, indexPath);
+  } catch (err) {
+    console.error(`migrate-audits-flat: backfill write failed: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(
+    `migrate-audits-flat: backfilled fingerprints for ${missing.length} finding(s) in ${indexPath}`,
+  );
   process.exit(0);
 }
 
@@ -67,7 +97,11 @@ for (const audit of parsed.audits) {
     const arr = audit[section];
     if (!Array.isArray(arr)) continue;
     for (const f of arr) {
-      findings.push({ ...f, scan_metadata: scanMeta });
+      const fingerprint =
+        typeof f.fingerprint === 'string' && f.fingerprint
+          ? f.fingerprint
+          : deriveFingerprint(f);
+      findings.push({ ...f, fingerprint, scan_metadata: scanMeta });
     }
   }
 }
