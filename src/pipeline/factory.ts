@@ -32,6 +32,14 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+// Claude Max window default — used when a `rate_limit` event reaches the
+// pipeline without a precise reset timestamp. Pausing the worker for the
+// full 5h window is the safest default because the CLI's terminal
+// rate_limit_event sometimes omits `resetsAt`, in which case `retryDelayMs`
+// arrives as 0. A shorter default would let the pool re-pick a worker that
+// is still inside its rejected window. See ADR-0004 §Context bullet 1.
+export const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
 export interface ProductionFactoryOpts {
   repoRoot: string;
   /** Defaults to 'weautomatehq1/IFleet' — legacy callers work without providing it. */
@@ -80,7 +88,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
     const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
 
-    const workerPool = buildWorkerPool(worker);
+    const workerPool = buildWorkerPool(worker, pool);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
     const abortController = new AbortController();
 
@@ -123,7 +131,10 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 // Internal collaborator builders
 // ---------------------------------------------------------------------------
 
-export function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
+export function buildWorkerPool(
+  workerConfig: WorkerConfig,
+  accountPool?: AccountPool,
+): WorkerPool {
   const adapter = getActivePipelineAdapter();
 
   return {
@@ -162,7 +173,18 @@ export function buildWorkerPool(workerConfig: WorkerConfig): WorkerPool {
 
       const eventLoop = (async () => {
         for await (const event of workerHandle.events) {
-          if (event.kind === 'rate_limit') rateLimitHits++;
+          if (event.kind === 'rate_limit') {
+            rateLimitHits++;
+            // ADR-0004 §Context bullet 1 — wire the rate_limit signal into
+            // the AccountPool so subsequent acquire() calls skip this worker
+            // until the pause expires. `retryDelayMs` is normally derived
+            // from the CLI's `resetsAt`; when it is 0 (terminal event with no
+            // reset timestamp) fall back to the Claude Max 5h window.
+            if (accountPool !== undefined) {
+              const retryAfterMs = event.retryDelayMs > 0 ? event.retryDelayMs : FIVE_HOURS_MS;
+              accountPool.markRateLimited(workerConfig.id, retryAfterMs);
+            }
+          }
         }
       })();
 
