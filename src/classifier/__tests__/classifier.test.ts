@@ -528,6 +528,93 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
   });
 });
 
+describe('classifyTask — category:*/severity:* label overrides (M4.7)', () => {
+  // Closes ADR-0004 §Known-Limitations item 2 (M4.7 explicit category/severity
+  // label parsing). Before M4.7, canonical §3.2 overrides #1 and #2 were
+  // reachable only via the HIGH_KEYWORDS scorer (title/body keyword hits) —
+  // an operator who labeled an issue `category:security` without putting
+  // "security" or "auth" in the title got no Opus promotion. Now the labels
+  // are explicit override sources, on equal footing with the scorer path.
+  // See src/queue/labels.ts (parser) and src/classifier/index.ts (wiring).
+
+  it('M4.7 — category:security label routes architect to Opus (no HIGH_KEYWORD in title needed)', () => {
+    // Title carries no HIGH_KEYWORDS — scorer alone would land at haiku.
+    // The category:security label is a direct canonical §3.2 override #1 signal.
+    const result = classifyTask({
+      title: 'fix some thing',
+      body: '',
+      labels: ['auto:ship', 'category:security'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.provider, 'claude');
+  });
+
+  it('M4.7 — category:payments label routes architect to Opus', () => {
+    const result = classifyTask({
+      title: 'fix some thing',
+      body: '',
+      labels: ['auto:ship', 'category:payments'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+  });
+
+  it('M4.7 — severity:critical label routes architect to Opus regardless of category', () => {
+    // No HIGH_KEYWORDS, no category label — only severity:critical, which is
+    // canonical §3.2 override #2 (CRITICAL → Opus regardless of category).
+    const result = classifyTask({
+      title: 'tweak the layout',
+      body: '',
+      labels: ['auto:ship', 'severity:critical'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+  });
+
+  it('M4.7 — category:auth + mode:tdd: architect stays Opus (M4.6 interaction)', () => {
+    // Integration test with T2's M4.6 work: the label-driven category trigger
+    // sets `categoryOverrideTriggered`, which makes the mode:tdd architect
+    // demotion (sonnet) refuse to apply. Editor stays at the Sonnet pin from
+    // mode:tdd (which is also the editor floor — no observable difference).
+    const result = classifyTask({
+      title: 'fix some thing',
+      body: '',
+      labels: ['auto:ship', 'category:auth', 'mode:tdd'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.editor.model, 'claude-sonnet-4-6');
+  });
+
+  it('M4.7 — category:unknown is ignored (no override fires)', () => {
+    // Suppress dev-log warning during assertion.
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      // No HIGH_KEYWORDS, unknown category label → falls through to scorer
+      // (haiku). The unknown value must not throw, must not silently route to
+      // Opus, and must produce no flag flip.
+      const result = classifyTask({
+        title: 'fix some thing',
+        body: '',
+        labels: ['auto:ship', 'category:foo'],
+      });
+      assert.equal(result.architect.model, 'claude-haiku-4-5-20251001');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('M4.7 — category:security + scorer haiku-tier still routes Opus (label beats scorer)', () => {
+    // Title scores 0 — scorer alone would land at haiku. category:security
+    // label promotes architect to Opus directly. Confirms the label override
+    // is independent of the scorer and beats a low base tier.
+    const result = classifyTask({
+      title: 'fix typo',
+      body: '',
+      labels: ['auto:ship', 'category:security'],
+    });
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+  });
+});
+
 describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-reviewer.md)', () => {
   // Floor table (canonical §2.5 — "Haiku or Sonnet" for plan-reviewer):
   //   architect=opus   → planReviewer=sonnet (cheap pre-gate floor)

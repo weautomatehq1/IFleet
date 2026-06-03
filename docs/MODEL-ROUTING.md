@@ -40,13 +40,17 @@ Per canonical §3.2 override #1 (category ∈ {security, auth, payments, migrati
 | `priority:low` | Parsed but no routing effect in current implementation | — | — |
 | `chore` / `docs` / `chore:*` / `docs:*` | Bumps scored tier −1 (floor: haiku) | follows architect (editor floor at sonnet still applies) | follows architect |
 | `model:opus/sonnet/haiku/codex` | Parsed but **not yet wired** into routing (reserved) | — | — |
+| `category:security` / `auth` / `payments` / `migration` | Forces **opus** (canonical §3.2 override #1, regardless of severity hint or mode) | one tier below architect → **sonnet** | Mirrors architect → **opus** |
+| `severity:critical` | Forces **opus** (canonical §3.2 override #2, regardless of category) | one tier below architect → **sonnet** | Mirrors architect → **opus** |
+
+**Note (M4.7):** the canonical §3.2 override precedence is enforced via either the HIGH_KEYWORDS scorer (title/body keyword hit) OR these explicit labels. Labels are direct — they don't require a title keyword to fire.
 
 ### Override precedence (canonical §3.2)
 
 Highest wins:
 
-1. Any `category` keyword in {`security`, `auth`, `payments`, `migration`} → **Opus** regardless of severity. (Detected today via the HIGH_KEYWORDS scorer; future enhancement: explicit `category:*` labels.)
-2. `CRITICAL` severity → **Opus** regardless of category. (Detected today via the `critical` HIGH_KEYWORD or `complexity:high` label.)
+1. Any `category` keyword in {`security`, `auth`, `payments`, `migration`} → **Opus** regardless of severity. (Detected via the HIGH_KEYWORDS scorer OR explicit `category:*` labels — both paths set the M4.6 `categoryOverrideTriggered` flag and survive mode demotion.)
+2. `CRITICAL` severity → **Opus** regardless of category. (Detected via the `critical` HIGH_KEYWORD, the `complexity:high` label, OR the explicit `severity:critical` label.)
 3. Otherwise the matrix row that matches.
 
 ### routing.json explicit overrides
