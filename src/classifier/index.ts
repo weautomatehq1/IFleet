@@ -197,11 +197,14 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   const rawScore = scoreKeywords(text);
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
 
-  // Architect escalation policy (Phase B): the scorer never auto-promotes the
-  // architect to opus — opus burns the 5-hour Claude Max rate limit and stalls
-  // the fleet silently. Only an explicit `complexity:high` label promotes to
-  // opus.
-  let architectTier: Tier = baseTier === 'opus' ? 'sonnet' : baseTier;
+  // Architect escalation policy (canonical correctness-first, post-M4.5 / ADR-0004):
+  // the scorer is allowed to promote the architect to opus on its own — high-risk
+  // keywords (auth/security/migration/payments/critical) carry mistake-cost that
+  // exceeds Opus's marginal cost, and the cross-provider review gate makes the
+  // cheaper tiers safe by catching regressions. `complexity:high` remains a manual
+  // override for cases the scorer underestimates; `complexity:low` has no effect
+  // on the category override (canonical §3.2 override #1 wins regardless of severity).
+  let architectTier: Tier = baseTier;
   if (complexity === 'high') architectTier = 'opus';
 
   const rawEditorTier = bumpTier(architectTier, -1);
@@ -250,18 +253,17 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     }
   }
 
-  // Architect opus cap (Phase B): no path other than `complexity:high` can
-  // promote the architect to opus — not scorer keywords, not routing.json
-  // rules. This keeps the fleet off the 5-hour rate limit by default.
-  if (complexity !== 'high' && architectModel === TIERS.opus) {
-    architectModel = TIERS.sonnet;
-  }
+  // Canonical override (post-M4.5 / ADR-0004 / canonical §3.2): no Opus cap.
+  // Rule-driven Opus assignments (security/migration/auth/payments) are honored
+  // directly; the rate-limit risk that motivated the Phase B cap is now mitigated
+  // by the 5-account Claude Max pool + cross-provider review gate that catches
+  // regressions before merge.
 
   // Reviewer is a Claude second opinion at the same tier as the architect.
-  // Tier is derived from the *final* architectModel (post rule override + opus
-  // cap), not the pre-rule architectTier — otherwise a rule that promotes the
-  // architect from haiku→opus and is then capped to sonnet would leave the
-  // reviewer back at haiku, violating reviewer >= architect.
+  // Tier is derived from the *final* architectModel (post rule override), not
+  // the pre-rule architectTier — otherwise a rule that promotes the architect
+  // from haiku→opus would leave the reviewer back at haiku, violating
+  // reviewer >= architect.
   const reviewerProvider: Provider = 'claude';
   const reviewerTier: Tier = modelToTier(architectModel) ?? architectTier;
   const reviewerModel = TIERS[reviewerTier];
@@ -290,10 +292,10 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
 
   // Plan-Reviewer (M2 — see docs/elevation/upgrades/02-plan-reviewer.md).
   // Floor: "reviewer not weaker than architect". Default is haiku; bump to
-  // the architect's tier (capped at sonnet — opus plan-review burns the same
-  // rate limit the architect cap exists to protect). Same provider as the
-  // architect — this is in-flight plan critique, not a cross-provider diff
-  // review.
+  // the architect's tier. Capped at sonnet per canonical §2.5 which specifies
+  // "Haiku or Sonnet" for the Plan-Reviewer — it's a cheap pre-gate that runs
+  // BEFORE the Editor, not a full diff review. Same provider as the architect:
+  // this is in-flight plan critique, not a cross-provider diff review.
   const architectTierFinal: Tier = modelToTier(architectModel) ?? architectTier;
   const planReviewerTier: Tier =
     architectTierFinal === 'opus'

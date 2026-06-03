@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import { classifyTask } from '../index.ts';
 
 describe('classifyTask — rule overrides', () => {
-  it('keyword hit without complexity:high stays on sonnet (architect opus cap)', () => {
+  it('keyword hit routes architect to opus (canonical §3.2 override #1: auth/security category)', () => {
+    // Post-M4.5 / ADR-0004: the Phase B Opus cap is removed. "auth" + "security"
+    // are HIGH_KEYWORDS (score 6 → opus tier); canonical §3.2 override #1
+    // says category ∈ {security, auth, payments, migration} → Opus regardless.
     const result = classifyTask({
       title: 'security audit of auth middleware',
       body: 'check the auth flow',
       labels: ['auto:ship', 'verify:typecheck', 'verify:lint', 'verify:test'],
     });
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -33,25 +36,26 @@ describe('classifyTask — rule overrides', () => {
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
-  it('multi-rule priority: first matching rule wins (capped to sonnet without complexity:high)', () => {
-    // "migration" matches rule 1 (architect/opus), "refactor" matches rule 2 (editor/codex)
-    // first match still wins, but the architect opus cap forces sonnet.
+  it('multi-rule priority: first matching rule wins; migration routes architect to opus (canonical override #1)', () => {
+    // "migration" matches rule 1 (architect/opus), "refactor" matches rule 2 (editor/codex).
+    // First match wins. Post-M4.5: no Opus cap; migration category triggers
+    // canonical §3.2 override #1 unconditionally.
     const result = classifyTask({
       title: 'migration and refactor',
       body: '',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.equal(result.architect.provider, 'claude');
   });
 
-  it('fileGlobs: .sql reference matches SQL rule but architect stays on sonnet (cap)', () => {
+  it('fileGlobs: .sql reference matches SQL rule; architect routes to opus (migration category, canonical override #1)', () => {
     const result = classifyTask({
       title: 'add seed file users.sql to the repo',
       body: 'seed data for local dev',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -97,17 +101,18 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.architect.model, 'claude-sonnet-4-6');
   });
 
-  it('high-weight keyword without complexity:high caps architect at sonnet', () => {
-    // "stripe" + "payment" are high-weight scorer keywords. Pre-Phase B this
-    // produced opus; the architect cap now keeps it at sonnet unless the
-    // operator explicitly labels the issue `complexity:high`.
+  it('high-weight keyword routes architect to opus (payments category, canonical override #1)', () => {
+    // "stripe" + "payment" are HIGH_KEYWORDS (score 6 → opus tier). Pre-Phase C
+    // the Opus cap forced this back to sonnet; post-M4.5 / ADR-0004 the
+    // canonical correctness-first routing lets payments-category findings
+    // reach Opus directly per §3.2 override #1.
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
       labels: ['auto:ship'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 
   it('high-weight keyword + complexity:high promotes architect to opus', () => {
@@ -154,14 +159,17 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
-  it('priority:high bumps tier up one but is still capped at sonnet for architect', () => {
+  it('priority:high bumps tier; sonnet → opus is allowed (no cap post-M4.5)', () => {
     const result = classifyTask({
       title: 'add a new feature toggle',
       body: '',
       labels: ['auto:ship', 'priority:high'],
     });
-    // pre-Phase B this bumped sonnet → opus; the architect cap holds it at sonnet
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    // "feature" is a MEDIUM_KEYWORD (score 1 → sonnet). priority:high bumps
+    // the tier up one. Pre-Phase C the Opus cap demoted this back to sonnet;
+    // post-M4.5 the canonical correctness-first policy lets priority:high
+    // reach opus when the operator asked for it.
+    assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 
   it('priority:high + complexity:high promotes architect to opus', () => {
@@ -173,13 +181,18 @@ describe('classifyTask — dynamic scorer', () => {
     assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 
-  it('complexity:low forces sonnet even when scorer/rule wants opus', () => {
+  it('complexity:low does NOT demote a payments-category override (canonical §3.2: override #1 wins regardless of severity)', () => {
+    // Pre-Phase C: complexity:low could demote any opus back to sonnet via the
+    // cap. Post-M4.5 / ADR-0004: canonical §3.2 override #1 wins "regardless
+    // of severity" — a payments-category finding cannot be downshifted by a
+    // severity hint. complexity:low is parsed but has no demoting effect when
+    // a category override fires.
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
       labels: ['auto:ship', 'complexity:low'],
     });
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 
   it('chore label bumps tier down one', () => {
@@ -238,30 +251,30 @@ describe('classifyTask — labels & verify', () => {
   });
 });
 
-describe('classifyTask — architect cap with rule override (issue #43)', () => {
-  it('SQL rule (architect→opus) + complexity:low caps architect to sonnet', () => {
-    // The .sql fileGlob rule maps architect to claude-opus-4-7. The
-    // complexity:low label must keep the architect at sonnet, not opus.
+describe('classifyTask — rule override + complexity hint (post-M4.5 canonical alignment)', () => {
+  it('SQL rule (architect→opus) + complexity:low: architect stays opus (migration override #1 wins)', () => {
+    // Pre-Phase C this test asserted the cap demoted to sonnet. Post-M4.5 /
+    // ADR-0004: canonical §3.2 override #1 (migration category → Opus regardless
+    // of severity) wins; complexity:low is parsed but cannot demote.
     const result = classifyTask({
       title: 'add seed file users.sql to the repo',
       body: 'seed data for local dev',
       labels: ['auto:ship', 'complexity:low'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 
-  it('SQL rule (architect→opus) with NO complexity label caps architect to sonnet', () => {
-    // Default cap: any opus that did not come from explicit complexity:high
-    // (whether from scorer or rule) must drop back to sonnet. Distinct from
-    // the complexity:low case above — here no complexity label is present.
+  it('SQL rule (architect→opus) with NO complexity label routes architect to opus', () => {
+    // Pre-Phase C: cap demoted to sonnet. Post-M4.5: canonical correctness-
+    // first routing honors the rule directly.
     const result = classifyTask({
       title: 'add seed file users.sql to the repo',
       body: 'seed data for local dev',
       labels: ['auto:ship'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
   });
 });
 
@@ -304,8 +317,8 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
   });
 
   it('rule-override (architect role, no complexity label) keeps reviewer >= architect', () => {
-    // .sql rule maps architect→opus; cap demotes to sonnet. Reviewer must
-    // match the final architect tier, not the pre-rule baseTier.
+    // .sql rule maps architect→opus. Post-M4.5: no cap, architect stays opus,
+    // reviewer must mirror at opus.
     const result = classifyTask({
       title: 'add seed file users.sql to the repo',
       body: 'seed data for local dev',
@@ -316,10 +329,10 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'rule-override (no complexity)',
     );
-    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+    assert.equal(result.reviewer.model, 'claude-opus-4-7');
   });
 
-  it('rule-override (architect role) with complexity:low keeps reviewer >= architect', () => {
+  it('rule-override (architect role) with complexity:low keeps reviewer >= architect (migration override #1 wins)', () => {
     const result = classifyTask({
       title: 'add seed file users.sql to the repo',
       body: 'seed data for local dev',
@@ -330,7 +343,7 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'rule-override + complexity:low',
     );
-    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+    assert.equal(result.reviewer.model, 'claude-opus-4-7');
   });
 
   it('rule-override (architect role) with complexity:high keeps reviewer >= architect', () => {
@@ -362,7 +375,8 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
     assert.equal(result.reviewer.model, 'claude-opus-4-7');
   });
 
-  it('explicit complexity:low keeps reviewer >= architect', () => {
+  it('explicit complexity:low does NOT demote a payments-category override (reviewer mirrors at opus)', () => {
+    // Post-M4.5: canonical §3.2 override #1 wins regardless of severity hint.
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
@@ -371,16 +385,16 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
     assertReviewerGteArchitect(
       result.architect.model,
       result.reviewer.model,
-      'complexity:low',
+      'complexity:low + payments override',
     );
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
-    assert.equal(result.reviewer.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.reviewer.model, 'claude-opus-4-7');
   });
 });
 
 describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-reviewer.md)', () => {
-  // Floor table from docs/elevation/upgrades/02-plan-reviewer.md:
-  //   architect=opus   → planReviewer=sonnet (opus cap protects rate limit)
+  // Floor table (canonical §2.5 — "Haiku or Sonnet" for plan-reviewer):
+  //   architect=opus   → planReviewer=sonnet (cheap pre-gate floor)
   //   architect=sonnet → planReviewer=haiku  (default cheap tier)
   //   architect=haiku  → planReviewer=haiku  (already at floor)
   // PR #132 fixed F-002 (haiku-floor classifier bug); these tests pin the
@@ -400,18 +414,19 @@ describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-
     assert.equal(result.planReviewer?.provider, 'claude');
   });
 
-  it('architect opus-cap holds: HIGH_KEYWORDS alone (without complexity:high) → architect Sonnet, planReviewer Haiku', () => {
-    // HIGH_KEYWORDS hit ("stripe" + "payment" → score 6 → opus tier) but no
-    // complexity:high label, so the architect opus cap demotes to sonnet. Pins
-    // the regression the original combined test silently failed to catch.
+  it('HIGH_KEYWORDS alone (without complexity:high) → architect Opus, planReviewer Sonnet (canonical override #1)', () => {
+    // Pre-Phase C this asserted cap-driven sonnet/haiku. Post-M4.5 / ADR-0004:
+    // HIGH_KEYWORDS hit ("stripe" + "payment" → score 6) routes architect to
+    // opus per canonical §3.2 override #1; plan-reviewer floors at sonnet
+    // because architect=opus.
     const result = classifyTask({
       title: 'wire up stripe payment intents',
       body: '',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    assert.equal(result.architect.model, 'claude-opus-4-7');
     assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
-    assert.equal(result.planReviewer?.model, 'claude-haiku-4-5-20251001');
+    assert.equal(result.planReviewer?.model, 'claude-sonnet-4-6');
   });
 
   it('plan-reviewer floor — architect Sonnet → Haiku', () => {
