@@ -81,6 +81,12 @@ const MEDIUM_KEYWORDS = [
   'service',
 ];
 
+// Category-detection needles for M4.6 (mode override category protection).
+// Includes HIGH_KEYWORDS (which covers auth/security/migration/rls/critical/
+// oauth/encryption/payment/stripe/supabase) plus 'sql' so the SQL fileGlob
+// rule (migration category) is detected as a category override too.
+const CATEGORY_NEEDLES = [...HIGH_KEYWORDS, 'sql'];
+
 const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus'];
 
 // Inverse lookup: given a model string, return the tier it represents.
@@ -175,19 +181,14 @@ function globToSubstrings(glob: string): string[] {
   return needles;
 }
 
-function matchesGlobs(text: string, globs: string[]): boolean {
-  for (const g of globs) {
-    for (const needle of globToSubstrings(g)) {
-      if (text.includes(needle)) return true;
-    }
-  }
-  return false;
-}
-
 export function classifyTask(task: ClassifyInput): RoutingDecision {
   const text = `${task.title} ${task.body}`.toLowerCase();
   const hints = parseLabels(task.labels);
   const complexity = parseComplexity(task.labels);
+  // M4.6: tracks whether canonical §3.2 override #1 (category-driven Opus)
+  // or #2 (CRITICAL-driven Opus) has fired. When true, a subsequent
+  // mode-override block must NOT demote the architect below Opus.
+  let categoryOverrideTriggered = false;
   // Mode precedence: explicit field on input > `mode:*` label > body header /
   // slash-prefix. Auto-router is invoked separately by `classifyTaskAsync`
   // when no synchronous signal is present.
@@ -196,6 +197,10 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
 
   const rawScore = scoreKeywords(text);
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
+  // M4.6 trigger #1: scorer-driven Opus assignment (HIGH_KEYWORDS hit
+  // produced score ≥3, optionally combined with priority bumps). This is
+  // canonical §3.2 override #1 firing through the scorer path.
+  if (baseTier === 'opus') categoryOverrideTriggered = true;
 
   // Architect escalation policy (canonical correctness-first, post-M4.5 / ADR-0004):
   // the scorer is allowed to promote the architect to opus on its own — high-risk
@@ -220,14 +225,32 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   let editorModel: string = TIERS[editorTier];
 
   // Rules act as explicit overrides on top of the scorer. First match wins
-  // globally so rule order in routing.json still has meaning.
+  // globally so rule order in routing.json still has meaning. We also track
+  // which specific keyword / fileGlob actually hit — M4.6 trigger #2 below
+  // needs the precise matched signal, not the rule's whole declared list,
+  // to avoid blocking mode demotions on tasks that match a mixed-keyword
+  // rule via a non-category keyword like "architect" or "design".
   let matchedRule: RoutingRule | undefined;
+  let matchedKeyword: string | undefined;
+  let matchedGlob: string | undefined;
   for (const rule of config.rules) {
-    const keywordHit =
-      rule.match.keywords?.some((kw) => text.includes(kw.toLowerCase())) ?? false;
-    const globHit = rule.match.fileGlobs ? matchesGlobs(text, rule.match.fileGlobs) : false;
+    const keywordHit = rule.match.keywords?.find((kw) => text.includes(kw.toLowerCase()));
+    let globHit: string | undefined;
+    if (rule.match.fileGlobs) {
+      for (const g of rule.match.fileGlobs) {
+        for (const needle of globToSubstrings(g)) {
+          if (text.includes(needle)) {
+            globHit = g;
+            break;
+          }
+        }
+        if (globHit) break;
+      }
+    }
     if (keywordHit || globHit) {
       matchedRule = rule;
+      matchedKeyword = keywordHit;
+      matchedGlob = globHit;
       break;
     }
   }
@@ -240,6 +263,21 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     } else if (role === 'editor') {
       editorProvider = provider;
       editorModel = model;
+    }
+    // M4.6 trigger #2: a rule that routes architect → Opus AND whose
+    // ACTUAL matched signal (the specific keyword that hit, or the specific
+    // glob that hit) overlaps a canonical category needle (auth/security/
+    // migration/payments/rls/critical/oauth/encryption/stripe/supabase/sql).
+    // We inspect the matched signal, not the rule's declared keyword list,
+    // so a rule that mixes architectural-design keywords (architect/design)
+    // with category keywords (auth/security/migration) only flips the flag
+    // when the canonical category keyword is the one that actually hit.
+    // Explicit `category:*` labels are out of scope here — tracked as M4.7.
+    if (matchedRule.route.role === 'architect' && matchedRule.route.model === TIERS.opus) {
+      const signal = (matchedKeyword ?? matchedGlob ?? '').toLowerCase();
+      if (signal && CATEGORY_NEEDLES.some((needle) => signal.includes(needle))) {
+        categoryOverrideTriggered = true;
+      }
     }
   }
 
@@ -262,11 +300,41 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   // is the long-term mitigation — see ADR-0004 §Consequences for the actual
   // present seat count.
 
-  // Reviewer is a Claude second opinion at the same tier as the architect.
-  // Tier is derived from the *final* architectModel (post rule override), not
-  // the pre-rule architectTier — otherwise a rule that promotes the architect
-  // from haiku→opus would leave the reviewer back at haiku, violating
-  // reviewer >= architect.
+  // Apply mode-specific overrides on top of the rule + cap pipeline. Mode is
+  // null/undefined when no explicit signal is present; the async classifier
+  // may supply one.
+  //
+  // M4.6 (mode override category protection): when canonical §3.2 override
+  // #1/#2 has fired (`categoryOverrideTriggered` set during scorer + rule
+  // application), a mode override MUST NOT demote the architect below Opus.
+  // Canonical §3.2 says override #1 wins "regardless of severity"; we extend
+  // that to "regardless of mode". Editor + verify overrides still apply —
+  // only the architect override is gated.
+  if (explicitMode && config.modes?.[explicitMode]) {
+    const override = config.modes[explicitMode];
+    if (override?.architect) {
+      const overrideWouldDemote =
+        architectModel === TIERS.opus && override.architect !== TIERS.opus;
+      if (overrideWouldDemote && categoryOverrideTriggered) {
+        // M4.6: skip the architect override; the category/critical override
+        // takes precedence over the mode demotion. Editor/verify below still
+        // apply so the rest of the mode contract is honored.
+      } else {
+        architectModel = override.architect;
+      }
+    }
+    if (override?.editor) editorModel = override.editor;
+    if (override?.verify) {
+      for (const v of override.verify) if (!verify.includes(v)) verify.push(v);
+    }
+  }
+
+  // M4.8: reviewer derivation moved here (was previously before the mode-
+  // override block) so the reviewer mirrors the FINAL architectModel — i.e.
+  // the architect after any mode demotion or M4.6 protection has been
+  // applied. Reviewer is a Claude second opinion at the architect's tier;
+  // if a mode demotes architect, the reviewer follows so the "reviewer not
+  // weaker than architect" invariant holds.
   const reviewerProvider: Provider = 'claude';
   const reviewerTier: Tier = modelToTier(architectModel) ?? architectTier;
   const reviewerModel = TIERS[reviewerTier];
@@ -280,18 +348,6 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     model: TIERS.haiku,
     workerId: `${reviewerProvider}-reviewer-gate-1`,
   };
-
-  // Apply mode-specific overrides last so they can pin a model on top of the
-  // rule + cap pipeline without re-entering tier math. Mode is null/undefined
-  // when no explicit signal is present; the async classifier may supply one.
-  if (explicitMode && config.modes?.[explicitMode]) {
-    const override = config.modes[explicitMode];
-    if (override?.architect) architectModel = override.architect;
-    if (override?.editor) editorModel = override.editor;
-    if (override?.verify) {
-      for (const v of override.verify) if (!verify.includes(v)) verify.push(v);
-    }
-  }
 
   // Plan-Reviewer (M2 — see docs/elevation/upgrades/02-plan-reviewer.md).
   // Floor: "reviewer not weaker than architect". Default is haiku; bump to
