@@ -10,7 +10,7 @@ This repo inherits global rules from `~/.claude/CLAUDE.md`. Single-seat operatio
 
 IFleet implements the canonical pattern at `~/.claude/skills/CANONICAL-PATTERN.md`. Where this doc and the canonical spec conflict, the canonical spec wins and the conflict is a bug to file (label: `realign:<area>`).
 
-The routing policy in `docs/MODEL-ROUTING.md` is the canonical correctness-first matrix (M4.5 Phase C migration shipped 2026-06-03, see [ADR-0004](docs/adr/0004-canonical-routing-alignment.md)). The Phase B Opus cap retired with that PR. Both the manual `/audit-*` pipeline and IFleet's classifier route per the same matrix today. The supersedure protocol (canonical §7) was the mechanism that let the two implementations stay coherent while the code change was tracked separately from the spec change.
+The routing policy in `docs/MODEL-ROUTING.md` is the canonical correctness-first matrix on the **scorer + routing.json rule paths** (M4.5 Phase C migration shipped 2026-06-03 — Phase B Opus cap removed; see [ADR-0004](docs/adr/0004-canonical-routing-alignment.md)). End-to-end canonical alignment on the **`mode:*` override path and explicit `category:*` / `severity:*` label paths** is not yet complete — those are tracked in ADR-0004 §Known limitations as M4.6 / M4.7 / M4.8 follow-ups. Operators relying on `mode:tdd` / `mode:ulw` / `mode:ralph` / `mode:deslop` today should know those modes can still downshift a canonical-Opus assignment back to Sonnet/Haiku; the supersedure protocol (canonical §7) tracks the gap until the follow-ups land.
 
 ## Identity
 

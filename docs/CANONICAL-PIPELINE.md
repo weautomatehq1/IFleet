@@ -12,7 +12,7 @@ Each row is one canonical-pattern phase. "Status" indicates whether IFleet's imp
 |---|---|---|---|
 | Ingest project context | classifier reads target-repo `SECURITY.md` keywords for risk flags | `src/classifier/auto-router.ts` | ⚠️ partial — does not yet read NON_GOALS.md or ARCHITECTURE.md per canonical Section 2; tracked as separate work item |
 | Plan + split | GitHub Issues queue with label-driven routing dispatches each issue as one single-trace sprint | `src/queue/github.ts`, `src/orchestrator/` | ✅ |
-| Route to model | Canonical correctness-first matrix; HIGH_KEYWORDS (auth/security/migration/payments) route architect to Opus per canonical §3.2 override #1 | `src/classifier/index.ts`, `config/routing.json` | ✅ shipped M4.5 (2026-06-03, ADR-0004) |
+| Route to model | Canonical correctness-first matrix on scorer + routing.json rule paths; HIGH_KEYWORDS (auth/security/migration/payments) route architect to Opus per canonical §3.2 override #1. End-to-end alignment on `mode:*` and explicit category/severity label paths tracked as M4.6/M4.7/M4.8 in ADR-0004 §Known-Limitations | `src/classifier/index.ts`, `config/routing.json` | ⚠️ scoped ship M4.5 (2026-06-03, ADR-0004); follow-up gaps tracked |
 | Code (Editor) | Editor role spawned per task, model chosen by routing | `src/workers/claude.ts`, `src/workers/codex.ts` | ✅ Sonnet floor enforced (mandatory rule 3) |
 | Review (Diff-Reviewer + Plan-Reviewer) | 4-role pipeline: Architect → Plan-Reviewer → Editor → Diff-Reviewer | `src/pipeline/*` | ✅ shipped M2 (PR #132) |
 | Test (CI gate) | typecheck + lint + test before draft PR opens | `src/verify/ci.ts`, `src/verify/playwright.ts` | ✅ shipped M1 |
@@ -26,12 +26,15 @@ Each row is one canonical-pattern phase. "Status" indicates whether IFleet's imp
 
 ## Conformance summary
 
-- Fully conformant phases: 8
-- Partial conformance (in-flight implementation work): 3
+- Fully conformant phases: 7
+- Partial conformance (in-flight implementation work or scoped-ship with tracked gaps): 4
 - Not yet implemented (deferred to canonical-implementation): 2
 
 ## Tracked alignment work
 
+- M4.6 — mode override category protection (prevent `mode:tdd|ulw|ralph|deslop` from demoting canonical-Opus assignments). See ADR-0004 §Known-Limitations.
+- M4.7 — explicit `category:*` / `severity:*` label parsing in `src/queue/labels.ts` so canonical §3.2 overrides #1 and #2 are reachable via labels, not only via the HIGH_KEYWORDS scorer. See ADR-0004 §Known-Limitations.
+- M4.8 — reviewer derivation after mode overrides (preexisting bug surfaced by Phase C). See ADR-0004 §Known-Limitations.
 - Read `<repo>/NON_GOALS.md` and `<repo>/docs/ARCHITECTURE.md` in classifier — TBD
 - Port `audit-rule-drafter.sh` logic into IFleet — TBD post-M4
 - Port `audit-rejected-gate.sh` registry — TBD post-M4

@@ -2,7 +2,7 @@
 
 > Implementation of the canonical correctness-first routing matrix from `~/.claude/skills/CANONICAL-PATTERN.md` §3.
 > Policy decisions live in [ADR-0004](adr/0004-canonical-routing-alignment.md); this doc describes the runtime behaviour of `src/classifier/index.ts` against that policy.
-> History: the Phase B Opus cap (PR #41) was the previous policy; it is retired by ADR-0004 (PR #<NNN>, 2026-06-03). The cap rationale and worked examples below have been rewritten to reflect the live canonical-aligned classifier.
+> History: the Phase B Opus cap (PR #41) was the previous policy; it is retired by [ADR-0004](adr/0004-canonical-routing-alignment.md) (merged 2026-06-03). The cap rationale and worked examples below have been rewritten to reflect the live canonical-aligned classifier.
 
 ## The three roles
 
@@ -200,7 +200,7 @@ Examples where `complexity:high` is still useful:
 - **Cross-system orchestration without HIGH_KEYWORDS** — changes spanning three or more services where the title doesn't mention auth/security/payments/migration.
 - **Multi-file logic refactors hitting subtle invariants** — title says "rename helper" but the rename touches reviewer-gate logic.
 
-Pre-M4.5 guidance said to use the label sparingly because of single-account rate-limit risk. That risk is now mitigated by the 5-account Claude Max pool — one Opus-heavy sprint no longer stalls the fleet. The strict-mode review gate (`/codex-review` + Claude `verifier` in parallel) catches regressions before merge, making the cheaper tiers safe and the Opus tier worth the marginal token cost for genuinely architectural work.
+Pre-M4.5 guidance said to use the label sparingly because of single-account rate-limit risk. That risk is partially mitigated today: the strict-mode review gate (`/codex-review` + Claude `verifier` in parallel) catches regressions before merge, making the cheaper tiers safe and the Opus tier worth the marginal token cost for genuinely architectural work. Multi-seat rotation via `src/workers/account-pool.ts` is the structural mitigation; live seat count is 1 (with one additional seat defined but disabled in `config/workers.json`). See ADR-0004 §Consequences for the residual rate-limit risk under single-seat operation.
 
 If you're unsure, start without the label. Add it only if the first pass produces a shallow or incorrect plan and the title doesn't already trigger a HIGH_KEYWORD.
 

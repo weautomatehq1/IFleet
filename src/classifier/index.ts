@@ -255,9 +255,12 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
 
   // Canonical override (post-M4.5 / ADR-0004 / canonical §3.2): no Opus cap.
   // Rule-driven Opus assignments (security/migration/auth/payments) are honored
-  // directly; the rate-limit risk that motivated the Phase B cap is now mitigated
-  // by the 5-account Claude Max pool + cross-provider review gate that catches
-  // regressions before merge.
+  // directly. Rate-limit risk that motivated the Phase B cap is mitigated by
+  // (a) the cross-provider review gate that catches regressions before merge,
+  // and (b) the OMC wait/resume wrapper that pauses sprints cleanly when a
+  // Claude Max window hits. Multi-seat rotation via src/workers/account-pool.ts
+  // is the long-term mitigation — see ADR-0004 §Consequences for the actual
+  // present seat count.
 
   // Reviewer is a Claude second opinion at the same tier as the architect.
   // Tier is derived from the *final* architectModel (post rule override), not

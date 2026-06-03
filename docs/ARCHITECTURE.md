@@ -48,7 +48,7 @@ Control plane (Discord / web / GitHub issue) →
 
 ## Routing rules
 
-**Canonical correctness-first matrix** (per `~/.claude/skills/CANONICAL-PATTERN.md` §3, implemented in IFleet's classifier per [ADR-0004](adr/0004-canonical-routing-alignment.md)). The live classifier enforces this matrix as of 2026-06-03 (M4.5 Phase C migration). For the runtime config the classifier reads, see [`config/routing.json`](../config/routing.json); for worked examples and label gates, see [`docs/MODEL-ROUTING.md`](MODEL-ROUTING.md).
+**Canonical correctness-first matrix** (per `~/.claude/skills/CANONICAL-PATTERN.md` §3, implemented in IFleet's classifier per [ADR-0004](adr/0004-canonical-routing-alignment.md)). The live classifier enforces this matrix on the scorer + routing.json rule paths as of 2026-06-03 (M4.5 Phase C migration); the `mode:*` and explicit `category:*`/`severity:*` label paths are not yet end-to-end canonical-aligned and are tracked as ADR-0004 §Known-Limitations follow-ups (M4.6 / M4.7 / M4.8). For the runtime config the classifier reads, see [`config/routing.json`](../config/routing.json); for worked examples and label gates, see [`docs/MODEL-ROUTING.md`](MODEL-ROUTING.md).
 
 | Pattern | Model | Rationale |
 |---|---|---|
