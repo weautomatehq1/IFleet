@@ -480,10 +480,13 @@ function maybeCloseAuditFinding(input: PipelineInput, prUrl: string | null): voi
 /**
  * Flip an audit-fix task's finding from `fixing` → `verifying` at verifier
  * entry. Best-effort: a file or DB failure here only affects the audit
- * timeline; the pipeline itself continues regardless. `setFindingsStatus`
- * is a no-op when the finding is already terminal or already in the target
- * state, so calling this on a non-audit task or a finding already in
- * `verifying` is safe.
+ * timeline; the pipeline itself continues regardless.
+ *
+ * Terminal-state safety: both the file write (`setFindingsStatus`) and the DB
+ * mirror (`dbUpdateFindingStatus` with `refuseFromTerminal: true`) skip rows
+ * already in a terminal state (closed / fixed / stale), so calling this on a
+ * non-audit task or a finding the closer already terminated is a no-op rather
+ * than a regression.
  */
 function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
   if (!input.repoRoot) return;
@@ -506,14 +509,18 @@ function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
     );
   }
   // Mirror to Supabase so /audit-status on the VPS sees the in-flight state.
-  // Best-effort: DB failure does not unwind the file write.
-  void dbUpdateFindingStatus(findingId, 'verifying').catch((err) => {
-    console.warn(
-      `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  });
+  // `refuseFromTerminal` adds AND status NOT IN ('closed','fixed','stale') to
+  // the WHERE clause so a terminal row stays terminal even if a stale fixing
+  // task races into the verifier loop late.
+  void dbUpdateFindingStatus(findingId, 'verifying', { refuseFromTerminal: true }).catch(
+    (err) => {
+      console.warn(
+        `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    },
+  );
 }
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
