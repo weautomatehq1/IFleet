@@ -90,8 +90,8 @@ The supersedure note on `docs/MODEL-ROUTING.md` is removed; the body is rewritte
 **Doc supersedure trail:**
 - `docs/MODEL-ROUTING.md` rewritten in this PR; old supersedure header removed. The doc now describes the canonical matrix as the live policy with a one-line pointer to this ADR for history.
 - `~/.claude/skills/CANONICAL-PATTERN.md` Footnotes section gets the "§3 routing aligned with `IFleet/src/classifier/index.ts` on 2026-06-03 (ADR-0004)" entry per canonical §7 step 4. The merge PR number is recorded in `git log --follow` on this ADR file rather than baked into the prose.
-- `docs/CANONICAL-PIPELINE.md` "Route to model" status flips from ⚠️ (partial / tracked supersedure) to ✅.
-- ROADMAP.md M4.5 row marked shipped with the merge PR number.
+- `docs/CANONICAL-PIPELINE.md` "Route to model" row reframed: previously ⚠️ "tracked supersedure" (Phase B cap awaiting Phase C); now ⚠️ "scoped ship" — scorer + routing.json paths are canonical-aligned, mode/category/severity paths tracked as M4.6/M4.7/M4.8 in §Known-Limitations below.
+- ROADMAP.md M4.5 row marked `✅ Scoped ship (2026-06-03)` (no merge PR number baked into prose — recoverable via `git log --follow`).
 
 **Tracked future work:** The `audit-to-ifleet.sh` bridge script (canonical §5.3) is still future work; this ADR does not address it. Once the bridge ships, audit findings flowing from manual `/audit-scan` into the IFleet queue will hit this new routing policy automatically.
 
@@ -109,7 +109,7 @@ Phase C ships the headline goal — remove the Opus cap, align the HIGH_KEYWORDS
 
 4. **HIGH_KEYWORDS substring matching has known false-positive surface.** `scoreKeywords` uses `text.includes(kw)` so `author` matches `auth`, `noncritical` matches `critical`. Pre-Phase C the cap masked this — every false positive was demoted to Sonnet. Post-Phase C those false positives reach Opus. Canonical §3.6 cost-tuning signal applies: if closure log reports false-positive Opus runs (operator-flagged "didn't need Opus") above ~1 in 5 of HIGH_KEYWORDS-routed tasks, tighten the keyword list or move to word-boundary matching. Tracked as **observability follow-up — closure log cost-tuning telemetry**.
 
-The combined effect of items 1–3 is that an operator who pins `mode:tdd` on an auth-themed task still gets the pre-Phase-C behaviour. That's a real correctness gap relative to canonical, but it's scoped down explicitly here so the next session has a clear plate of follow-up work rather than a hidden invariant violation. The supersedure note on canonical §7.4 footnote (added 2026-06-03) records "first worked-example supersedure resolved end-to-end" with the understanding that "end-to-end" means the scorer + rule paths; the mode + label paths are tracked above.
+The combined effect of items 1–3 is that an operator who pins `mode:tdd` on an auth-themed task still gets the pre-Phase-C behaviour. That's a real correctness gap relative to canonical, but it's scoped down explicitly here so the next session has a clear plate of follow-up work rather than a hidden invariant violation. The supersedure footnote in `~/.claude/skills/CANONICAL-PATTERN.md` (Footnotes section, 2026-06-03) records this as a **partial alignment** — the scorer + routing.json paths are canonical-aligned today; the mode + label paths are tracked as M4.6/M4.7/M4.8 above. This is the first supersedure that lands as a documented scoped ship rather than as a closed-out resolution; canonical §7 protocol allows that shape (the supersedure note stays in place until full alignment lands).
 
 ## Alternatives considered
 
