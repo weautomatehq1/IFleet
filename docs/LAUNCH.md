@@ -169,16 +169,18 @@ Cross-reference these before filing new bugs.
 
 ## 7. Roadmap / sprint planning — where it lives
 
-IFleet does **not** maintain `ROADMAP.md` or `SPRINT.md` at its repo root.
-Both live in the umbrella factory repo:
+IFleet maintains `ROADMAP.md` and `SPRINT.md` at its repo root as IFleet-scoped views
+aligned to the canonical-pattern milestone structure. The umbrella factory repo remains
+the system-of-systems authority:
 
-- Roadmap: https://github.com/weautomatehq1/factory/blob/main/ROADMAP.md
-- Active sprint: https://github.com/weautomatehq1/factory/blob/main/SPRINT.md
+- Factory roadmap: https://github.com/weautomatehq1/factory/blob/main/ROADMAP.md
+- Factory sprint: https://github.com/weautomatehq1/factory/blob/main/SPRINT.md
 
-IFleet's local source-of-truth for next work is the GitHub issue queue
-(`gh issue list --repo weautomatehq1/IFleet --state open --label "ready"`).
-The continuous-execution loop in `CLAUDE.md` should read those issues, not
-repo-local spec files.
+IFleet's `ROADMAP.md` covers M1–M6 IFleet elevation milestones (including the
+canonical-pattern alignment tracks M4.5+). Cross-repo milestones use `[M-NNN]` bracket
+IDs that link back to the factory roadmap. Do not duplicate factory content — add an
+`[M-NNN]` pointer instead.
 
-If a future workflow needs repo-local stubs, add them as one-line pointers
-to the factory docs above — don't duplicate roadmap content.
+IFleet's immediate next-work queue is the GitHub issue list:
+`gh issue list --repo weautomatehq1/IFleet --state open --label "ready"`.
+The continuous-execution loop in `CLAUDE.md` should read those issues.

@@ -10,6 +10,8 @@ Build behavioral fingerprinting for PRs and a rejection-learning loop so IFleet 
 
 Without fingerprinting, IFleet has no way to learn from reviewer feedback across sprints. Every rejection is siloed. M4 adds a shared `pr_decisions` table (merged/rejected + fingerprint diff), reviewer preference cards, and a feedback loop so the architect can adapt its plans based on what reviewers historically approve.
 
+**Canonical-pattern alignment:** M4's fingerprinting + `pr_decisions` table is IFleet's implementation of canonical-pattern Section 4 ("Self-learning hooks"). The manual pipeline implements the same pattern via `closed.json` fingerprints + `audit-rule-drafter.sh`. After M4 ships, the unified port (sharing logic between the two implementations) becomes possible — tracked separately as a post-M4 work item.
+
 ## In scope (this sprint)
 
 | ID | Task | Status | Owner |
@@ -56,3 +58,5 @@ Canary disagreement alerter shipped via `feat/canary-disagreement-alerting` (07b
 ## Next sprint — M5: Goal-driven mode
 
 Once M4 fingerprinting is validated (≥50% fingerprint coverage, preference cards live), M5 ships the Proposer: autonomous goal generation + #ifleet-proposals channel + budget gate. See `ROADMAP.md` for M5–M6 dependency chain.
+
+**Note:** Before M5 ships, M4.5 (Phase C routing migration) interrupts to align `src/classifier/index.ts` with the canonical pattern's correctness-first routing matrix. See ROADMAP.md M4.5 row. Estimated 2-3 days of focused work.

@@ -1,14 +1,10 @@
 # IFleet
 
-Autonomous agent fleet — Claude Code + Codex workers shipping PRs 24/7.
+IFleet is the autonomous-mode implementation of the canonical pipeline pattern. Spec: `~/.claude/skills/CANONICAL-PATTERN.md`.
 
-## What this is
+Where the manual pipeline (`/audit-scan`, `/audit-fix`, `/splittasks` at `~/.claude/skills/`) is Sebastian's supervisor-mode toolchain at the terminal, IFleet runs the same pattern unattended on a PM2-managed VPS — picking up tasks, splitting across the right models (Claude Opus/Sonnet/Haiku + Codex), reviewing, testing, fixing, opening draft PRs after CI passes.
 
-A control plane + worker pool that picks tasks off a queue, dispatches them
-to the right AI model (Claude Opus / Sonnet / Codex), runs each in an
-isolated git worktree, opens a draft PR with CI passing, and reports back
-to the operator. Designed for solo developers and small teams who want to
-ship 5–15 PRs per night without sitting in front of a terminal.
+The current trigger surface (GitHub Issues queue + Discord) is one of several possible inputs — not the canonical input. The canonical input is project context + a task description.
 
 ## Status
 
