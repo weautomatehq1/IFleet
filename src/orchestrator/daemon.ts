@@ -167,7 +167,7 @@ async function main(): Promise<void> {
   // codeowners) and repos.json (allowed repos). The factory uses this to
   // refuse any task whose `task.repo` is not whitelisted, before a worktree
   // is created or any git/PR command runs. AUDIT-IFleet-6126a1f9.
-  const repoResolver = buildRepoResolver(router, reposMap, repoRoot);
+  const repoResolver = buildRepoResolver(router, reposMap);
   const productionFactory = makeProductionFactory({
     repoResolver,
     octokit,
@@ -1267,21 +1267,23 @@ const KNOWN_MODEL_SHORTHAND = new Set([
  * defaulted `repoId` to `weautomatehq1/IFleet`, so a task from the factory
  * channel would build a worktree under IFleet and open a PR against IFleet.
  *
- * Composition rules:
+ * Composition rules (intentionally strict):
  *   - A repo must appear in BOTH `reposMap` (security allowlist) AND in some
  *     `channels.json` route (so we know where the clone lives). Either-only
  *     yields a `null` resolve.
  *   - `repoRoot` comes from the channel route's `workDir`.
  *   - `defaultBranch` and `codeowners` come from the channel route.
  *   - `owner`/`name` are split from the canonical slug.
- *   - The fallback `repoRootForLegacy` (the daemon's host repo) is used only
- *     for tasks whose repo is IFleet and which arrived before channels.json
- *     was loaded (defensive — never expected in practice).
+ *
+ * No "legacy IFleet fallback" — codex review caught that a backstop entry
+ * built from the daemon's cwd would reintroduce exactly the foot-gun this
+ * audit closes (silently dispatching to the host checkout on a misconfigured
+ * channels.json). If channels.json doesn't mention IFleet, the resolver
+ * returns null and the factory refuses to dispatch.
  */
-function buildRepoResolver(
+export function buildRepoResolver(
   router: FileChannelRouter,
   reposMap: ReturnType<typeof loadReposConfig>,
-  repoRootForLegacy: string,
 ): RepoResolver {
   // Build a per-repo view by walking channels.json once. Channels can map
   // multiple channelIds to the same repo (e.g. a public and a triage channel
@@ -1299,19 +1301,6 @@ function buildRepoResolver(
       repoRoot: route.workDir,
       defaultBranch: route.defaultBranch,
       codeowners: route.codeowners,
-    });
-  }
-  // Backstop entry for the IFleet repo when channels.json hasn't been read
-  // (test/fallback path). The daemon always loads channels.json in main(),
-  // so this only triggers if a future operator unwires the router.
-  const ifleetSlug = 'weautomatehq1/IFleet';
-  if (!byRepo.has(ifleetSlug) && reposMap[ifleetSlug]) {
-    byRepo.set(ifleetSlug, {
-      repoId: ifleetSlug,
-      owner: 'weautomatehq1',
-      name: 'IFleet',
-      repoRoot: repoRootForLegacy,
-      defaultBranch: 'main',
     });
   }
   return {
