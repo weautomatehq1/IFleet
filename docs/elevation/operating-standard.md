@@ -21,12 +21,14 @@ For every PR IFleet opens, the following artifacts exist and are exportable:
 | Artifact | Storage | How to access |
 |---|---|---|
 | Full task trace (every role's input/output) | SQLite + S3 blob | `gh pr view <N> --json body` includes a `Trace:` link |
-| Verifier run report (pass/fail, structured failures) | `verifier_runs` + `verifier_failures` tables | Attached to PR description |
+| Verifier run report (pass/fail, structured failures) | `verifier_runs` + `verifier_failures` tables | Posted as PR comment within minutes of PR creation (async — see note below) |
 | Cost breakdown per role (USD spent) | Trace events with `cost_usd` field | `/status <taskId>` in Discord |
 | Model versions used per role | Trace events with `model` field | Same |
 | Source brief / issue that triggered the task | GitHub issue link | PR description, top line |
 
-These artifacts are immutable once the PR opens.
+The trace, cost, model-version, and source-brief artifacts are written before the PR opens and are immutable at PR-open time.
+
+**Verifier timing note:** The inline build + test gate (`pnpm run build` / `pnpm test`) runs synchronously and must pass before the PR is opened. The full Docker sandbox + invariant report (`verifier_runs` / `verifier_failures`) is generated asynchronously: the verifier pipeline subscribes to the `task.completed` event, which fires after PR creation, and attaches results as a PR comment within minutes. Human reviewers should wait for this comment before approving. Wiring the Docker verifier as a hard pre-merge gate is a planned future upgrade.
 
 ## Planned guarantees (post-M4)
 
