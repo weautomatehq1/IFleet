@@ -53,6 +53,16 @@ function seedTasksDb(path: string): void {
     state: 'in_flight', idem: 'k2', created: now - 2000, priority: 'normal', picked: now - 500 });
   insert.run({ id: 't-done', sk: 'github', repo: 'org/a', brief: 'b', title: 'done task',
     state: 'done', idem: 'k3', created: now - 3000, priority: 'normal', picked: now - 2500 });
+  // Seed pr_decisions rows in tasksDb — endpoint was fixed to read tasksDb (AUDIT-IFleet-87fa6403).
+  // pr_number is NOT NULL in the tasksDb schema; use 42 and 99 matching the test assertions below.
+  db.prepare(
+    `INSERT INTO pr_decisions (id, task_id, repo, pr_number, verdict, reviewer_login, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run('pd-1', 't-1', 'org/a', 42, 'merged', 'seb', now - 100);
+  db.prepare(
+    `INSERT INTO pr_decisions (id, task_id, repo, pr_number, verdict, reviewer_login, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run('pd-2', 't-2', 'org/a', 99, 'abandoned', null, now - 200);
   db.close();
 }
 
@@ -201,7 +211,7 @@ describe('dashboard/server', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.taskId).toBe('t-1');
     expect(rows[0]?.prNumber).toBe(42);
-    expect(rows[1]?.prNumber).toBeNull();
+    expect(rows[1]?.prNumber).toBe(99);
   });
 
   it('GET /api/budget returns sprint_runtime_state rows', async () => {
