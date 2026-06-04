@@ -377,3 +377,62 @@ describe('TaskStore', () => {
     }
   });
 });
+
+describe('SqliteNonceLedger', () => {
+  it('TOCTOU: two ledgers on the same DB accept the same nonce exactly once — AUDIT-IFleet-cf106efc', async () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const ttlMs = 6 * 60 * 1000;
+      const nonce = 'toctou-race-nonce';
+
+      // Two TaskStore handles on the same file ≈ two control-plane processes.
+      const storeA = new TaskStore(path);
+      const storeB = new TaskStore(path);
+      const ledgerA = storeA.createNonceLedger(ttlMs);
+      const ledgerB = storeB.createNonceLedger(ttlMs);
+
+      const now = Date.now();
+      const results = await Promise.all([
+        Promise.resolve(ledgerA.registerOrReject(nonce, now)),
+        Promise.resolve(ledgerB.registerOrReject(nonce, now)),
+      ]);
+
+      const trueCount = results.filter(Boolean).length;
+      assert.equal(
+        trueCount,
+        1,
+        `exactly one registerOrReject must return true under contention; got ${JSON.stringify(results)}`,
+      );
+
+      ledgerA.destroy();
+      ledgerB.destroy();
+      storeA.close();
+      storeB.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('prunes expired entries inside the same transaction as the insert', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const ttlMs = 1000;
+      const store = new TaskStore(path);
+      const ledger = store.createNonceLedger(ttlMs);
+
+      const past = Date.now() - ttlMs - 1;
+      assert.equal(ledger.registerOrReject('stale', past), true);
+      assert.equal(ledger.size(), 1);
+
+      // A fresh call must prune the stale row inside the same BEGIN IMMEDIATE
+      // txn so the table never grows beyond the TTL window.
+      assert.equal(ledger.registerOrReject('fresh'), true);
+      assert.equal(ledger.size(), 1);
+
+      ledger.destroy();
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+});

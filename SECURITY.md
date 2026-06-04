@@ -46,20 +46,25 @@ ledger and a PM2 restart wiped it, letting any captured signed request
 with a timestamp inside the 5-minute skew window be replayed against the
 freshly-started process.
 
-**Single-process race window (accepted).** `SqliteNonceLedger.registerOrReject`
-runs prune → SELECT → INSERT OR IGNORE on a single better-sqlite3 handle. In
-the current single-seat deployment (per `docs/running.md`) there is exactly
-one writer process, so the SELECT/INSERT pair is atomic-by-virtue-of-being-
-single-threaded and a duplicate nonce CAN be detected at SELECT time. The
-property holds today.
+**Atomic prune + insert (AUDIT-IFleet-cf106efc, 2026-06-04).**
+`SqliteNonceLedger.registerOrReject` wraps the prune-expired + `INSERT OR
+IGNORE` pair inside a single `BEGIN IMMEDIATE` transaction (better-sqlite3
+`txn.immediate(...)`). The IMMEDIATE lock serialises writers across
+processes sharing the SQLite file, and `result.changes === 1` IS the
+fresh-or-replay decision — the duplicate is caught by the SQLite UNIQUE
+constraint on `nonce_ledger.nonce` without any pre-insert SELECT. Two
+control-plane instances racing on the same DB cannot both observe the
+nonce as fresh; regression covered by `src/queue/__tests__/store.test.ts`
+(`SqliteNonceLedger` suite).
 
-**Multi-instance regression risk (mitigated 2026-06-04).** Previously,
-SELECT-then-INSERT-OR-IGNORE could let two processes both return `true` for
-the same nonce when racing. Mitigation shipped in PR #319:
-`registerOrReject` now uses INSERT OR IGNORE as the source of truth and
-returns `result.changes === 1`, so the duplicate INSERT is detected at the
-SQLite UNIQUE-constraint level without any pre-insert SELECT. The race window
-no longer exists for SQLite-backed deployments.
+PR #319 had moved the decision off SELECT-then-INSERT onto `INSERT OR
+IGNORE`'s `result.changes` but left the prune + insert as two unwrapped
+statements, so a concurrent writer could still slip a duplicate row in
+between. The IMMEDIATE transaction added here closes that window.
+
+The single-seat deployment policy in `docs/running.md` still applies for
+other reasons (Max-plan quota, queue ownership), but the nonce ledger is
+no longer the load-bearing reason multi-instance is unsafe.
 
 ## Secret handling
 

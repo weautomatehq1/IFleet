@@ -590,10 +590,19 @@ export class TaskStore {
  * `registerOrReject` opportunistically prunes expired rows on every call;
  * a periodic sweep is unnecessary because the per-insert prune bounds the
  * table size at the count of nonces signed within the TTL window.
+ *
+ * The prune + INSERT OR IGNORE pair runs inside a `BEGIN IMMEDIATE`
+ * transaction (better-sqlite3 `txn.immediate(...)`) so two control-plane
+ * processes racing on the same SQLite file cannot both observe the nonce
+ * as fresh: the IMMEDIATE lock serialises writers and `result.changes === 1`
+ * IS the atomic decision (AUDIT-IFleet-cf106efc).
  */
 export class SqliteNonceLedger {
   private readonly insertStmt: Database.Statement<{ nonce: string; expires_at: number }>;
   private readonly pruneStmt: Database.Statement<{ now: number }>;
+  private readonly registerTxn: Database.Transaction<
+    (args: { nonce: string; now: number; expires_at: number }) => boolean
+  >;
 
   constructor(
     private readonly db: Database.Database,
@@ -603,13 +612,18 @@ export class SqliteNonceLedger {
       `INSERT OR IGNORE INTO nonce_ledger (nonce, expires_at) VALUES (@nonce, @expires_at)`,
     );
     this.pruneStmt = this.db.prepare(`DELETE FROM nonce_ledger WHERE expires_at <= @now`);
+    this.registerTxn = this.db.transaction(
+      ({ nonce, now, expires_at }: { nonce: string; now: number; expires_at: number }) => {
+        this.pruneStmt.run({ now });
+        const result = this.insertStmt.run({ nonce, expires_at });
+        return result.changes === 1;
+      },
+    );
   }
 
   /** Returns true if the nonce was fresh and is now recorded. False if already seen. */
   registerOrReject(nonce: string, now: number = Date.now()): boolean {
-    this.pruneStmt.run({ now });
-    const result = this.insertStmt.run({ nonce, expires_at: now + this.ttlMs });
-    return result.changes === 1;
+    return this.registerTxn.immediate({ nonce, now, expires_at: now + this.ttlMs });
   }
 
   /** No-op: no timers or async resources to release. Kept for interface parity with in-memory ledger. */
