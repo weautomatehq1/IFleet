@@ -1155,26 +1155,37 @@ function warnUnknownModels(source: string, models: ReadonlyArray<string>): void 
   }
 }
 
-function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
+export function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
   // Preferred bootstrap path: read config/workers.json so the initial value
   // matches the live config without hardcoding model versions in source code.
   // AUDIT-IFleet-df1f3730 / 3ea3e721.
   if (configPath) {
+    let enabled: ReadonlyArray<WorkerConfig> | undefined;
     try {
       const raw = readFileSync(configPath, 'utf8');
       const parsed = JSON.parse(raw) as { workers?: ReadonlyArray<WorkerConfig> };
-      const enabled = (parsed.workers ?? []).filter((w) => w.enabled);
-      if (enabled.length > 0) {
-        // Throws on tier=max-* with maxConcurrent>1 (single-seat policy,
-        // AUDIT-IFleet-a394a4f1). The bootstrap path must fail loud — a
-        // silent fallback to defaults would mask a config that the operator
-        // explicitly meant to honor.
-        validateMaxPlanConcurrency(enabled);
-        for (const w of enabled) {
-          warnUnknownModels(`workers.json[${w.id}].models`, w.models ?? []);
-        }
-        return enabled;
+      enabled = (parsed.workers ?? []).filter((w) => w.enabled);
+    } catch (err) {
+      console.warn(
+        `[daemon] loadInitialWorkers: could not read ${configPath} (${
+          err instanceof Error ? err.message : String(err)
+        }); falling back to env / hardcoded bootstrap`,
+      );
+    }
+    if (enabled !== undefined && enabled.length > 0) {
+      // Throws on tier=max-* with maxConcurrent>1 (single-seat policy,
+      // AUDIT-IFleet-a394a4f1). The bootstrap path MUST fail loud — a
+      // silent fallback to defaults would mask a config that the operator
+      // explicitly meant to honor. Kept OUTSIDE the read-file try/catch so
+      // a validation throw is not swallowed by the "config unreadable"
+      // handler (codex review caught this).
+      validateMaxPlanConcurrency(enabled);
+      for (const w of enabled) {
+        warnUnknownModels(`workers.json[${w.id}].models`, w.models ?? []);
       }
+      return enabled;
+    }
+    if (enabled !== undefined) {
       // AUDIT-IFleet-1543b30a — surface the silent fall-through when the
       // config file exists but every worker is disabled. Without this warn
       // the operator only learns from boot-time worker counts that the
@@ -1182,12 +1193,6 @@ function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
       console.warn(
         `[daemon] loadInitialWorkers: ${configPath} has no enabled workers ` +
           `— falling back to env / hardcoded bootstrap`,
-      );
-    } catch (err) {
-      console.warn(
-        `[daemon] loadInitialWorkers: could not read ${configPath} (${
-          err instanceof Error ? err.message : String(err)
-        }); falling back to env / hardcoded bootstrap`,
       );
     }
   }

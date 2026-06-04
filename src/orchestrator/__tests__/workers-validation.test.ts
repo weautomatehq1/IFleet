@@ -108,6 +108,35 @@ test('WorkerRegistry boots with zero workers when config violates the Max policy
   }
 });
 
+test('loadInitialWorkers throws (does NOT fall back to env defaults) on Max policy violation', async () => {
+  // codex review caught: the previous version had the validation throw
+  // inside the read-file try/catch, so a violating config was silently
+  // turned into the hardcoded env-fallback defaults — masking the
+  // operator's intent. This test pins the fail-loud behavior.
+  const { loadInitialWorkers } = await import('../daemon');
+  const dir = mkdtempSync(join(tmpdir(), 'ifleet-bootstrap-validation-'));
+  const configPath = join(dir, 'workers.json');
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      workers: [
+        {
+          id: 'claude-max-1',
+          provider: 'claude',
+          tier: 'max-100',
+          maxConcurrent: 3,
+          enabled: true,
+        },
+      ],
+    }),
+  );
+  try {
+    assert.throws(() => loadInitialWorkers(configPath), /single-seat policy/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('WorkerRegistry honors a compliant config (maxConcurrent: 1 for tier=max-*)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-workers-validation-'));
   const configPath = join(dir, 'workers.json');
