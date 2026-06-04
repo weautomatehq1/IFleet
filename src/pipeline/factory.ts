@@ -93,25 +93,43 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'TodoWrite(*)',
   ],
   deny: [
+    // Each destructive subcommand listed in TWO forms: bare (no args) and
+    // with-args (`*`). Claude's permission engine matches Bash patterns as
+    // prefix/glob — a deny like `Bash(git push *)` matches `git push origin
+    // main` but NOT bare `git push` (which pushes to the upstream default).
+    // Both forms are required to cover the full mutation surface, especially
+    // if an inherited or future allow widens back to `Bash(git *)`.
+    'Bash(git add)',
     'Bash(git add *)',
+    'Bash(git commit)',
     'Bash(git commit *)',
+    'Bash(git push)',
     'Bash(git push *)',
+    'Bash(git reset)',
     'Bash(git reset *)',
+    'Bash(git checkout)',
     'Bash(git checkout *)',
+    'Bash(git switch)',
     'Bash(git switch *)',
+    'Bash(git clean)',
     'Bash(git clean *)',
     'Bash(git branch -D *)',
     'Bash(git branch -d *)',
     'Bash(git branch --delete *)',
+    'Bash(git rebase)',
     'Bash(git rebase *)',
+    'Bash(git merge)',
     'Bash(git merge *)',
     'Bash(git worktree *)',
+    'Bash(rm)',
     'Bash(rm *)',
+    'Bash(rmdir)',
     'Bash(rmdir *)',
     // `find -delete` and `find -exec rm` are well-known destructive escape
     // hatches. Denying `find` outright (rather than allowlisting the
     // read-only forms) is the simplest defence — workers can use Glob/Grep
     // for read-only discovery.
+    'Bash(find)',
     'Bash(find *)',
     'Bash(sudo *)',
     'Bash(chmod *)',

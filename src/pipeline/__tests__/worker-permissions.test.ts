@@ -27,8 +27,23 @@ describe('WORKER_CLAUDE_PERMISSIONS — destructive-command guard', () => {
     expect(WORKER_CLAUDE_PERMISSIONS.allow).not.toContain('Bash(find *)');
   });
 
-  it('explicitly denies the destructive git and shell forms', () => {
+  it('explicitly denies the destructive git and shell forms (BOTH bare and with-args)', () => {
+    // Claude's Bash permission patterns are prefix/glob: a deny like
+    // `Bash(git push *)` matches `git push origin main` but NOT bare
+    // `git push` (which pushes to the upstream default). Each destructive
+    // subcommand must be denied in BOTH forms, so an inherited or future
+    // `Bash(git *)` allow can't slip a bare-command mutation through.
     const requiredDenies = [
+      // bare forms (no args)
+      'Bash(git push)',
+      'Bash(git reset)',
+      'Bash(git checkout)',
+      'Bash(git clean)',
+      'Bash(git rebase)',
+      'Bash(rm)',
+      'Bash(rmdir)',
+      'Bash(find)',
+      // with-args forms
       'Bash(git push *)',
       'Bash(git reset *)',
       'Bash(git checkout *)',
