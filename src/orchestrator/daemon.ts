@@ -52,6 +52,7 @@ import { requireEnv } from '../utils/env.js';
 import type { OrchestratorEvent, SprintId, TaskId, WorkerConfig } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
+import { validateMaxPlanConcurrency } from './workers.js';
 import {
   clearFleetPause,
   isFleetPaused,
@@ -1164,6 +1165,11 @@ function loadInitialWorkers(configPath?: string): ReadonlyArray<WorkerConfig> {
       const parsed = JSON.parse(raw) as { workers?: ReadonlyArray<WorkerConfig> };
       const enabled = (parsed.workers ?? []).filter((w) => w.enabled);
       if (enabled.length > 0) {
+        // Throws on tier=max-* with maxConcurrent>1 (single-seat policy,
+        // AUDIT-IFleet-a394a4f1). The bootstrap path must fail loud — a
+        // silent fallback to defaults would mask a config that the operator
+        // explicitly meant to honor.
+        validateMaxPlanConcurrency(enabled);
         for (const w of enabled) {
           warnUnknownModels(`workers.json[${w.id}].models`, w.models ?? []);
         }

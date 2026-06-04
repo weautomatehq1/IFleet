@@ -9,9 +9,9 @@
       "authProfile": "default",
       "permissionMode": "auto",
       "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-      "maxConcurrent": 3,
+      "maxConcurrent": 1,
       "enabled": true,
-      "notes": "Primary Claude Max account ($100 tier). Auto Mode enabled."
+      "notes": "Primary Claude Max account ($100 tier). Auto Mode enabled. Single-seat policy (AUDIT-IFleet-a394a4f1): enforced in code via validateMaxPlanConcurrency — do not raise above 1."
     },
     {
       "id": "claude-max-2",
@@ -20,9 +20,9 @@
       "authProfile": "claude-max-2",
       "permissionMode": "auto",
       "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-      "maxConcurrent": 3,
+      "maxConcurrent": 1,
       "enabled": false,
-      "notes": "Second Claude Max account. Enable when profile is configured."
+      "notes": "Second Claude Max account. Enable when profile is configured. Single-seat policy (AUDIT-IFleet-a394a4f1) — do not raise above 1."
     }
   ],
   "_pending": [
