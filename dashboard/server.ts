@@ -63,7 +63,7 @@ interface TaskQueueRow {
 }
 
 interface PrDecisionRow {
-  id: number;
+  id: string;
   task_id: string;
   repo: string;
   pr_number: number | null;
