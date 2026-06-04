@@ -134,6 +134,8 @@ function main(): void {
         skippedDuplicate += 1;
         continue;
       }
+      // Seed the stub task row so the pr_decisions FK is satisfied on fresh DBs.
+      store.ensureBackfillTaskStub(m.input.taskId, m.input.repo);
       store.recordPrDecision(m.input);
       written += 1;
     }

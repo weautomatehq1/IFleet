@@ -550,6 +550,24 @@ export class TaskStore {
   }
 
   /**
+   * Idempotently seed a stub task row for a synthetic `backfill:<url>` task_id.
+   * The `pr_decisions` table has an FK onto `tasks.id`, so the backfill script
+   * must call this before `recordPrDecision` on a fresh DB (AUDIT-IFleet-31181042).
+   * `INSERT OR IGNORE` makes repeated calls safe.
+   */
+  ensureBackfillTaskStub(taskId: string, repo: string): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO tasks
+            (id, source_kind, source_data, repo, brief, title, routing_hints,
+             state, idempotency_key, created_at)
+         VALUES (@id, 'backfill', '{}', @repo, 'backfill stub', 'backfill stub',
+                 '{}', 'done', @id, @created_at)`,
+      )
+      .run({ id: taskId, repo, created_at: Date.now() });
+  }
+
+  /**
    * Return a SQLite-backed nonce ledger that shares this store's DB handle.
    * The ledger survives control-plane restarts so a captured signed request
    * cannot be replayed inside the maxSkewSec window after PM2 restart
