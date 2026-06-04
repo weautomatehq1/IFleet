@@ -151,8 +151,9 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     expect(forcedReason).toBe('override');
   });
 
-  it('dispatch layer survives onVerify callback throw', async () => {
-    // This mirrors server.ts production behavior: onVerify throws for daemon-only guard
+  it('dispatch layer surfaces onVerify callback throw as 500 and server stays alive', async () => {
+    // operator commands now await dispatch; a throwing handler returns 500 (not 202).
+    // The server must survive the throw (healthz still 200 after).
     let threw = false;
     const cp = createControlPlane({
       queue: noopQueue(),
@@ -167,28 +168,23 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
     try {
       const { port } = cp.server.address() as AddressInfo;
       const body = JSON.stringify({ type: 'verify', taskId: 'T-3' });
-      // Should still return 202 — error is fire-and-forget, not HTTP error
       const res = await fetch(`http://127.0.0.1:${port}/control`, {
         method: 'POST',
         headers: signedHeaders(SECRET, body),
         body,
       });
-      expect(res.status).toBe(202);
+      // Handler threw → 500 (error surfaced to caller, not silently dropped)
+      expect(res.status).toBe(500);
       // Server is still alive after the throw
       const healthz = await fetch(`http://127.0.0.1:${port}/healthz`);
       expect(healthz.status).toBe(200);
     } finally {
       await cp.stop();
     }
-    const deadline2 = Date.now() + 200;
-    while (Date.now() < deadline2) {
-      if (threw) break;
-      await new Promise((r) => setTimeout(r, 5));
-    }
     expect(threw).toBe(true);
   });
 
-  it('dispatch layer survives onForcePr callback throw', async () => {
+  it('dispatch layer surfaces onForcePr callback throw as 500 and server stays alive', async () => {
     let threw = false;
     const cp = createControlPlane({
       queue: noopQueue(),
@@ -208,16 +204,12 @@ describe('control-plane dispatch — verify / force_pr invoke callbacks', () => 
         headers: signedHeaders(SECRET, body),
         body,
       });
-      expect(res.status).toBe(202);
+      // Handler threw → 500 (error surfaced to caller, not silently dropped)
+      expect(res.status).toBe(500);
       const healthz = await fetch(`http://127.0.0.1:${port}/healthz`);
       expect(healthz.status).toBe(200);
     } finally {
       await cp.stop();
-    }
-    const deadline = Date.now() + 200;
-    while (Date.now() < deadline) {
-      if (threw) break;
-      await new Promise((r) => setTimeout(r, 5));
     }
     expect(threw).toBe(true);
   });

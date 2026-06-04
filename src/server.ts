@@ -151,7 +151,7 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
         `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
-    resolveTask: () => null, // legacy adapter; unified store carries the canonical state
+    onStatus: () => null,
   });
 
   await cp.start();

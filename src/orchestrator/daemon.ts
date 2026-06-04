@@ -445,7 +445,27 @@ async function main(): Promise<void> {
           `Use /continue to resume pickups.`,
       );
     },
-    resolveTask: () => null,
+    onStatus: (taskId) => {
+      if (taskId.startsWith('__channel__:')) {
+        const channelId = taskId.slice('__channel__:'.length);
+        if (!/^\d{5,32}$/.test(channelId)) return null;
+        const tasks = store.list({ channelId }, 5);
+        if (tasks.length === 0) return `No recent tasks in <#${channelId}>.`;
+        return tasks
+          .map((t) => `\`${t.id}\` [${t.state ?? '?'}] — ${t.title.slice(0, 60)}`)
+          .join('\n');
+      }
+      const task = store.getById(taskId);
+      if (!task) return `No task found with id \`${taskId}\`.`;
+      const lines = [
+        `id: ${task.id}`,
+        `state: ${task.state ?? 'unknown'}`,
+        `title: ${task.title.slice(0, 100)}`,
+        `repo: ${task.repo}`,
+      ];
+      if (task.stateMeta?.['sprintId']) lines.push(`sprint: ${String(task.stateMeta['sprintId'])}`);
+      return lines.join('\n');
+    },
   });
 
   await cp.start();
