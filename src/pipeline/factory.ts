@@ -40,6 +40,84 @@ const execFileAsync = promisify(execFile);
 // is still inside its rejected window. See ADR-0004 §Context bullet 1.
 export const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
+// Worker Claude permissions written into each worktree's `.claude/settings.json`.
+//
+// Defense-in-depth, not a sandbox. Workers can still execute arbitrary code
+// through `node`/`npm`/`npx`/`pnpm`/`vitest` — those are needed for verify
+// steps. The point of this allow/deny pair is to remove the *trivial*
+// destructive escape hatches (`git push --force`, `git reset --hard`,
+// `rm -rf`) that prompt-only rules at `src/pipeline/prompts.ts:68` cannot
+// enforce against a hallucinating model.
+//
+// Git is read-only from the worker's side: the pipeline host owns
+// `git add` / `git commit` / `git push` (see `src/pipeline/editor.ts:78,90`
+// and `buildPrOpener` in this file).
+//
+// Claude's permission engine concatenates allow/deny across config scopes and
+// deny takes precedence, so the explicit deny block is the load-bearing half —
+// it catches inherited broad allows and forbids the high-risk forms even if a
+// future operator widens the allow list. See
+// https://code.claude.com/docs/en/permissions
+export const WORKER_CLAUDE_PERMISSIONS = {
+  allow: [
+    'Bash(git status)',
+    'Bash(git status *)',
+    'Bash(git diff)',
+    'Bash(git diff *)',
+    'Bash(git log)',
+    'Bash(git log *)',
+    'Bash(git show)',
+    'Bash(git show *)',
+    'Bash(git rev-parse *)',
+    'Bash(git branch --show-current)',
+    'Bash(git branch --list *)',
+    'Bash(pnpm *)',
+    'Bash(npm *)',
+    'Bash(npx *)',
+    'Bash(node *)',
+    'Bash(tsc *)',
+    'Bash(tsx *)',
+    'Bash(eslint *)',
+    'Bash(vitest *)',
+    'Bash(ls *)',
+    'Bash(cat *)',
+    'Bash(grep *)',
+    'Bash(find *)',
+    'Bash(mkdir *)',
+    'Bash(mv *)',
+    'Bash(cp *)',
+    'Edit(*)',
+    'Write(*)',
+    'Read(*)',
+    'Glob(*)',
+    'Grep(*)',
+    'TodoWrite(*)',
+  ],
+  deny: [
+    'Bash(git add *)',
+    'Bash(git commit *)',
+    'Bash(git push *)',
+    'Bash(git reset *)',
+    'Bash(git checkout *)',
+    'Bash(git switch *)',
+    'Bash(git clean *)',
+    'Bash(git branch -D *)',
+    'Bash(git branch -d *)',
+    'Bash(git branch --delete *)',
+    'Bash(git rebase *)',
+    'Bash(git merge *)',
+    'Bash(git worktree *)',
+    'Bash(rm *)',
+    'Bash(sudo *)',
+    'Bash(chmod *)',
+    'Bash(chown *)',
+    'Bash(curl *)',
+    'Bash(wget *)',
+    'Bash(ssh *)',
+    'Bash(scp *)',
+  ],
+} as const;
+
 export interface ProductionFactoryOpts {
   repoRoot: string;
   /** Defaults to 'weautomatehq1/IFleet' — legacy callers work without providing it. */
@@ -337,46 +415,11 @@ async function setupWorktree(
     symlinkSync(join(repoRoot, 'node_modules'), nmTarget);
   }
 
-  // Pre-approve a narrow set of tools so the Claude subprocess doesn't block
-  // on permission prompts in non-interactive (piped stdio) environments.
-  // Bash is restricted to dev-tool prefixes — no blanket `Bash(*)` — so a
-  // prompt-injected worker cannot run `curl`, `wget`, `ssh`, or read arbitrary
-  // host files. Add prefixes here as legitimate worker needs surface.
-  // TODO: narrow further per role (architect/editor/doctor/reviewer) once the
-  // role is plumbed through to setupWorktree.
   const claudeDir = join(worktreePath, '.claude');
   mkdirSync(claudeDir, { recursive: true });
   writeFileSync(
     join(claudeDir, 'settings.json'),
-    JSON.stringify({
-      permissions: {
-        allow: [
-          'Bash(git *)',
-          'Bash(pnpm *)',
-          'Bash(npm *)',
-          'Bash(npx *)',
-          'Bash(node *)',
-          'Bash(tsc *)',
-          'Bash(tsx *)',
-          'Bash(eslint *)',
-          'Bash(vitest *)',
-          'Bash(ls *)',
-          'Bash(cat *)',
-          'Bash(grep *)',
-          'Bash(find *)',
-          'Bash(mkdir *)',
-          'Bash(rm *)',
-          'Bash(mv *)',
-          'Bash(cp *)',
-          'Edit(*)',
-          'Write(*)',
-          'Read(*)',
-          'Glob(*)',
-          'Grep(*)',
-          'TodoWrite(*)',
-        ],
-      },
-    }),
+    JSON.stringify({ permissions: WORKER_CLAUDE_PERMISSIONS }),
   );
 
   return worktreePath;
