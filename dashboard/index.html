@@ -614,7 +614,7 @@ async function fetchPrDecisions() {
             : `<span class="font-mono text-gray-700 flex-shrink-0">${esc(prRef)}</span>`}
           <span class="${verdictColor} font-semibold flex-shrink-0">${esc(verdict)}</span>
           <span class="text-gray-500 truncate flex-1">${esc(d.repo)}</span>
-          <span class="text-gray-700 flex-shrink-0">${timeAgo(new Date(d.decidedAt).toISOString())}</span>
+          <span class="text-gray-700 flex-shrink-0">${timeAgo(new Date(d.createdAt).toISOString())}</span>
         </div>
       `;
     }).join('');
