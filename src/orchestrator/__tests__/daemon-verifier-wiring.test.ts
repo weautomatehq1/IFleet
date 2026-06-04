@@ -255,6 +255,82 @@ test('TaskContextRegistry: record without alias still resolves by primary', () =
   assert.equal(reg.size(), 0);
 });
 
+// M4-T6 — the structural fingerprint MUST be computed at teardown time,
+// while the worktree still exists. wireSprintCompletion fires on
+// sprint.completed/failed/cancelled which run AFTER teardown (and after the
+// worktree directory is gone), so computing there would always return null
+// in production. This test asserts the teardown wrapper captures the hex AND
+// that the cached value survives a subsequent rmdir of the worktree.
+test('wrapFactoryWithVerifierContext caches structural fingerprint at teardown', async () => {
+  const fx = await makeFixture();
+  try {
+    // Diverge from main so `git diff main..HEAD` is non-empty (otherwise we'd
+    // be asserting against the canonical empty-array sha256, which is hex
+    // but not a meaningful test of the compute path).
+    await git(['-C', fx.worktree, 'checkout', '-q', '-b', 'feat/m4-t6']);
+    await execFileAsync('node', ['-e', "require('fs').writeFileSync('m4-t6.txt', 'hello\\nworld\\n')"], {
+      cwd: fx.worktree, env: cleanGitEnv,
+    });
+    await git(['-C', fx.worktree, 'add', 'm4-t6.txt']);
+    await git(['-C', fx.worktree, 'commit', '-q', '-m', 'feat: m4-t6 fixture commit']);
+
+    const registry = new TaskContextRegistry();
+    const wrapped = wrapFactoryWithVerifierContext(makeInnerFactory(fx.worktree), registry);
+
+    const bootstrap = await wrapped(fx.taskId, makeBrief(fx.taskId), {});
+    await bootstrap.teardown?.({ status: 'pr_opened', attempts: [] });
+
+    const rec = registry.get(fx.taskId);
+    assert.ok(rec, 'registry must hold a record after bootstrap+teardown');
+    assert.match(rec.fingerprint ?? '', /^[0-9a-f]{64}$/, 'fingerprint is a 64-char hex sha256');
+    assert.match(rec.sha ?? '', /^[0-9a-f]{40}$/, 'SHA was captured alongside the fingerprint');
+
+    // Simulate production: the inner teardown has removed the worktree by now.
+    // The cached fingerprint must survive — that is the whole point of M4-T6.
+    const cachedFp = rec.fingerprint;
+    rmSync(fx.worktree, { recursive: true, force: true });
+    const recAfterRmdir = registry.get(fx.taskId);
+    assert.equal(recAfterRmdir?.fingerprint, cachedFp, 'cached fingerprint survives worktree removal');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('wrapFactoryWithVerifierContext records fingerprint=null when the worktree was already gone', async () => {
+  const fx = await makeFixture();
+  try {
+    // Remove the worktree BEFORE bootstrap runs — git rev-parse HEAD will
+    // fail, so the wrapper records sha unchanged AND fingerprint=null. The
+    // wiring later inserts the pr_decisions row with NULL fingerprint.
+    const ghostWorktree = fx.worktree + '-ghost';
+    const registry = new TaskContextRegistry();
+    const wrapped = wrapFactoryWithVerifierContext(makeInnerFactory(ghostWorktree), registry);
+    const bootstrap = await wrapped(fx.taskId, makeBrief(fx.taskId), {});
+    await bootstrap.teardown?.({ status: 'pr_opened', attempts: [] });
+
+    const rec = registry.get(fx.taskId);
+    assert.ok(rec, 'registry must hold a record even when teardown compute fails');
+    assert.strictEqual(rec.fingerprint, null, 'fingerprint recorded as null on compute failure');
+    assert.strictEqual(rec.sha, undefined, 'sha left unset when rev-parse fails');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('TaskContextRegistry: setFingerprint(alias, hex|null) is stored on the primary record', () => {
+  const reg = new TaskContextRegistry();
+  reg.record(
+    'tk_primary',
+    { repoUrl: 'https://github.com/x/y', branch: 'feat/a', worktreePath: '/tmp/wt' },
+    'alias_unified',
+  );
+  reg.setFingerprint('alias_unified', 'beef'.repeat(16));
+  assert.equal(reg.get('tk_primary')?.fingerprint, 'beef'.repeat(16));
+  assert.equal(reg.get('alias_unified')?.fingerprint, 'beef'.repeat(16));
+  reg.setFingerprint('tk_primary', null);
+  assert.strictEqual(reg.get('alias_unified')?.fingerprint, null);
+});
+
 test('onEvent ignores non-task.completed events', async () => {
   const fx = await makeFixture();
   try {

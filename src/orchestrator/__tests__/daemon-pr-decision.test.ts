@@ -1,20 +1,29 @@
 /**
  * Integration tests: wireSprintCompletion() → TaskStore PR-decision recording.
  *
- * Asserts the M4-T5 wiring:
- *   1. sprint.completed + PR URL + live worktree → 'merged' row with
- *      mergedAt set and a 64-hex-char structural fingerprint.
- *   2. sprint.failed + prior PR URL + live worktree → 'rejected' row with
- *      fingerprint (renamed from 'abandoned' in M4-T5 to match the
- *      pr_decisions verdict taxonomy: merged | rejected).
+ * Asserts the M4-T6 wiring (was M4-T5: the compute moved upstream to
+ * wrapFactoryWithVerifierContext's teardown wrapper — see
+ * daemon-verifier-wiring.test.ts for that path. This file tests the
+ * read-side: the wiring reads the cached fingerprint that teardown stashed
+ * on the registry and writes it on the pr_decisions row.):
+ *   1. sprint.completed + PR URL + cached fingerprint → 'merged' row with
+ *      mergedAt set and the cached 64-hex-char hash echoed back.
+ *   2. sprint.failed + prior PR URL + cached fingerprint → 'rejected' row
+ *      with the cached hash (verdict 'rejected' replaces the pre-M4-T5
+ *      'abandoned' taxonomy).
  *   3. sprint.failed without any PR URL → NO row written (graceful skip).
- *   4. sprint.cancelled + prior PR URL + live worktree → 'rejected' row.
- *   5. sprint.completed + PR URL + verifierCtx whose worktreePath does NOT
- *      exist → row still inserted, fingerprint = NULL (failure-graceful
- *      contract: a missing worktree must not crash the sprint).
+ *   4. sprint.cancelled + prior PR URL + cached fingerprint → 'rejected' row.
+ *   5. sprint.completed + PR URL + cached fingerprint=NULL → row still
+ *      inserted, fingerprint = NULL (failure-graceful contract: a teardown
+ *      that failed to compute must not crash the sprint).
  *
- * Tests use a real tmp git repo (not a mock) so the fingerprint compute
- * path exercises the actual `git diff --numstat` call.
+ * The fingerprint is set via verifierCtx.setFingerprint(taskId, hex|null)
+ * to mimic what wrapFactoryWithVerifierContext's teardown wrapper does
+ * before removing the worktree. The wiring under test is sync — it just
+ * reads the cache.
+ *
+ * Tests use a real tmp git repo for store + ctx scaffolding only; the
+ * fingerprint compute itself is exercised in daemon-verifier-wiring.test.ts.
  *
  * No subprocess, Docker, Discord, or real Orchestrator. The Orchestrator is
  * replaced by a minimal in-process mock that exposes on/off/emit/getSprint.
@@ -168,11 +177,19 @@ async function pollForRows(
 
 const FINGERPRINT_RE = /^[0-9a-f]{64}$/;
 
+/**
+ * Deterministic sentinel hex used to seed verifierCtx.setFingerprint(...) in
+ * the wiring tests. The wiring should echo this exact value back onto the
+ * pr_decisions row — proving the read-from-cache path, not the compute path.
+ */
+const CACHED_FP_HEX =
+  'cafef00d000102030405060708090a0b0c0d0e0f10111213141516171819aabb';
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-test('sprint.completed + PR URL + live worktree → merged row with fingerprint', async () => {
+test('sprint.completed + PR URL + cached fingerprint → merged row with fingerprint', async () => {
   const fix = await makeFixture();
   try {
     const orch = new MockOrchestrator();
@@ -186,6 +203,8 @@ test('sprint.completed + PR URL + live worktree → merged row with fingerprint'
       branch: 'feat/test',
       worktreePath: fix.repoRoot,
     });
+    // M4-T6: teardown would have cached the fingerprint here before sprint.completed fired.
+    verifierCtx.setFingerprint(task.id, CACHED_FP_HEX);
 
     fix.store.insert(task);
     wireSprintCompletion(
@@ -218,12 +237,13 @@ test('sprint.completed + PR URL + live worktree → merged row with fingerprint'
     assert.strictEqual(row.reviewerLogin, null);
     assert.ok(row.mergedAt !== null && row.mergedAt > 0, 'mergedAt set on merge');
     assert.match(row.fingerprint ?? '', FINGERPRINT_RE, 'fingerprint is 64-char hex');
+    assert.equal(row.fingerprint, CACHED_FP_HEX, 'wiring echoes the cached hex verbatim');
   } finally {
     fix.cleanup();
   }
 });
 
-test('sprint.failed + prior PR URL + live worktree → rejected row with fingerprint', async () => {
+test('sprint.failed + prior PR URL + cached fingerprint → rejected row with fingerprint', async () => {
   const fix = await makeFixture();
   try {
     const orch = new MockOrchestrator();
@@ -237,6 +257,7 @@ test('sprint.failed + prior PR URL + live worktree → rejected row with fingerp
       branch: 'feat/test',
       worktreePath: fix.repoRoot,
     });
+    verifierCtx.setFingerprint(task.id, CACHED_FP_HEX);
 
     fix.store.insert(task);
     wireSprintCompletion(
@@ -264,7 +285,7 @@ test('sprint.failed + prior PR URL + live worktree → rejected row with fingerp
     const row = rows[0]!;
     assert.equal(row.verdict, 'rejected');
     assert.equal(row.prNumber, 77);
-    assert.match(row.fingerprint ?? '', FINGERPRINT_RE, 'fingerprint is 64-char hex');
+    assert.equal(row.fingerprint, CACHED_FP_HEX, 'wiring echoes the cached hex verbatim');
   } finally {
     fix.cleanup();
   }
@@ -297,7 +318,7 @@ test('sprint.failed without any PR URL → no row written', async () => {
   }
 });
 
-test('sprint.cancelled + prior PR URL + live worktree → rejected row with fingerprint', async () => {
+test('sprint.cancelled + prior PR URL + cached fingerprint → rejected row with fingerprint', async () => {
   const fix = await makeFixture();
   try {
     const orch = new MockOrchestrator();
@@ -311,6 +332,7 @@ test('sprint.cancelled + prior PR URL + live worktree → rejected row with fing
       branch: 'feat/test',
       worktreePath: fix.repoRoot,
     });
+    verifierCtx.setFingerprint(task.id, CACHED_FP_HEX);
 
     fix.store.insert(task);
     wireSprintCompletion(
@@ -337,13 +359,13 @@ test('sprint.cancelled + prior PR URL + live worktree → rejected row with fing
     assert.equal(rows.length, 1, 'exactly one pr_decisions row');
     assert.equal(rows[0]!.verdict, 'rejected');
     assert.equal(rows[0]!.prNumber, 99);
-    assert.match(rows[0]!.fingerprint ?? '', FINGERPRINT_RE);
+    assert.equal(rows[0]!.fingerprint, CACHED_FP_HEX, 'wiring echoes the cached hex verbatim');
   } finally {
     fix.cleanup();
   }
 });
 
-test('sprint.completed + PR URL + missing worktree → row inserted with fingerprint=NULL', async () => {
+test('sprint.completed + PR URL + cached fingerprint=null → row inserted with fingerprint=NULL', async () => {
   const fix = await makeFixture();
   try {
     const orch = new MockOrchestrator();
@@ -352,14 +374,17 @@ test('sprint.completed + PR URL + missing worktree → row inserted with fingerp
     const sprintId = 'sprint-pr-5' as SprintId;
     const prUrl = 'https://github.com/weautomatehq1/IFleet/pull/123';
     const verifierCtx = new TaskContextRegistry();
-    // Point worktreePath at a directory that does NOT exist — git will fail
-    // and the fingerprint compute path must swallow the error and insert
-    // the row with fingerprint=NULL.
     verifierCtx.record(task.id, {
       repoUrl: `https://github.com/${task.repo}`,
       branch: 'feat/test',
-      worktreePath: join(fix.repoRoot, 'does', 'not', 'exist'),
+      worktreePath: fix.repoRoot,
     });
+    // M4-T6 graceful-failure contract: teardown attempted the compute and
+    // failed (worktree gone before rev-parse, git error, malformed refs,
+    // etc.), so the registry holds a recorded null. The wiring must still
+    // insert the row — just with fingerprint=NULL — so PR-rejection
+    // learning keeps the verdict signal even when the hash is missing.
+    verifierCtx.setFingerprint(task.id, null);
 
     fix.store.insert(task);
     wireSprintCompletion(
@@ -383,11 +408,11 @@ test('sprint.completed + PR URL + missing worktree → row inserted with fingerp
     orch.emit({ ts: 2, sprintId, kind: 'sprint.completed', payload: {} });
 
     const rows = await pollForRows(fix.store, task.repo, 1);
-    assert.equal(rows.length, 1, 'exactly one pr_decisions row even on compute failure');
+    assert.equal(rows.length, 1, 'exactly one pr_decisions row even on cached null');
     const row = rows[0]!;
     assert.equal(row.verdict, 'merged');
     assert.equal(row.prNumber, 123);
-    assert.strictEqual(row.fingerprint, null, 'fingerprint is NULL on compute failure');
+    assert.strictEqual(row.fingerprint, null, 'fingerprint is NULL when cache holds null');
   } finally {
     fix.cleanup();
   }
