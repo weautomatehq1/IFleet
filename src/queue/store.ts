@@ -575,7 +575,6 @@ export class TaskStore {
  */
 export class SqliteNonceLedger {
   private readonly insertStmt: Database.Statement<{ nonce: string; expires_at: number }>;
-  private readonly selectStmt: Database.Statement<{ nonce: string }>;
   private readonly pruneStmt: Database.Statement<{ now: number }>;
 
   constructor(
@@ -585,16 +584,14 @@ export class SqliteNonceLedger {
     this.insertStmt = this.db.prepare(
       `INSERT OR IGNORE INTO nonce_ledger (nonce, expires_at) VALUES (@nonce, @expires_at)`,
     );
-    this.selectStmt = this.db.prepare(`SELECT 1 AS one FROM nonce_ledger WHERE nonce = @nonce`);
     this.pruneStmt = this.db.prepare(`DELETE FROM nonce_ledger WHERE expires_at <= @now`);
   }
 
   /** Returns true if the nonce was fresh and is now recorded. False if already seen. */
   registerOrReject(nonce: string, now: number = Date.now()): boolean {
     this.pruneStmt.run({ now });
-    if (this.selectStmt.get({ nonce })) return false;
-    this.insertStmt.run({ nonce, expires_at: now + this.ttlMs });
-    return true;
+    const result = this.insertStmt.run({ nonce, expires_at: now + this.ttlMs });
+    return result.changes === 1;
   }
 
   /** No-op: no timers or async resources to release. Kept for interface parity with in-memory ledger. */

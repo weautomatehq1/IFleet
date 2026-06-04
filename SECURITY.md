@@ -53,18 +53,13 @@ one writer process, so the SELECT/INSERT pair is atomic-by-virtue-of-being-
 single-threaded and a duplicate nonce CAN be detected at SELECT time. The
 property holds today.
 
-**Multi-instance regression risk (known, NOT mitigated).** If the control
-plane is ever scaled to ≥ 2 processes against the same SQLite file (e.g. a
-PM2 cluster, a hot standby, or a sidecar listener), the SELECT-then-INSERT
-gap becomes a TOCTOU race: process A's SELECT returns empty, process B's
-SELECT also returns empty, both INSERT OR IGNORE — A succeeds, B is silently
-ignored, both return `true` and accept the nonce as fresh. A captured signed
-request can then be replayed against the second process. Mitigation when
-multi-instance is needed: wrap prune+SELECT+INSERT in a `BEGIN IMMEDIATE`
-transaction so the writer lock serialises the pair, or move the ledger to a
-backend with native CAS semantics (Redis `SET NX EX`, PostgreSQL row-locking
-`INSERT … ON CONFLICT … RETURNING`). Flagged in T4's done-report for session
-20260603-1245-m4-foundation-plus-obs and codex-review of PR #314.
+**Multi-instance regression risk (mitigated 2026-06-04).** Previously,
+SELECT-then-INSERT-OR-IGNORE could let two processes both return `true` for
+the same nonce when racing. Mitigation shipped in PR #<this-pr>:
+`registerOrReject` now uses INSERT OR IGNORE as the source of truth and
+returns `result.changes === 1`, so the duplicate INSERT is detected at the
+SQLite UNIQUE-constraint level without any pre-insert SELECT. The race window
+no longer exists for SQLite-backed deployments.
 
 ## Secret handling
 
