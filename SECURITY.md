@@ -36,6 +36,16 @@ When IFleet proposes changes to its own codebase (`weautomatehq1/IFleet`):
 4. **Shadow eval required** — candidate code runs against `.ifleet/eval/eval-set.jsonl` (≥50 tasks) and must match or beat baseline on all metrics before approval.
 5. **Rollback ready** — every self-PR must be revertable via single `pm2 reload ecosystem.config.cjs --update-env` against prior git tag.
 
+## Replay protection (control plane)
+
+Signed control-plane requests carry an HMAC + timestamp + nonce. The nonce
+ledger is persisted to SQLite (`nonce_ledger` table on the shared tasks DB)
+as of AUDIT-IFleet-e664f9f3 closure; replay protection now survives
+control-plane restart. Before this change, an in-process Map held the
+ledger and a PM2 restart wiped it, letting any captured signed request
+with a timestamp inside the 5-minute skew window be replayed against the
+freshly-started process.
+
 ## Secret handling
 
 - No secrets in JSON config files. Always env vars or `.env` (gitignored).

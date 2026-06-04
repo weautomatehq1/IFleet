@@ -1,6 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { AddressInfo } from 'node:net';
 import {
   createControlPlane,
@@ -8,6 +11,7 @@ import {
   signPayload,
   verifySignature,
 } from '../control-plane.js';
+import { TaskStore } from '../store.js';
 import type { QueueAdapter, QueuedTask } from '../types.js';
 
 const fixedNonce = (): string => randomUUID();
@@ -376,6 +380,68 @@ describe('control plane HTTP', () => {
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(forcedId, 't-f');
     assert.equal(forcedReason, 'override');
+  });
+
+  it('persists nonces across NonceStore instances (simulates restart) — AUDIT-IFleet-e664f9f3', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ifleet-nonce-ledger-'));
+    const dbPath = join(dir, 'tasks.db');
+    try {
+      const ttlMs = 6 * 60 * 1000;
+      const nonce = 'restart-survival-nonce';
+
+      // Instance A — open store, register the nonce, then close the DB
+      // handle. This mirrors the control-plane writing a record then PM2
+      // restarting the process.
+      const storeA = new TaskStore(dbPath);
+      const ledgerA = storeA.createNonceLedger(ttlMs);
+      assert.equal(ledgerA.registerOrReject(nonce), true, 'first registration succeeds');
+      ledgerA.destroy();
+      storeA.close();
+
+      // Instance B — reopen the same DB file. The nonce written by A must
+      // still be present, so the same nonce is rejected as a replay.
+      const storeB = new TaskStore(dbPath);
+      const ledgerB = storeB.createNonceLedger(ttlMs);
+      assert.equal(
+        ledgerB.registerOrReject(nonce),
+        false,
+        'replay must be rejected after restart',
+      );
+      ledgerB.destroy();
+      storeB.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('expires entries older than maxSkewSec on the next registration (TTL prune)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ifleet-nonce-ttl-'));
+    const dbPath = join(dir, 'tasks.db');
+    try {
+      const ttlMs = 5 * 60 * 1000;
+      const store = new TaskStore(dbPath);
+      const ledger = store.createNonceLedger(ttlMs);
+
+      // Register a nonce as-if the clock were one hour ago. Its expires_at
+      // is now in the past relative to the next call's `now`.
+      const past = Date.now() - 60 * 60 * 1000;
+      assert.equal(ledger.registerOrReject('stale-nonce', past), true);
+      assert.equal(ledger.size(), 1, 'stale nonce was inserted');
+
+      // Register a fresh nonce with the current clock. The opportunistic
+      // prune inside registerOrReject must evict the stale entry first.
+      assert.equal(ledger.registerOrReject('fresh-nonce'), true);
+      assert.equal(
+        ledger.size(),
+        1,
+        'stale entry must be evicted; only the fresh nonce remains',
+      );
+
+      ledger.destroy();
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('cancel dispatch does NOT call queue.markFailed even when resolveTask returns a task', async () => {
