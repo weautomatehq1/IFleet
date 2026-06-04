@@ -562,7 +562,7 @@ export class TaskStore {
             (id, source_kind, source_data, repo, brief, title, routing_hints,
              state, idempotency_key, created_at)
          VALUES (@id, 'backfill', '{}', @repo, 'backfill stub', 'backfill stub',
-                 '{}', 'completed', @id, @created_at)`,
+                 '{}', 'done', @id, @created_at)`,
       )
       .run({ id: taskId, repo, created_at: Date.now() });
   }
