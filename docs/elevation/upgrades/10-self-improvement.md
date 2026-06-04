@@ -6,11 +6,13 @@
 
 **Hard prerequisites — verify all before starting:**
 
-- [ ] `.ifleet/eval/eval-set.jsonl` has ≥50 rows (per `eval-set.md` sizing schedule; SPRINT.md targets ≥50 by M3, with further growth to ≥100 by M5)
-- [ ] `SECURITY.md` lists protected paths
-- [ ] `docs/elevation/operating-standard.md` signed off (Sebastian + legal if applicable)
-- [ ] Shadow eval harness exists (replays eval-set tasks against candidate code, reports metrics)
-- [ ] Rollback runbook documented in `deploy/rollback.sh`
+<!-- Status as of 2026-06-04: 2/5 met. Upgrade 10 is blocked. Do not start implementation. -->
+
+- [ ] `.ifleet/eval/eval-set.jsonl` has ≥50 rows — **NOT MET: 13/50 rows as of 2026-06-04; in progress** (per `eval-set.md` sizing schedule; SPRINT.md targets ≥50 by M3, with further growth to ≥100 by M5)
+- [x] `SECURITY.md` lists protected paths — **MET** (protected-paths table + self-modification constraints present)
+- [ ] `docs/elevation/operating-standard.md` signed off — **NOT MET: sign-off boxes empty; blocked by Upgrade 10 readiness milestone**
+- [ ] Shadow eval harness exists (`src/agents/self-improver/`) — **NOT MET: directory does not exist; planned for M4+**
+- [x] Rollback runbook documented in `deploy/rollback.sh` — **MET** (v1 shipped: single-PR revert + optional PM2 reload + healthz verify + audit log; multi-host and time-windowed variants are planned follow-ups)
 
 Skipping any precondition = self-inflicted production incident.
 

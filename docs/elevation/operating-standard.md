@@ -97,5 +97,12 @@ v0.1 (2026-05-19) — initial draft, internal use only. Update before first clie
 
 ## Sign-off
 
-- [ ] Sebastian Puig (founder, WeAutomateHQ)
+> **Status as of 2026-06-04: not ready for client use.** Upgrade 10 (self-improvement) prerequisites are partially unmet — see `docs/elevation/upgrades/10-self-improvement.md` for detail. Sign-off is deferred until all Upgrade 10 gates clear and implementation is validated.
+>
+> **Blocking items:**
+> - eval-set: 13/50 rows required (Upgrade 10 gate) — in progress
+> - `src/agents/self-improver/` not yet built — planned M4+
+> - Legal review not yet initiated
+
+- [ ] Sebastian Puig (founder, WeAutomateHQ) — pending Upgrade 10 readiness and legal review
 - [ ] (legal review, before first client signature)
