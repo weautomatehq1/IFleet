@@ -4,8 +4,13 @@
  * IFleet runs Claude via the `claude` CLI as a subprocess (`src/workers/`), not
  * via the Anthropic SDK directly. There is no SDK call to wrap, so this module
  * provides a thin trace primitive that the orchestrator-level adapter
- * (`src/workers/adapters/claude-cli.ts`) wraps around every spawn — one trace
- * per Claude subprocess invocation.
+ * (`src/workers/adapters/claude-cli.ts`) wraps around every spawn.
+ *
+ * Per ADR-0001:36-42 the invariant is ONE shared trace per sprint, with each
+ * Claude subprocess (architect, editor, reviewer, …) as a generation/span under
+ * it. Pass LANGFUSE_PARENT_TRACE_ID to attach a subprocess to an existing sprint
+ * trace. When the env var is absent the first call creates the sprint-level trace
+ * and exposes its ID via LangfuseTrace.traceId for propagation to siblings.
  *
  * Disabled (no-op) when env vars are absent so tests and local dev don't crash.
  * Self-hosted Langfuse lives on the VPS at http://127.0.0.1:3010 (P1.1).
@@ -41,6 +46,17 @@ export interface TraceOutput {
 
 export interface LangfuseTrace {
   end(output: TraceOutput): void;
+  /**
+   * ID of the sprint-level trace created by this call.
+   * Defined only when LANGFUSE_PARENT_TRACE_ID was not set (i.e. this call
+   * created the parent trace). Pass it to sibling subprocess spawns as
+   * LANGFUSE_PARENT_TRACE_ID so all roles land under one sprint trace.
+   *
+   * TODO(AUDIT-IFleet-32646d9e): wire full propagation through SprintManager
+   * so every spawn automatically receives the parent trace ID without manual
+   * env-var threading.
+   */
+  traceId?: string;
 }
 
 // Cached per process lifetime — intentional, env vars don't change at runtime
@@ -80,9 +96,15 @@ function readEnv(): LangfuseEnv {
 }
 
 /**
- * Start a trace for one Claude subprocess invocation. Returns a handle whose
- * `end()` finalises the trace with the spawn result. Safe to call when Langfuse
- * is disabled — returns a no-op handle.
+ * Start a trace (or attach to an existing sprint trace) for one Claude
+ * subprocess invocation. Per ADR-0001:36-42, the correct shape is one
+ * Langfuse trace per sprint with each subprocess as a generation under it.
+ *
+ * When LANGFUSE_PARENT_TRACE_ID is set the generation is created under the
+ * existing trace. When it is absent a new sprint-level trace is created and
+ * its ID is returned on the handle as `traceId` for propagation to siblings.
+ *
+ * Returns a no-op handle when Langfuse is disabled.
  */
 export function startTrace(input: TraceInput): LangfuseTrace {
   const client = getLangfuseClient();
@@ -90,17 +112,22 @@ export function startTrace(input: TraceInput): LangfuseTrace {
     return { end: () => undefined };
   }
 
-  const trace = client.trace({
-    name: input.name,
-    metadata: {
-      taskId: input.taskId,
-      workerId: input.workerId,
-      model: input.model,
-      ...(input.metadata ?? {}),
-    },
-    input: { brief: input.brief },
-    tags: ['ifleet', input.name],
-  });
+  const parentTraceId = process.env['LANGFUSE_PARENT_TRACE_ID'];
+  const isChildSpan = typeof parentTraceId === 'string' && parentTraceId !== '';
+
+  const trace = isChildSpan
+    ? client.trace({ id: parentTraceId })
+    : client.trace({
+        name: input.name,
+        metadata: {
+          taskId: input.taskId,
+          workerId: input.workerId,
+          model: input.model,
+          ...(input.metadata ?? {}),
+        },
+        input: { brief: input.brief },
+        tags: ['ifleet', input.name],
+      });
 
   const generation = trace.generation({
     name: input.name,
@@ -110,6 +137,7 @@ export function startTrace(input: TraceInput): LangfuseTrace {
   });
 
   return {
+    traceId: isChildSpan ? undefined : trace.traceId,
     end(output: TraceOutput): void {
       try {
         const hasTokens =
@@ -131,15 +159,18 @@ export function startTrace(input: TraceInput): LangfuseTrace {
             ? { total: output.totalCostUsd }
             : undefined,
         });
-        trace.update({
-          output: {
-            ok: output.ok,
-            exitCode: output.exitCode,
-            totalCostUsd: output.totalCostUsd,
-            durationMs: output.durationMs,
-            error: output.error,
-          },
-        });
+        // Only update sprint-level metadata when we own the trace (no parent).
+        if (!isChildSpan) {
+          trace.update({
+            output: {
+              ok: output.ok,
+              exitCode: output.exitCode,
+              totalCostUsd: output.totalCostUsd,
+              durationMs: output.durationMs,
+              error: output.error,
+            },
+          });
+        }
         // flushAt:1 means each event ships immediately, but flush() guarantees
         // the trace is on the wire before the worker process exits.
         void client.flushAsync();

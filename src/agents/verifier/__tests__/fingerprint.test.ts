@@ -13,6 +13,11 @@ async function git(cwd: string, ...args: string[]): Promise<void> {
     cwd,
     env: {
       ...process.env,
+      // Unset git-dir overrides so temp-repo commits don't leak into the
+      // parent repo when this test runs inside a git push hook (GIT_DIR is
+      // set by git itself before invoking pre-push hooks).
+      GIT_DIR: undefined,
+      GIT_WORK_TREE: undefined,
       GIT_AUTHOR_NAME: 't2-fingerprint-test',
       GIT_AUTHOR_EMAIL: 't2@example.com',
       GIT_COMMITTER_NAME: 't2-fingerprint-test',
@@ -34,7 +39,10 @@ async function makeRepoWithBaseCommit(): Promise<RepoSetup> {
   writeFileSync(join(root, 'README.md'), 'base\n');
   await git(root, 'add', '.');
   await git(root, 'commit', '-q', '-m', 'base');
-  const { stdout: shaOut } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: root });
+  const { stdout: shaOut } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    env: { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined },
+  });
   return {
     root,
     baseSha: shaOut.trim(),
@@ -44,12 +52,25 @@ async function makeRepoWithBaseCommit(): Promise<RepoSetup> {
 
 describe('computeStructuralFingerprint', () => {
   let repo: RepoSetup;
+  // Save and restore GIT_DIR / GIT_WORK_TREE around every test so that
+  // computeStructuralFingerprint's internal git spawns use cwd-discovery
+  // rather than the parent repo's git dir (which git sets before pre-push hooks).
+  let savedGitDir: string | undefined;
+  let savedGitWorkTree: string | undefined;
 
   beforeEach(async () => {
+    savedGitDir = process.env['GIT_DIR'];
+    savedGitWorkTree = process.env['GIT_WORK_TREE'];
+    delete process.env['GIT_DIR'];
+    delete process.env['GIT_WORK_TREE'];
     repo = await makeRepoWithBaseCommit();
   });
 
   afterEach(() => {
+    if (savedGitDir !== undefined) process.env['GIT_DIR'] = savedGitDir;
+    else delete process.env['GIT_DIR'];
+    if (savedGitWorkTree !== undefined) process.env['GIT_WORK_TREE'] = savedGitWorkTree;
+    else delete process.env['GIT_WORK_TREE'];
     repo.cleanup();
   });
 
