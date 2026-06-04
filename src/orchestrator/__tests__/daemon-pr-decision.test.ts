@@ -9,8 +9,7 @@
  *   1. sprint.completed + PR URL + cached fingerprint → 'merged' row with
  *      mergedAt set and the cached 64-hex-char hash echoed back.
  *   2. sprint.failed + prior PR URL + cached fingerprint → 'rejected' row
- *      with the cached hash (verdict 'rejected' replaces the pre-M4-T5
- *      'abandoned' taxonomy).
+ *      with the cached hash (verdict `'merged' | 'rejected'` taxonomy).
  *   3. sprint.failed without any PR URL → NO row written (graceful skip).
  *   4. sprint.cancelled + prior PR URL + cached fingerprint → 'rejected' row.
  *   5. sprint.completed + PR URL + cached fingerprint=NULL → row still
