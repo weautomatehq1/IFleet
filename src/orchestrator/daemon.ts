@@ -41,7 +41,7 @@ import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
 import { broadcastIFleet } from '../observability/discord-broadcast.js';
 import { DiscordOutAdapter } from '../observability/discord-output.js';
-import { makeProductionFactory } from '../pipeline/factory.js';
+import { makeProductionFactory, type RepoResolver, type ResolvedRepo } from '../pipeline/factory.js';
 import { createControlPlane } from '../queue/control-plane.js';
 import { GitHubQueue } from '../queue/github.js';
 import { GitHubIssuesSource } from '../queue/sources/github.js';
@@ -163,8 +163,13 @@ async function main(): Promise<void> {
   // -------- Production pipeline factory + emit wiring --------
   const initialWorkers = loadInitialWorkers(resolvePath(repoRoot, 'config', 'workers.json'));
   const octokit = new Octokit({ auth: githubToken });
+  // Compose a RepoResolver from channels.json (workDir + defaultBranch +
+  // codeowners) and repos.json (allowed repos). The factory uses this to
+  // refuse any task whose `task.repo` is not whitelisted, before a worktree
+  // is created or any git/PR command runs. AUDIT-IFleet-6126a1f9.
+  const repoResolver = buildRepoResolver(router, reposMap);
   const productionFactory = makeProductionFactory({
-    repoRoot,
+    repoResolver,
     octokit,
     initialWorkers,
   });
@@ -1250,6 +1255,63 @@ const KNOWN_MODEL_SHORTHAND = new Set([
   // Full model IDs (config/workers.json)
   'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
 ]);
+
+/**
+ * Compose a {@link RepoResolver} from the existing channels router (which
+ * carries `workDir` + `defaultBranch` + `codeowners`) and the reposMap
+ * allowlist. The factory uses this to refuse any task whose `task.repo` is
+ * not whitelisted, before a worktree is created or any git/PR command runs.
+ *
+ * The resolver is the load-bearing fix for AUDIT-IFleet-6126a1f9: previously
+ * the factory hardcoded `repoRoot` to the daemon's working directory and
+ * defaulted `repoId` to `weautomatehq1/IFleet`, so a task from the factory
+ * channel would build a worktree under IFleet and open a PR against IFleet.
+ *
+ * Composition rules (intentionally strict):
+ *   - A repo must appear in BOTH `reposMap` (security allowlist) AND in some
+ *     `channels.json` route (so we know where the clone lives). Either-only
+ *     yields a `null` resolve.
+ *   - `repoRoot` comes from the channel route's `workDir`.
+ *   - `defaultBranch` and `codeowners` come from the channel route.
+ *   - `owner`/`name` are split from the canonical slug.
+ *
+ * No "legacy IFleet fallback" — codex review caught that a backstop entry
+ * built from the daemon's cwd would reintroduce exactly the foot-gun this
+ * audit closes (silently dispatching to the host checkout on a misconfigured
+ * channels.json). If channels.json doesn't mention IFleet, the resolver
+ * returns null and the factory refuses to dispatch.
+ */
+export function buildRepoResolver(
+  router: FileChannelRouter,
+  reposMap: ReturnType<typeof loadReposConfig>,
+): RepoResolver {
+  // Build a per-repo view by walking channels.json once. Channels can map
+  // multiple channelIds to the same repo (e.g. a public and a triage channel
+  // for IFleet); first-wins is fine for our purposes since workDir is a
+  // function of the repo slug, not the channel.
+  const byRepo = new Map<string, ResolvedRepo>();
+  for (const route of router.list()) {
+    if (byRepo.has(route.repo)) continue;
+    if (!reposMap[route.repo]) continue;
+    const [owner, name] = route.repo.split('/', 2) as [string, string];
+    byRepo.set(route.repo, {
+      repoId: route.repo,
+      owner,
+      name,
+      repoRoot: route.workDir,
+      defaultBranch: route.defaultBranch,
+      codeowners: route.codeowners,
+    });
+  }
+  return {
+    resolve(repoSlug: string): ResolvedRepo | null {
+      return byRepo.get(repoSlug) ?? null;
+    },
+    list(): ReadonlyArray<ResolvedRepo> {
+      return Array.from(byRepo.values());
+    },
+  };
+}
 
 function warnUnknownModels(source: string, models: ReadonlyArray<string>): void {
   for (const m of models) {

@@ -141,14 +141,56 @@ export const WORKER_CLAUDE_PERMISSIONS = {
   ],
 } as const;
 
-export interface ProductionFactoryOpts {
+/**
+ * Per-task repo resolution. The factory used to hardcode a single
+ * `repoRoot`/`repoId` pair at bootstrap, which meant every task — regardless
+ * of its source channel — ended up with a worktree under the IFleet checkout
+ * and a PR opened against `weautomatehq1/IFleet`. A `/ship` in the factory
+ * channel could plausibly mutate IFleet.
+ *
+ * `RepoResolver` makes the factory task-aware: it receives `task.repo`
+ * (canonical `"owner/name"` string carried through the queue) and returns
+ * the absolute clone path, owner/name split, base branch, and optional
+ * per-repo codeowners + approver. Daemon composes the resolver from
+ * `config/channels.json` (workDir, defaultBranch, codeowners) and validates
+ * against `config/repos.json` (allowed repos). AUDIT-IFleet-6126a1f9.
+ */
+export interface ResolvedRepo {
+  /** Canonical `"owner/name"` slug used by `gh pr create --repo`. */
+  repoId: string;
+  /** Repo owner half of the slug. */
+  owner: string;
+  /** Repo name half of the slug. */
+  name: string;
+  /** Absolute path to the canonical clone on this host. */
   repoRoot: string;
-  /** Defaults to 'weautomatehq1/IFleet' — legacy callers work without providing it. */
-  repoId?: string;
+  /** Branch the PR is opened against. Per-repo so non-`main` defaults work. */
+  defaultBranch: string;
+  /** Optional per-repo codeowners (falls back to factory default). */
+  codeowners?: ReadonlyArray<string>;
+  /** Optional per-repo approver (falls back to factory default). */
+  approver?: string;
+}
+
+export interface RepoResolver {
+  /**
+   * Resolve a task's `repo` field to its host-local clone metadata.
+   * Returns `null` when the slug is not whitelisted — the factory throws on
+   * null, refusing to dispatch a task that would land on the wrong repo.
+   */
+  resolve(repoSlug: string): ResolvedRepo | null;
+  /** All known repos (used by tests + diagnostics). */
+  list(): ReadonlyArray<ResolvedRepo>;
+}
+
+export interface ProductionFactoryOpts {
+  repoResolver: RepoResolver;
   octokit: Octokit;
   /** Pre-built VerifyRunner; defaults to createVerifyRunner() when omitted. */
   verify?: VerifyRunner;
-  codeowners?: string[];
+  /** Fallback codeowners when a resolved repo doesn't carry its own. */
+  codeowners?: ReadonlyArray<string>;
+  /** Fallback approver when a resolved repo doesn't carry its own. */
   approver?: string;
   initialWorkers: ReadonlyArray<WorkerConfig>;
 }
@@ -165,14 +207,9 @@ export interface ProductionFactory {
  * whenever `WorkerRegistry.onReload` fires (Item 4 integration point).
  */
 export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFactory {
-  const repoId = opts.repoId ?? 'weautomatehq1/IFleet';
-  const parts = repoId.split('/');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new Error(`repoId must be "owner/name", got: ${repoId}`);
-  }
-  const [repoOwner, repoName] = parts as [string, string];
-  const worktreesDir = join(opts.repoRoot, '.omc', 'worktrees');
   const verify = opts.verify ?? buildVerifyAdapter();
+  const fallbackCodeowners = opts.codeowners ?? ['@monstersebas1'];
+  const fallbackApprover = opts.approver ?? '@monstersebas1';
 
   let pool: AccountPool = createAccountPool(opts.initialWorkers);
 
@@ -184,17 +221,35 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const task = decodeBridgeBrief(brief);
     if (!task) throw new Error('brief is not a structured QueuedTask payload');
 
+    // Per-task repo resolution. Throwing here is the load-bearing safety
+    // check — any task whose `repo` is not in the resolver gets refused
+    // before a worktree is created, before any git command runs, and before
+    // any PR is opened. The audit foot-gun was: factory channel sending a
+    // task whose repo was `weautomatehq1/factory` would still build a
+    // worktree under the IFleet checkout and `gh pr create` against IFleet.
+    const resolved = opts.repoResolver.resolve(task.repo);
+    if (!resolved) {
+      const known = opts.repoResolver.list().map((r) => r.repoId).join(', ') || '(none)';
+      throw new Error(
+        `RepoResolver: refusing to dispatch task ${task.id} — repo "${task.repo}" ` +
+          `is not in the resolver allowlist. Known repos: ${known}. ` +
+          `Add it to config/channels.json or config/repos.json and reboot.`,
+      );
+    }
+
+    const worktreesDir = join(resolved.repoRoot, '.omc', 'worktrees');
+
     const worker = pool.nextWorker();
     const worktreeKey = task.issueNumber > 0 ? String(task.issueNumber) : task.id;
     const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
-    const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
+    const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot);
 
     const workerPool = buildWorkerPool(worker, pool);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
     const abortController = new AbortController();
 
-    const issues: IssueCommenter = createIssueCommenter(opts.octokit, repoOwner, repoName);
-    const pr: PrOpener = buildPrOpener(repoId, worktreePath, opts.repoRoot);
+    const issues: IssueCommenter = createIssueCommenter(opts.octokit, resolved.owner, resolved.name);
+    const pr: PrOpener = buildPrOpener(resolved.repoId, worktreePath, resolved.repoRoot);
     const git: GitOps = buildGitOps();
 
     const input: PipelineInput = {
@@ -207,10 +262,10 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       issues,
       pr,
       git,
-      codeowners: opts.codeowners ?? ['@monstersebas1'],
-      baseBranch: 'main',
-      approver: opts.approver ?? '@monstersebas1',
-      repoRoot: opts.repoRoot,
+      codeowners: [...(resolved.codeowners ?? fallbackCodeowners)],
+      baseBranch: resolved.defaultBranch,
+      approver: resolved.approver ?? fallbackApprover,
+      repoRoot: resolved.repoRoot,
       reviewerMaxRounds: 3,
     };
 
@@ -220,7 +275,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       abortController,
       workerId: worker.id,
       teardown: async (_result: PipelineResult | Error) => {
-        await teardownWorktree(worktreeKey, branchName, worktreesDir, opts.repoRoot);
+        await teardownWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot);
       },
     };
   };
