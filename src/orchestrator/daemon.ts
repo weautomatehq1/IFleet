@@ -589,7 +589,7 @@ async function runTickLoop(
  * cancelled), the corresponding unified-queue lifecycle method is called so
  * the queue task transitions out of `in_flight`. When a PR URL was captured
  * during the sprint, a {@link PrDecision} row is written to the task store:
- * verdict `'merged'` on success, `'abandoned'` on failure/cancel.
+ * verdict `'merged'` on success, `'rejected'` on failure/cancel.
  */
 function wireSprintCompletion(
   sprintId: string,
@@ -905,6 +905,8 @@ export function wrapFactoryWithVerifierContext(
       } catch { /* missing worktree → resolver returns null, verifier skips */ }
       if (headSha) {
         try {
+          // baseRef='main' is safe: production worktrees are always created from main
+          // by buildWorkerPool (factory.ts:324 `git worktree add ... main`). AUDIT-IFleet-0c47bae9.
           const fp = await computeStructuralFingerprint({
             repoRoot: bootstrap.input.worktreePath,
             baseRef: 'main',
@@ -913,9 +915,11 @@ export function wrapFactoryWithVerifierContext(
           registry.setFingerprint(taskId, fp.sha256);
         } catch (err) {
           console.warn('[daemon] teardown-time computeStructuralFingerprint failed:', err);
+          console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=main, headSha=' + headSha + ')');
           registry.setFingerprint(taskId, null);
         }
       } else {
+        console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=main, headSha=unknown)');
         registry.setFingerprint(taskId, null);
       }
       if (origTeardown) await origTeardown(result);
