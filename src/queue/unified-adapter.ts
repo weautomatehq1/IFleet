@@ -30,14 +30,15 @@ export class UnifiedQueueAdapter {
   ) {}
 
   /**
-   * Pops the next pending task and atomically flips it to `in_flight`. The
-   * originating source's `markPicked` runs after the state flip so any side
-   * effect failure (e.g. GitHub API hiccup) does not leave the row pending.
+   * Pops the next pending task. `store.pickNext()` atomically claims it inside
+   * BEGIN IMMEDIATE, so two daemons sharing the SQLite file cannot both pick
+   * the same row. `markPicked` runs after the claim; a side-effect failure
+   * (e.g. GitHub API hiccup) leaves the row in_flight and recoverable via
+   * recoverStale(), not re-picked as pending (AUDIT-IFleet-de355093).
    */
   async pickNext(filter?: PickFilter): Promise<QueuedTask | null> {
     const task = this.store.pickNext(filter);
     if (!task) return null;
-    this.store.updateState(task.id, 'in_flight', { pickedAt: Date.now() });
     try {
       await this.sourceFor(task).markPicked(task);
     } catch (err) {
