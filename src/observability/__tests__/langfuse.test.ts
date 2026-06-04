@@ -103,4 +103,43 @@ describe('startTrace', () => {
       }),
     ).not.toThrow();
   });
+
+  it('no-op trace returns undefined traceId (disabled path)', () => {
+    const trace = startTrace({
+      name: 'architect',
+      taskId: 't3',
+      workerId: 'claude-max-1',
+      model: 'claude-opus-4-7',
+      brief: 'b',
+    });
+    expect(trace.traceId).toBeUndefined();
+  });
+
+  it('no-op trace is safe with LANGFUSE_PARENT_TRACE_ID set', () => {
+    process.env['LANGFUSE_PARENT_TRACE_ID'] = 'some-sprint-trace-id';
+    try {
+      const trace = startTrace({
+        name: 'editor',
+        taskId: 't4',
+        workerId: 'claude-max-1',
+        model: 'claude-sonnet-4-6',
+        brief: 'b',
+      });
+      // No-op path: traceId is undefined and end() does not throw.
+      expect(trace.traceId).toBeUndefined();
+      expect(() => trace.end({ ok: true, exitCode: 0 })).not.toThrow();
+    } finally {
+      delete process.env['LANGFUSE_PARENT_TRACE_ID'];
+    }
+  });
+
+  it('parent-trace pattern is wired in the source (ADR-0001:36-42)', () => {
+    const src = readFileSync(
+      new URL('../langfuse.ts', import.meta.url),
+      'utf-8',
+    );
+    expect(src).toContain('LANGFUSE_PARENT_TRACE_ID');
+    expect(src).toContain('isChildSpan');
+    expect(src).toContain('trace.traceId');
+  });
 });
