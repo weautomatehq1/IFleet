@@ -256,6 +256,36 @@ module.exports = {
       error_file: `${logDir}/ifleet-audit-nightly-error.log`,
     },
     {
+      // ifleet-proposer — M5 nightly goal proposer (one-shot cron).
+      // Off by default until T4 (candidate-gen/dedupe/scorer/budget) and T5
+      // (goal_proposals migration + approval-gate `kind: 'proposal'`) land.
+      // Manual enable:
+      //   pm2 set ifleet-proposer:PROPOSER_ENABLED 1 \
+      //     && pm2 set ifleet-proposer:PROPOSER_REPO_IDS 'weautomatehq1/IFleet' \
+      //     && pm2 restart ifleet-proposer
+      name: 'ifleet-proposer',
+      script: 'scripts/proposer-run.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      max_restarts: 10,
+      restart_delay: 4000,
+      stop_exit_codes: [2],
+      // 3am ET nightly — well clear of the 4am UTC nightly audit and 9am
+      // standup. Cron is in PM2's local TZ (server typically UTC).
+      cron_restart: '0 7 * * *',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'proposer',
+        PROPOSER_ENABLED: process.env.PROPOSER_ENABLED ?? '0',
+        PROPOSER_REPO_IDS: process.env.PROPOSER_REPO_IDS ?? '',
+        PROPOSER_REPO_ROOT: process.env.PROPOSER_REPO_ROOT ?? process.env.IFLEET_REPO_ROOT ?? '/opt/ifleet',
+      },
+      out_file: `${logDir}/ifleet-proposer-out.log`,
+      error_file: `${logDir}/ifleet-proposer-error.log`,
+    },
+    {
       // ifleet-audit-morning — 11am UTC (7am ET) daily audit morning report.
       // Morning report mode: summary and incident digest.
       // One-shot cron (autorestart: false).
