@@ -28,12 +28,14 @@
 // Run: `pnpm start:daemon` or via PM2.
 
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { promisify } from 'node:util';
 import type { Client } from 'discord.js';
 import { Octokit } from '@octokit/rest';
 import { VerifierController, type TaskRunContext } from '../agents/verifier/controller.js';
+import { computeStructuralFingerprint } from '../agents/verifier/fingerprint.js';
 import { loadReposConfig } from '../config/repos.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
@@ -657,24 +659,22 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.completed') {
       orchestrator.off('event', handler);
       unifiedToSprintId?.delete(task.id);
-      verifierCtx?.delete(task.id);
 
       if (lastPrUrl) {
         const prNumber = extractPrNumber(lastPrUrl);
         if (prNumber !== null) {
-          try {
-            store.recordPrDecision({
-              taskId: task.id,
-              repo: task.repo,
-              prNumber,
-              verdict: 'merged',
-              reviewerLogin: null,
-            });
-          } catch (err) {
-            console.warn('[daemon] recordPrDecision(merged) failed:', err);
-          }
+          // M4-T5: compute structural fingerprint of the merged diff so
+          // PR-rejection learning can detect structural repeats across
+          // sprints. Snapshot the verifier ctx BEFORE the delete() below so
+          // the async chain sees a worktreePath even if teardown removed
+          // the registry entry concurrently. Failure-graceful: any compute
+          // throw falls back to null fingerprint and the row is still
+          // inserted (per M4-T5 contract).
+          const ctx = verifierCtx?.get(task.id);
+          void recordPrDecisionMerged(store, task, prNumber, ctx);
         }
       }
+      verifierCtx?.delete(task.id);
 
       void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens).catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
@@ -685,6 +685,11 @@ function wireSprintCompletion(
     if (event.kind === 'sprint.failed' || event.kind === 'sprint.cancelled') {
       orchestrator.off('event', handler);
       unifiedToSprintId?.delete(task.id);
+      // M4-T5: snapshot the verifier ctx BEFORE the cancellation path
+      // deletes it below — the fingerprint compute below needs the
+      // worktreePath, and sprint.cancelled evicts the registry entry
+      // synchronously here.
+      const ctxSnapshot = verifierCtx?.get(task.id);
       // `cancelled`: evict immediately — no /force-pr path follows a cancel.
       // `failed`: schedule a delayed eviction (60 min) so the operator's
       // /force-pr call inside that window still resolves repoUrl/branch/
@@ -720,17 +725,10 @@ function wireSprintCompletion(
       if (lastPrUrl) {
         const prNumber = extractPrNumber(lastPrUrl);
         if (prNumber !== null) {
-          try {
-            store.recordPrDecision({
-              taskId: task.id,
-              repo: task.repo,
-              prNumber,
-              verdict: 'abandoned',
-              reviewerLogin: null,
-            });
-          } catch (err) {
-            console.warn('[daemon] recordPrDecision(abandoned) failed:', err);
-          }
+          // M4-T5: sprint.failed/cancelled with a PR open => the PR was
+          // closed without merging => verdict='rejected'. Same async
+          // fingerprint compute as the merged path; null on any failure.
+          void recordPrDecisionRejected(store, task, prNumber, ctxSnapshot);
         }
       }
 
@@ -741,6 +739,78 @@ function wireSprintCompletion(
   };
 
   orchestrator.on('event', handler);
+}
+
+/**
+ * Compute the structural fingerprint for a PR being recorded against `ctx`.
+ * Returns the lowercase-hex sha256 on success, or null on any failure
+ * (missing ctx, missing worktree, git error, malformed refs). M4-T5
+ * contract: this must never throw — the caller still inserts the row,
+ * just with a NULL fingerprint, so PR-rejection learning gains coverage
+ * incrementally instead of crashing the sprint on the first bad ref.
+ */
+async function tryComputeFingerprint(
+  ctx: { worktreePath: string; branch: string; sha?: string } | undefined,
+): Promise<string | null> {
+  if (!ctx?.worktreePath) return null;
+  const headRef = ctx.sha ?? ctx.branch;
+  if (!headRef) return null;
+  try {
+    const result = await computeStructuralFingerprint({
+      repoRoot: ctx.worktreePath,
+      baseRef: 'main',
+      headRef,
+    });
+    return result.sha256;
+  } catch (err) {
+    console.warn('[daemon] computeStructuralFingerprint failed:', err);
+    return null;
+  }
+}
+
+async function recordPrDecisionMerged(
+  store: TaskStore,
+  task: import('../contracts/task.js').QueuedTask,
+  prNumber: number,
+  ctx: { worktreePath: string; branch: string; sha?: string } | undefined,
+): Promise<void> {
+  const fingerprint = await tryComputeFingerprint(ctx);
+  try {
+    store.insertPrDecisionWithFingerprint({
+      id: `prd_${randomUUID()}`,
+      taskId: task.id,
+      repo: task.repo,
+      prNumber,
+      verdict: 'merged',
+      reviewerLogin: null,
+      mergedAt: Date.now(),
+      fingerprint,
+    });
+  } catch (err) {
+    console.warn('[daemon] insertPrDecisionWithFingerprint(merged) failed:', err);
+  }
+}
+
+async function recordPrDecisionRejected(
+  store: TaskStore,
+  task: import('../contracts/task.js').QueuedTask,
+  prNumber: number,
+  ctx: { worktreePath: string; branch: string; sha?: string } | undefined,
+): Promise<void> {
+  const fingerprint = await tryComputeFingerprint(ctx);
+  try {
+    store.insertPrDecisionWithFingerprint({
+      id: `prd_${randomUUID()}`,
+      taskId: task.id,
+      repo: task.repo,
+      prNumber,
+      verdict: 'rejected',
+      reviewerLogin: null,
+      fingerprint,
+    });
+  } catch (err) {
+    console.warn('[daemon] insertPrDecisionWithFingerprint(rejected) failed:', err);
+  }
 }
 
 interface TaskContextRecord {
