@@ -12,9 +12,10 @@
 // the nightly run from crashing on a fresh repo / partial deploy.
 
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { readRecentLearnings } from '../../pipeline/learnings.ts';
+import { readRecentLearnings, LEARNINGS_RELATIVE_PATH } from '../../pipeline/learnings.ts';
 import { loadFingerprints, type Fingerprint } from '../../pipeline/fingerprints.ts';
 import type {
   DoctorFingerprintSummary,
@@ -125,6 +126,10 @@ async function safeReadLearnings(
   repoRoot: string,
   warn: (line: string) => void,
 ): Promise<string[]> {
+  if (!existsSync(join(repoRoot, LEARNINGS_RELATIVE_PATH))) {
+    warn('proposer/context-loader: learnings.md not found — using empty default');
+    return [];
+  }
   try {
     return await readRecentLearnings(repoRoot, LEARNINGS_TAIL_DEFAULT);
   } catch (err) {
@@ -138,9 +143,14 @@ function safeReadFingerprints(
   windowDays: number,
   warn: (line: string) => void,
 ): DoctorFingerprintSummary[] {
+  const path = join(repoRoot, FINGERPRINTS_RELATIVE_PATH);
+  if (!existsSync(path)) {
+    warn('proposer/context-loader: fingerprints.json not found — using empty default');
+    return [];
+  }
   let store: Record<string, Fingerprint>;
   try {
-    store = loadFingerprints(join(repoRoot, FINGERPRINTS_RELATIVE_PATH));
+    store = loadFingerprints(path);
   } catch (err) {
     warn(
       `proposer/context-loader: fingerprints unavailable (${reason(err)}) — using empty default`,
