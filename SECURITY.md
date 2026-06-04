@@ -46,6 +46,26 @@ ledger and a PM2 restart wiped it, letting any captured signed request
 with a timestamp inside the 5-minute skew window be replayed against the
 freshly-started process.
 
+**Single-process race window (accepted).** `SqliteNonceLedger.registerOrReject`
+runs prune → SELECT → INSERT OR IGNORE on a single better-sqlite3 handle. In
+the current single-seat deployment (per `docs/running.md`) there is exactly
+one writer process, so the SELECT/INSERT pair is atomic-by-virtue-of-being-
+single-threaded and a duplicate nonce CAN be detected at SELECT time. The
+property holds today.
+
+**Multi-instance regression risk (known, NOT mitigated).** If the control
+plane is ever scaled to ≥ 2 processes against the same SQLite file (e.g. a
+PM2 cluster, a hot standby, or a sidecar listener), the SELECT-then-INSERT
+gap becomes a TOCTOU race: process A's SELECT returns empty, process B's
+SELECT also returns empty, both INSERT OR IGNORE — A succeeds, B is silently
+ignored, both return `true` and accept the nonce as fresh. A captured signed
+request can then be replayed against the second process. Mitigation when
+multi-instance is needed: wrap prune+SELECT+INSERT in a `BEGIN IMMEDIATE`
+transaction so the writer lock serialises the pair, or move the ledger to a
+backend with native CAS semantics (Redis `SET NX EX`, PostgreSQL row-locking
+`INSERT … ON CONFLICT … RETURNING`). Flagged in T4's done-report for session
+20260603-1245-m4-foundation-plus-obs and codex-review of PR #314.
+
 ## Secret handling
 
 - No secrets in JSON config files. Always env vars or `.env` (gitignored).
