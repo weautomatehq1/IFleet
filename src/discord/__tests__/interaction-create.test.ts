@@ -386,3 +386,78 @@ describe('buildCommandFromButton', () => {
     });
   });
 });
+
+describe('AUDIT-IFleet-f1164e07: /status reply carries real task fields', () => {
+  function makeRouter(): ChannelRouter {
+    return {
+      resolve: (channelId: string) =>
+        channelId === ALLSTATE
+          ? {
+              channelId,
+              repo: 'weautomatehq1/allstate',
+              defaultBranch: 'main',
+              defaultModel: 'opus',
+              allowedUserIds: ['111'],
+              codeowners: [],
+              workDir: '/tmp/r',
+            }
+          : null,
+      list: () => [],
+    };
+  }
+
+  it('formats a code-block reply when control plane returns a status message', async () => {
+    const statusMessage = 'id: task-abc\nstate: in_flight\ntitle: add login page\nrepo: weautomatehq1/allstate';
+    const controlPlane: ControlPlaneClient = {
+      postCommand: async () => ({ accepted: true, message: statusMessage }),
+    };
+    const interaction: any = {
+      isChatInputCommand: () => true,
+      isButton: () => false,
+      id: 'INTERACTION_STATUS',
+      channelId: ALLSTATE,
+      commandName: 'status',
+      options: {
+        getString: vi.fn((key: string) => (key === 'taskid' ? 'task-abc' : null)),
+      },
+      user: { id: '111', username: 'seb' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => undefined),
+      editReply: vi.fn(async () => undefined),
+    };
+
+    await handleInteractionCreate(interaction, { router: makeRouter(), controlPlane });
+
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining('task-abc'),
+    );
+    const reply: string = interaction.editReply.mock.calls[0][0];
+    expect(reply.startsWith('```')).toBe(true);
+  });
+
+  it('falls back to "Status requested." when control plane returns no message', async () => {
+    const controlPlane: ControlPlaneClient = {
+      postCommand: async () => ({ accepted: true }),
+    };
+    const interaction: any = {
+      isChatInputCommand: () => true,
+      isButton: () => false,
+      id: 'INTERACTION_STATUS_EMPTY',
+      channelId: ALLSTATE,
+      commandName: 'status',
+      options: {
+        getString: vi.fn((key: string) => (key === 'taskid' ? 'task-xyz' : null)),
+      },
+      user: { id: '111', username: 'seb' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => undefined),
+      editReply: vi.fn(async () => undefined),
+    };
+
+    await handleInteractionCreate(interaction, { router: makeRouter(), controlPlane });
+
+    expect(interaction.editReply).toHaveBeenCalledWith('✔ Status requested.');
+  });
+});

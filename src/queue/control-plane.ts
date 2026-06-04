@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { buildSigningPayload, signPayload, verifyPayload } from '../contracts/hmac.js';
-import type { QueueAdapter, QueuedTask } from './types.js';
+import type { QueueAdapter } from './types.js';
 
 /**
  * Server-internal command type used for JSON parsing and dispatch.
@@ -66,8 +66,8 @@ export interface ControlPlaneOptions {
   onApprove?: (taskId: string) => Promise<void> | void;
   /** Optional pre-mark hook for cancel — useful for cleaning up worker state. */
   onCancel?: (taskId: string, reason?: string) => Promise<void> | void;
-  /** Resolver for taskId → QueuedTask used by `cancel`/`status`. */
-  resolveTask?: (taskId: string) => Promise<QueuedTask | null> | QueuedTask | null;
+  /** Hook for /status — returns a formatted status string, or null if nothing found. */
+  onStatus?: (taskId: string) => Promise<string | null> | string | null;
   /** Hook for /verify slash command — manual verifier rerun. */
   onVerify?: (taskId: string) => Promise<void> | void;
   /** Hook for [Force-PR] button override — open the PR despite verifier failures. */
@@ -282,56 +282,55 @@ async function handleRequest(
     return;
   }
 
-  res.statusCode = 202;
-  res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify({ ok: true, type: command.type }));
-  void dispatch(command, opts).catch((err) => {
+  try {
+    const result = await dispatch(command, opts);
+    res.statusCode = 202;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: true, type: command.type, ...result }));
+  } catch (err) {
     console.error('[control-plane] dispatch failed:', err);
-  });
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.end('dispatch error');
+    }
+  }
 }
 
-async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Promise<void> {
-  // `sprint_goal` is handled inline in handleRequest (so the caller can read
-  // back taskId/threadId) — it never reaches dispatch.
+async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Promise<{ message?: string }> {
+  // `sprint_goal` is handled inline in handleRequest — it never reaches here.
   switch (command.type) {
     case 'sprint_goal':
-      return;
+      return {};
     case 'run':
       await opts.onRun?.(command.repo);
-      return;
+      return {};
     case 'approve':
       await opts.onApprove?.(command.taskId);
-      return;
-    case 'cancel': {
-      // State transitions are owned by `onCancel`. The legacy queue.markFailed
-      // call was a dead path under the daemon's null resolveTask, and would
-      // have double-marked any caller that wired a real resolveTask alongside
-      // an onCancel that already touches the unified store.
+      return {};
+    case 'cancel':
+      // State transitions are owned by `onCancel` — it writes to the unified
+      // store. The old queue.markFailed call was a dead path.
       await opts.onCancel?.(command.taskId, command.reason);
-      return;
-    }
+      return {};
     case 'status': {
-      const task = await opts.resolveTask?.(command.taskId);
-      if (task) {
-        await opts.queue.postStatus(task, 'reviewing', 'status requested via control plane');
-      }
-      return;
+      const message = await opts.onStatus?.(command.taskId);
+      return message != null ? { message } : {};
     }
     case 'verify':
       await opts.onVerify?.(command.taskId);
-      return;
+      return {};
     case 'force_pr':
       await opts.onForcePr?.(command.taskId, command.reason);
-      return;
+      return {};
     case 'pause':
       await opts.onPause?.(command);
-      return;
+      return {};
     case 'continue':
       await opts.onContinue?.(command);
-      return;
+      return {};
     case 'stop':
       await opts.onStop?.(command);
-      return;
+      return {};
   }
 }
 

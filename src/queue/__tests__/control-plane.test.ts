@@ -12,7 +12,7 @@ import {
   verifySignature,
 } from '../control-plane.js';
 import { TaskStore } from '../store.js';
-import type { QueueAdapter, QueuedTask } from '../types.js';
+import type { QueueAdapter } from '../types.js';
 
 const fixedNonce = (): string => randomUUID();
 
@@ -135,7 +135,7 @@ describe('control plane HTTP', () => {
       onSprintGoal?: (cmd: { goal: string }) => void | { taskId?: string };
       onApprove?: (taskId: string) => void;
       onCancel?: (taskId: string, reason?: string) => void;
-      resolveTask?: () => QueuedTask | null;
+      onStatus?: (taskId: string) => string | null;
     },
     fn: (url: string) => Promise<T>,
   ): Promise<T> {
@@ -481,7 +481,7 @@ describe('control plane HTTP', () => {
     }
   });
 
-  it('cancel dispatch does NOT call queue.markFailed even when resolveTask returns a task', async () => {
+  it('cancel dispatch calls onCancel and does NOT call queue.markFailed', async () => {
     let onCancelCalled = false;
     let markFailedCalled = false;
     const queue: QueueAdapter = {
@@ -490,7 +490,6 @@ describe('control plane HTTP', () => {
         markFailedCalled = true;
       },
     };
-    const fakeTask = { id: 't-c' } as unknown as QueuedTask;
     const cp = createControlPlane({
       queue,
       hmacSecret: 's',
@@ -498,7 +497,6 @@ describe('control plane HTTP', () => {
       onCancel: () => {
         onCancelCalled = true;
       },
-      resolveTask: () => fakeTask,
     });
     await cp.start();
     try {
@@ -507,11 +505,37 @@ describe('control plane HTTP', () => {
       const body = JSON.stringify({ type: 'cancel', taskId: 't-c', reason: 'r' });
       const res = await fetch(url, { method: 'POST', headers: signedHeaders('s', body), body });
       assert.equal(res.status, 202);
+      // Response arrives AFTER onCancel completes (awaited dispatch).
+      assert.equal(onCancelCalled, true, 'onCancel must run before response');
+      assert.equal(markFailedCalled, false, 'queue.markFailed must not be invoked from dispatch');
     } finally {
       await cp.stop();
     }
-    await new Promise((r) => setTimeout(r, 10));
-    assert.equal(onCancelCalled, true, 'onCancel must run');
-    assert.equal(markFailedCalled, false, 'queue.markFailed must not be invoked from dispatch');
+  });
+
+  it('status dispatch with onStatus returns message in response body', async () => {
+    const queue = noopQueue();
+    const cp = createControlPlane({
+      queue,
+      hmacSecret: 's',
+      port: 0,
+      onStatus: (taskId) => `state: in_flight\ntitle: test task\nid: ${taskId}`,
+    });
+    await cp.start();
+    try {
+      const addr = cp.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}/control`;
+      const body = JSON.stringify({ type: 'status', taskId: 'task-123' });
+      const res = await fetch(url, { method: 'POST', headers: signedHeaders('s', body), body });
+      assert.equal(res.status, 202);
+      const json = (await res.json()) as Record<string, unknown>;
+      assert.equal(json['ok'], true);
+      assert.ok(
+        typeof json['message'] === 'string' && json['message'].includes('task-123'),
+        'response must carry the status message',
+      );
+    } finally {
+      await cp.stop();
+    }
   });
 });
