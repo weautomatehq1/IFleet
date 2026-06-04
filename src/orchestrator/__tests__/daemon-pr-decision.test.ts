@@ -27,12 +27,12 @@
  * No subprocess, Docker, Discord, or real Orchestrator. The Orchestrator is
  * replaced by a minimal in-process mock that exposes on/off/emit/getSprint.
  */
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { wireSprintCompletion, TaskContextRegistry } from '../daemon.js';
 import { TaskStore } from '../../queue/store.js';
@@ -42,6 +42,15 @@ import type { UnifiedQueueAdapter } from '../../queue/unified-adapter.js';
 import type { Orchestrator } from '../index.js';
 
 const execFileAsync = promisify(execFile);
+
+// AUDIT-IFleet-43254bcf — strip every GIT_* env var inherited from the host
+// process before spawning git. The pre-push hook inherits GIT_DIR /
+// GIT_WORK_TREE / GIT_INDEX_FILE / etc. from `git push`; without scrubbing,
+// the tmpdir's `git init` writes land in the host repo's `.git/config`
+// (which is exactly how the parent repo's `core.bare` was flipped to `true`).
+const cleanGitEnv: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
+);
 
 // ---------------------------------------------------------------------------
 // Minimal mock types
@@ -122,16 +131,26 @@ async function makeFixture(): Promise<Fixture> {
   const store = new TaskStore(join(workdir, 'tasks.db'));
   const repoRoot = join(workdir, 'repo');
 
+  // AUDIT-IFleet-43254bcf — isolate every git invocation from the host repo:
+  //   - cleanGitEnv strips inherited GIT_* (incl. those set by the husky hook)
+  //   - GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM point at scratch paths so the
+  //     test never touches ~/.gitconfig or /etc/gitconfig
+  //   - GIT_DIR / GIT_WORK_TREE are NOT pre-set here because `git init <path>`
+  //     creates the repo at <path>/.git and inherited values would clash;
+  //     the explicit `cwd: repoRoot` on every subsequent call scopes resolution
+  //     to the tmpdir.
   const gitEnv = {
-    ...process.env,
+    ...cleanGitEnv,
     GIT_AUTHOR_NAME: 'test',
     GIT_AUTHOR_EMAIL: 'test@example.com',
     GIT_COMMITTER_NAME: 'test',
     GIT_COMMITTER_EMAIL: 'test@example.com',
+    GIT_CONFIG_GLOBAL: join(workdir, '.gitconfig'),
+    GIT_CONFIG_SYSTEM: '/dev/null',
   };
   const opts = { cwd: repoRoot, env: gitEnv };
 
-  await execFileAsync('git', ['init', '-q', '-b', 'main', repoRoot]);
+  await execFileAsync('git', ['init', '-q', '-b', 'main', repoRoot], { env: gitEnv });
   await execFileAsync('git', ['config', 'commit.gpgsign', 'false'], opts);
   writeFileSync(join(repoRoot, 'seed.txt'), 'seed\n');
   await execFileAsync('git', ['add', '.'], opts);
@@ -141,6 +160,24 @@ async function makeFixture(): Promise<Fixture> {
   writeFileSync(join(repoRoot, 'new.txt'), 'hello\nworld\n');
   await execFileAsync('git', ['add', '.'], opts);
   await execFileAsync('git', ['commit', '-q', '-m', 'feat'], opts);
+
+  // AUDIT-IFleet-25566c6a — defensive guard: after `git init`, assert the
+  // tmpdir's .git/config has core.bare=false AND that resolution from the
+  // tmpdir lands on the tmpdir's repo, not the parent. If either fails the
+  // GIT_* scrub above leaked through and the test would contaminate the
+  // host repo.
+  const tmpToplevel = (
+    await execFileAsync('git', ['-C', repoRoot, 'rev-parse', '--show-toplevel'], { env: gitEnv })
+  ).stdout.trim();
+  // macOS prepends `/private` to /var paths after symlink resolution; compare
+  // realpaths so the guard fails on actual escape, not on cosmetic prefixes.
+  const expected = realpathSync(repoRoot);
+  const actual = realpathSync(tmpToplevel);
+  assert.equal(
+    actual,
+    expected,
+    `git resolution escaped tmpdir → ${actual} (expected ${expected}); GIT_* env leak suspected`,
+  );
 
   return {
     store,
@@ -183,6 +220,70 @@ const FINGERPRINT_RE = /^[0-9a-f]{64}$/;
  */
 const CACHED_FP_HEX =
   'cafef00d000102030405060708090a0b0c0d0e0f10111213141516171819aabb';
+
+// ---------------------------------------------------------------------------
+// Regression guard: parent-repo .git state must be identical before/after this
+// file runs. AUDIT-IFleet-43254bcf documents what happens when it isn't —
+// every push from IFleet picks up 6 bogus "init" commits because the test's
+// `git init` resolved to the parent .git via inherited GIT_DIR. The before/
+// after snapshot makes any regression of the GIT_* scrub fail loudly here
+// instead of silently in a future push.
+// ---------------------------------------------------------------------------
+
+const PARENT_REPO_ROOT = resolve('/Users/Seb/dev/ai-products/IFleet');
+
+interface ParentSnapshot {
+  log: string;
+  bare: string;
+  head: string;
+}
+
+function snapshotParentRepo(): ParentSnapshot | null {
+  try {
+    const log = execFileSync('git', ['-C', PARENT_REPO_ROOT, 'log', '--oneline', '-5'], {
+      env: cleanGitEnv,
+      encoding: 'utf8',
+    });
+    const bare = execFileSync('git', ['-C', PARENT_REPO_ROOT, 'config', '--get', 'core.bare'], {
+      env: cleanGitEnv,
+      encoding: 'utf8',
+    });
+    const head = execFileSync('git', ['-C', PARENT_REPO_ROOT, 'rev-parse', 'HEAD'], {
+      env: cleanGitEnv,
+      encoding: 'utf8',
+    });
+    return { log, bare, head };
+  } catch {
+    return null;
+  }
+}
+
+let parentBefore: ParentSnapshot | null = null;
+
+before(() => {
+  parentBefore = snapshotParentRepo();
+});
+
+after(() => {
+  if (parentBefore === null) return;
+  const parentAfter = snapshotParentRepo();
+  assert.ok(parentAfter, 'parent repo must still resolve after the test file runs');
+  assert.equal(
+    parentAfter.log,
+    parentBefore.log,
+    'parent .git log MUST NOT be mutated by this test file (AUDIT-IFleet-43254bcf regression)',
+  );
+  assert.equal(
+    parentAfter.bare,
+    parentBefore.bare,
+    'parent .git/config core.bare MUST NOT be mutated by this test file (AUDIT-IFleet-25566c6a regression)',
+  );
+  assert.equal(
+    parentAfter.head,
+    parentBefore.head,
+    'parent .git HEAD MUST NOT be mutated by this test file (AUDIT-IFleet-43254bcf regression)',
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Tests
