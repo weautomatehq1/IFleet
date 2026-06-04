@@ -58,11 +58,14 @@ describe('loadProposerContext', () => {
     expect(typeof ctx.loadedAt).toBe('string');
 
     // One warn per missing source: SPRINT.md, ROADMAP.md, NON_GOALS.md,
-    // pr_decisions reader not wired, goal_proposals reader not wired.
-    expect(warns.length).toBeGreaterThanOrEqual(5);
+    // learnings.md, fingerprints.json, pr_decisions reader not wired,
+    // goal_proposals reader not wired — exactly 7 warns.
+    expect(warns.length).toBe(7);
     expect(warns.some((l) => /SPRINT\.md/.test(l))).toBe(true);
     expect(warns.some((l) => /ROADMAP\.md/.test(l))).toBe(true);
     expect(warns.some((l) => /NON_GOALS\.md/.test(l))).toBe(true);
+    expect(warns.some((l) => /learnings/.test(l))).toBe(true);
+    expect(warns.some((l) => /fingerprints/.test(l))).toBe(true);
     expect(warns.some((l) => /pr_decisions/.test(l))).toBe(true);
     expect(warns.some((l) => /goal_proposals/.test(l))).toBe(true);
   });

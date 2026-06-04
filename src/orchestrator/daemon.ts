@@ -37,6 +37,7 @@ import { Octokit } from '@octokit/rest';
 import { VerifierController, type TaskRunContext } from '../agents/verifier/controller.js';
 import { computeStructuralFingerprint } from '../agents/verifier/fingerprint.js';
 import { loadReposConfig } from '../config/repos.js';
+import { registerProposerDiscordClient } from '../agents/proposer/approval-gate.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
 import { broadcastIFleet } from '../observability/discord-broadcast.js';
@@ -448,6 +449,7 @@ async function main(): Promise<void> {
   // -------- Boot Discord client --------
   await client.login(discordToken);
   console.warn('[daemon] discord client logged in');
+  registerProposerDiscordClient(client);
 
   // -------- Tick loop: drain pending → submitSprint --------
   let running = true;
