@@ -55,7 +55,7 @@ property holds today.
 
 **Multi-instance regression risk (mitigated 2026-06-04).** Previously,
 SELECT-then-INSERT-OR-IGNORE could let two processes both return `true` for
-the same nonce when racing. Mitigation shipped in PR #<this-pr>:
+the same nonce when racing. Mitigation shipped in PR #319:
 `registerOrReject` now uses INSERT OR IGNORE as the source of truth and
 returns `result.changes === 1`, so the duplicate INSERT is detected at the
 SQLite UNIQUE-constraint level without any pre-insert SELECT. The race window
