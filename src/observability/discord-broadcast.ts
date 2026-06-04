@@ -12,8 +12,12 @@
 
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
+import type { DiscordOutbox } from './discord-outbox.js';
 
 const ENV_VAR = 'DISCORD_IFLEET_WEBHOOK';
+
+// Channel sentinel used when enqueueing broadcast messages in the outbox.
+const BROADCAST_CHANNEL = 'broadcast';
 
 // Discord webhook hard cap is 2000 chars for `content`; leave headroom for
 // any wrapping the caller forgot (markdown fences, ellipsis).
@@ -44,6 +48,16 @@ const stateByUrl = new Map<string, BroadcastState>();
 // slot so the warn-once still fires only once per process when nothing is set.
 const UNSET_KEY = '__unset__';
 
+// Durable outbox wired by Orchestrator.start(). When set, every broadcast is
+// enqueued before the fast-path HTTP attempt so Discord downtime does not lose
+// messages. Closes AUDIT-IFleet-77ddf58c.
+let _outbox: DiscordOutbox | null = null;
+
+/** Wire a durable outbox so broadcasts survive Discord downtime. */
+export function setDiscordOutbox(outbox: DiscordOutbox | null): void {
+  _outbox = outbox;
+}
+
 function getState(key: string): BroadcastState {
   let s = stateByUrl.get(key);
   if (!s) {
@@ -64,11 +78,15 @@ function truncate(msg: string): string {
  * the HTTP request is fired and forgotten. Failures never throw; HTTP errors
  * are swallowed because a broadcast failure must not unwind the pipeline.
  *
+ * When a durable outbox is wired (via `setDiscordOutbox`), the message is
+ * persisted to SQLite before the fast-path attempt. If Discord is down the
+ * row stays `pending` and the drain job retries every 30 s.
+ *
  * The first call with an unset webhook env warns once on stderr so silent
  * misconfiguration is detectable in pm2 logs.
  *
  * Messages over 1900 chars are truncated (Discord caps `content` at 2000).
- * Sends are spaced ≥ MIN_INTERVAL_MS apart to stay under Discord's 30/min
+ * Sends are spaced >= MIN_INTERVAL_MS apart to stay under Discord's 30/min
  * webhook rate limit even when /stop cancels many tasks at once.
  */
 export function broadcastIFleet(msg: string): void {
@@ -85,7 +103,9 @@ export function broadcastIFleet(msg: string): void {
     return;
   }
 
-  // Rate-limit: schedule the send so it lands ≥ MIN_INTERVAL_MS after the
+  const truncated = truncate(msg);
+
+  // Rate-limit: schedule the send so it lands >= MIN_INTERVAL_MS after the
   // last send for the same URL. Caller still returns synchronously; the
   // setTimeout keeps the fire-and-forget contract.
   //
@@ -95,17 +115,41 @@ export function broadcastIFleet(msg: string): void {
   const now = Date.now();
   const delay = Math.max(0, state.lastSentAt + MIN_INTERVAL_MS - now);
   state.lastSentAt = now + delay;
+
   if (state.pendingCount >= MAX_QUEUE_DEPTH) {
-    console.warn(
-      `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
-    );
+    if (_outbox) {
+      // Message is durably queued in SQLite — drain job will deliver it.
+      _outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated, url }));
+      console.warn(
+        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — message persisted to outbox for drain`,
+      );
+    } else {
+      console.warn(
+        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
+      );
+    }
     return;
   }
+
   state.pendingCount++;
-  setTimeout(() => {
-    state.pendingCount--;
-    sendNow(url, truncate(msg));
-  }, delay).unref();
+
+  if (_outbox) {
+    const outbox = _outbox;
+    const rowId = outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated, url }));
+    setTimeout(() => {
+      state.pendingCount--;
+      void sendNowAsync(url, truncated).then(
+        () => outbox.markSent(rowId),
+        (err: unknown) =>
+          outbox.markAttemptFailed(rowId, err instanceof Error ? err.message : String(err)),
+      );
+    }, delay).unref();
+  } else {
+    setTimeout(() => {
+      state.pendingCount--;
+      sendNow(url, truncated);
+    }, delay).unref();
+  }
 }
 
 function sendNow(url: string, msg: string): void {
@@ -140,6 +184,41 @@ function sendNow(url: string, msg: string): void {
   }
 }
 
+function sendNowAsync(url: string, msg: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ content: msg });
+    try {
+      const parsed = new URL(url);
+      const request = parsed.protocol === 'http:' ? httpRequest : httpsRequest;
+      const req = request(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port || undefined,
+          path: parsed.pathname + parsed.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          res.resume();
+          if (res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve();
+          } else {
+            reject(new Error(`webhook HTTP ${res.statusCode ?? 'unknown'}`));
+          }
+        },
+      );
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 /**
  * Reset module-level broadcast state. Test-only helper — production code
  * never calls this. Exported so test suites can isolate `warnedUnset` and
@@ -147,4 +226,5 @@ function sendNow(url: string, msg: string): void {
  */
 export function __resetBroadcastStateForTests(): void {
   stateByUrl.clear();
+  _outbox = null;
 }

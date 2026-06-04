@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { QueuedTask, TaskState } from '../contracts/task.js';
+import { DiscordOutbox } from '../observability/discord-outbox.js';
 
 export function defaultStateDir(): string {
   return process.env['IFLEET_STATE_DIR'] ?? join(process.cwd(), 'state');
@@ -59,6 +60,25 @@ CREATE TABLE IF NOT EXISTS nonce_ledger (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_nonce_ledger_expires ON nonce_ledger(expires_at);
+
+-- Discord outbox — durable queue for Discord broadcasts.
+-- Enqueued before every broadcastIFleet send; drained every 30s by the
+-- Orchestrator. Dead-letters after maxAttempts failures instead of silently
+-- dropping. Closes AUDIT-IFleet-77ddf58c.
+CREATE TABLE IF NOT EXISTS discord_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  last_attempt_at INTEGER,
+  sent_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_discord_outbox_pending
+  ON discord_outbox(state, created_at)
+  WHERE state = 'pending';
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -575,6 +595,11 @@ export class TaskStore {
    */
   createNonceLedger(ttlMs: number): SqliteNonceLedger {
     return new SqliteNonceLedger(this.db, ttlMs);
+  }
+
+  /** Return a Discord outbox backed by this store's DB handle. */
+  createDiscordOutbox(): DiscordOutbox {
+    return new DiscordOutbox(this.db);
   }
 
   close(): void {

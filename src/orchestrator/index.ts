@@ -6,6 +6,8 @@ import { extractAuditFindingId } from '../audit/types.js';
 import { DEFAULT_REPO_ID, loadReposConfig, type ReposMap } from '../config/repos';
 import type { DiscordOut } from '../contracts/discord-out.js';
 import type { QueuedTask } from '../contracts/task.js';
+import { DiscordOutbox } from '../observability/discord-outbox.js';
+import { setDiscordOutbox } from '../observability/discord-broadcast.js';
 import { postTaskDoneNotification } from '../observability/task-done-notify.js';
 import type { PipelineRunnerFactory } from './pipeline-bridge';
 import { PressureTracker } from './pressure';
@@ -26,6 +28,7 @@ import type {
 export const DEFAULT_KILL_FLAG_DIR = join(process.cwd(), '.omc', 'sprints');
 export const DEFAULT_TICK_MS = 1000;
 export const DEFAULT_KILL_POLL_MS = 5000;
+export const DISCORD_DRAIN_INTERVAL_MS = 30_000;
 
 export interface OrchestratorOptions {
   store?: StateStore;
@@ -64,6 +67,8 @@ export interface OrchestratorOptions {
   budgetUsd?: number;
   /** Discord webhook URL for budget and rate-cap alerts. Defaults to DISCORD_IFLEET_WEBHOOK env var. */
   discordWebhookUrl?: string;
+  /** Durable Discord outbox. When provided, broadcastIFleet is wired to enqueue before sending. */
+  discordOutbox?: DiscordOutbox;
   /** Path to the claude CLI for generating task-done summaries. Defaults to CLAUDE_PATH env var or 'claude'. */
   claudePath?: string;
   /**
@@ -98,8 +103,11 @@ export class Orchestrator {
   /** taskId → Discord threadId. Memoized per-process so a single PR thread
    *  collects assigned/progress/completed messages without reopening. */
   private readonly taskThreadIds = new Map<TaskId, string>();
+  private readonly outbox: DiscordOutbox | undefined;
   private tickTimer?: NodeJS.Timeout;
   private killTimer?: NodeJS.Timeout;
+  private drainTimer?: NodeJS.Timeout;
+  private morningDrainTimer?: NodeJS.Timeout;
   private started = false;
   private activeSprintIds = new Set<SprintId>();
 
@@ -123,6 +131,7 @@ export class Orchestrator {
     this.claudePath = opts.claudePath ?? process.env['CLAUDE_PATH'] ?? 'claude';
     this.discordOut = opts.discordOut;
     this.queuedTaskLoader = opts.queuedTaskLoader;
+    this.outbox = opts.discordOutbox;
     this.sprints = new SprintManager({
       store: this.store,
       registry: this.registry,
@@ -164,6 +173,14 @@ export class Orchestrator {
     this.killTimer = setInterval(() => {
       this.pollKillSwitch();
     }, this.killPollIntervalMs);
+    if (this.outbox) {
+      setDiscordOutbox(this.outbox);
+      this.drainTimer = setInterval(() => {
+        void this.drainDiscordOutbox();
+      }, DISCORD_DRAIN_INTERVAL_MS);
+      this.drainTimer.unref();
+      this.scheduleMorningDrain();
+    }
   }
 
   async stop(): Promise<void> {
@@ -171,6 +188,9 @@ export class Orchestrator {
     this.started = false;
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.killTimer) clearInterval(this.killTimer);
+    if (this.drainTimer) clearInterval(this.drainTimer);
+    if (this.morningDrainTimer) clearTimeout(this.morningDrainTimer);
+    if (this.outbox) setDiscordOutbox(null);
     this.registry.stop();
     this.store.close();
   }
@@ -368,6 +388,40 @@ export class Orchestrator {
     }
   }
 
+  private async drainDiscordOutbox(): Promise<void> {
+    if (!this.outbox) return;
+    const url = this.discordWebhookUrl ?? process.env['DISCORD_IFLEET_WEBHOOK'];
+    if (!url) return;
+    try {
+      const result = await this.outbox.drainOnce({
+        send: async (_channel, payload) => {
+          const parsed = JSON.parse(payload) as { content?: string; url?: string };
+          const targetUrl = parsed.url ?? url;
+          const content = parsed.content ?? payload;
+          await postDiscordAlert(targetUrl, content);
+        },
+      });
+      if (result.failed > 0) {
+        console.warn(
+          `[orchestrator] discord outbox drain: ${result.sent} sent, ${result.retried} retried, ${result.failed} dead-lettered`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[orchestrator] discord outbox drain failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  private scheduleMorningDrain(): void {
+    const ms = msUntilHour(7);
+    this.morningDrainTimer = setTimeout(() => {
+      void this.drainDiscordOutbox();
+      this.scheduleMorningDrain();
+    }, ms);
+    this.morningDrainTimer.unref();
+  }
+
   /** Repo identifier in "owner/name" form derived from reposConfig or repoId. */
   getRepoId(): string {
     return this.repoId;
@@ -428,6 +482,14 @@ function parseBudgetEnv(): number | undefined {
   }
   const val = Number(raw);
   return Number.isFinite(val) && val > 0 ? val : undefined;
+}
+
+function msUntilHour(hour: number): number {
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(hour, 0, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  return target.getTime() - now.getTime();
 }
 
 function postDiscordAlert(webhookUrl: string, content: string): Promise<void> {
