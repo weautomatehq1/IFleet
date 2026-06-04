@@ -742,39 +742,28 @@ function wireSprintCompletion(
 }
 
 /**
- * Compute the structural fingerprint for a PR being recorded against `ctx`.
- * Returns the lowercase-hex sha256 on success, or null on any failure
- * (missing ctx, missing worktree, git error, malformed refs). M4-T5
- * contract: this must never throw — the caller still inserts the row,
- * just with a NULL fingerprint, so PR-rejection learning gains coverage
- * incrementally instead of crashing the sprint on the first bad ref.
+ * Read the structural fingerprint that {@link wrapFactoryWithVerifierContext}'s
+ * teardown wrapper cached on the registry. M4-T6 moved the compute upstream
+ * because the worktree is gone by the time sprint.completed/failed/cancelled
+ * fires — recomputing here would always return null in production. The
+ * graceful-failure contract carries over: a missing ctx, an unset fingerprint
+ * (teardown hook never ran), or a recorded `null` (compute attempted and
+ * failed) all flow through as `null` so the caller still inserts the row
+ * with verdict + fingerprint=null.
  */
-async function tryComputeFingerprint(
-  ctx: { worktreePath: string; branch: string; sha?: string } | undefined,
-): Promise<string | null> {
-  if (!ctx?.worktreePath) return null;
-  const headRef = ctx.sha ?? ctx.branch;
-  if (!headRef) return null;
-  try {
-    const result = await computeStructuralFingerprint({
-      repoRoot: ctx.worktreePath,
-      baseRef: 'main',
-      headRef,
-    });
-    return result.sha256;
-  } catch (err) {
-    console.warn('[daemon] computeStructuralFingerprint failed:', err);
-    return null;
-  }
+function readCachedFingerprint(
+  ctx: { fingerprint?: string | null } | undefined,
+): string | null {
+  return ctx?.fingerprint ?? null;
 }
 
-async function recordPrDecisionMerged(
+function recordPrDecisionMerged(
   store: TaskStore,
   task: import('../contracts/task.js').QueuedTask,
   prNumber: number,
-  ctx: { worktreePath: string; branch: string; sha?: string } | undefined,
-): Promise<void> {
-  const fingerprint = await tryComputeFingerprint(ctx);
+  ctx: { fingerprint?: string | null } | undefined,
+): void {
+  const fingerprint = readCachedFingerprint(ctx);
   try {
     store.insertPrDecisionWithFingerprint({
       id: `prd_${randomUUID()}`,
@@ -791,13 +780,13 @@ async function recordPrDecisionMerged(
   }
 }
 
-async function recordPrDecisionRejected(
+function recordPrDecisionRejected(
   store: TaskStore,
   task: import('../contracts/task.js').QueuedTask,
   prNumber: number,
-  ctx: { worktreePath: string; branch: string; sha?: string } | undefined,
-): Promise<void> {
-  const fingerprint = await tryComputeFingerprint(ctx);
+  ctx: { fingerprint?: string | null } | undefined,
+): void {
+  const fingerprint = readCachedFingerprint(ctx);
   try {
     store.insertPrDecisionWithFingerprint({
       id: `prd_${randomUUID()}`,
@@ -818,6 +807,11 @@ interface TaskContextRecord {
   branch: string;
   worktreePath: string;
   sha?: string;
+  // M4-T6: cached structural fingerprint computed at teardown time, while
+  // the worktree still exists. Read at sprint.completed/failed/cancelled
+  // event time (after the worktree is gone). `null` means compute was
+  // attempted and failed; `undefined` means it never ran (treat as null).
+  fingerprint?: string | null;
 }
 
 export class TaskContextRegistry {
@@ -836,6 +830,18 @@ export class TaskContextRegistry {
     const primary = this.aliasToPrimary.get(taskId) ?? taskId;
     const r = this.map.get(primary);
     if (r) r.sha = sha;
+  }
+  /**
+   * M4-T6: stash the structural fingerprint that {@link wrapFactoryWithVerifierContext}'s
+   * teardown wrapper computed against the live worktree. Resolves aliases like
+   * setSha. Setting `null` is meaningful: it records "compute was attempted and
+   * failed", which lets the wiring layer distinguish from `undefined` (the
+   * teardown hook never ran — e.g. a synthetic test setup).
+   */
+  setFingerprint(taskId: string, fingerprint: string | null): void {
+    const primary = this.aliasToPrimary.get(taskId) ?? taskId;
+    const r = this.map.get(primary);
+    if (r) r.fingerprint = fingerprint;
   }
   get(taskId: string): TaskContextRecord | undefined {
     const primary = this.aliasToPrimary.get(taskId) ?? taskId;
@@ -884,14 +890,34 @@ export function wrapFactoryWithVerifierContext(
       );
     }
     const origTeardown = bootstrap.teardown;
-    // Capture HEAD SHA before original teardown removes the worktree.
+    // Capture HEAD SHA AND structural fingerprint before the inner teardown
+    // removes the worktree. wireSprintCompletion reads both at sprint.completed
+    // /failed/cancelled time, but those events fire AFTER teardown — so the
+    // compute MUST happen here, while the worktree still exists. M4-T6.
     bootstrap.teardown = async (result) => {
+      let headSha: string | null = null;
       try {
         const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
           cwd: bootstrap.input.worktreePath,
         });
-        registry.setSha(taskId, stdout.trim());
+        headSha = stdout.trim();
+        registry.setSha(taskId, headSha);
       } catch { /* missing worktree → resolver returns null, verifier skips */ }
+      if (headSha) {
+        try {
+          const fp = await computeStructuralFingerprint({
+            repoRoot: bootstrap.input.worktreePath,
+            baseRef: 'main',
+            headRef: headSha,
+          });
+          registry.setFingerprint(taskId, fp.sha256);
+        } catch (err) {
+          console.warn('[daemon] teardown-time computeStructuralFingerprint failed:', err);
+          registry.setFingerprint(taskId, null);
+        }
+      } else {
+        registry.setFingerprint(taskId, null);
+      }
       if (origTeardown) await origTeardown(result);
     };
     return bootstrap;
