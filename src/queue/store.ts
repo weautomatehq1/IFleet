@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS pr_decisions (
   reviewer_login TEXT,
   merged_at INTEGER,
   created_at INTEGER NOT NULL,
+  fingerprint TEXT,
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
@@ -101,6 +102,25 @@ export interface RecordPrDecisionInput {
   reviewerLogin?: string | null;
   /** Unix timestamp (ms) when the PR was merged; omit for non-merged verdicts. */
   mergedAt?: number;
+  /** Structural diff hash (M4). Null when not yet computed. */
+  fingerprint?: string | null;
+}
+
+/**
+ * Inputs for `insertPrDecisionWithFingerprint`: the M4 variant of
+ * `recordPrDecision` that lets the caller supply both the row id and the
+ * fingerprint. Callers are SprintManager/T3 — they own the id so the same row
+ * can be referenced before and after CI completes.
+ */
+export interface InsertPrDecisionWithFingerprintInput {
+  id: string;
+  taskId: string;
+  repo: string;
+  prNumber: number;
+  verdict: PrVerdict;
+  reviewerLogin?: string | null;
+  mergedAt?: number | null;
+  fingerprint?: string | null;
 }
 
 
@@ -113,6 +133,7 @@ export interface PrDecision {
   reviewerLogin: string | null;
   mergedAt: number | null;
   createdAt: number;
+  fingerprint: string | null;
 }
 
 export class TaskStore {
@@ -156,6 +177,7 @@ export class TaskStore {
         reviewer_login TEXT,
         merged_at INTEGER,
         created_at INTEGER NOT NULL,
+        fingerprint TEXT,
         FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
@@ -183,12 +205,21 @@ export class TaskStore {
             reviewer_login TEXT,
             merged_at INTEGER,
             created_at INTEGER NOT NULL,
+            fingerprint TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
           );
           CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
           CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
         `);
       }
+    }
+    // M4 upgrade: add fingerprint column to DBs created before this migration.
+    // PRAGMA table_info → no-op when the column already exists (fresh DBs from
+    // SCHEMA or from the recreate path above). Nullable — historical rows stay
+    // NULL.
+    const cols = this.db.pragma('table_info(pr_decisions)') as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === 'fingerprint')) {
+      this.db.exec(`ALTER TABLE pr_decisions ADD COLUMN fingerprint TEXT`);
     }
   }
 
@@ -382,11 +413,13 @@ export class TaskStore {
     const createdAt = Date.now();
     const reviewerLogin = input.reviewerLogin ?? null;
     const mergedAt = input.mergedAt ?? null;
+    const fingerprint = input.fingerprint ?? null;
 
     this.db
       .prepare(
-        `INSERT OR IGNORE INTO pr_decisions (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at)
-         VALUES (@id, @task_id, @repo, @pr_number, @verdict, @reviewer_login, @merged_at, @created_at)`,
+        `INSERT OR IGNORE INTO pr_decisions
+            (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at, fingerprint)
+         VALUES (@id, @task_id, @repo, @pr_number, @verdict, @reviewer_login, @merged_at, @created_at, @fingerprint)`,
       )
       .run({
         id,
@@ -397,8 +430,44 @@ export class TaskStore {
         reviewer_login: reviewerLogin,
         merged_at: mergedAt,
         created_at: createdAt,
+        fingerprint,
       });
 
+    const row = this.getPrDecisionByTaskPr(input.taskId, input.prNumber);
+    if (!row) {
+      throw new Error(
+        `pr_decisions row missing after INSERT for task ${input.taskId} pr ${input.prNumber}`,
+      );
+    }
+    return row;
+  }
+
+  /**
+   * M4 variant. Caller supplies the row id (so the same row id flows from
+   * SprintManager into RecordPrDecision events) and may supply a structural
+   * fingerprint computed via `computeStructuralFingerprint`. Idempotent on
+   * (task_id, pr_number) — a second call for the same pair returns the
+   * existing row unchanged.
+   */
+  insertPrDecisionWithFingerprint(input: InsertPrDecisionWithFingerprintInput): PrDecision {
+    const createdAt = Date.now();
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO pr_decisions
+            (id, task_id, repo, pr_number, verdict, reviewer_login, merged_at, created_at, fingerprint)
+         VALUES (@id, @task_id, @repo, @pr_number, @verdict, @reviewer_login, @merged_at, @created_at, @fingerprint)`,
+      )
+      .run({
+        id: input.id,
+        task_id: input.taskId,
+        repo: input.repo,
+        pr_number: input.prNumber,
+        verdict: input.verdict,
+        reviewer_login: input.reviewerLogin ?? null,
+        merged_at: input.mergedAt ?? null,
+        created_at: createdAt,
+        fingerprint: input.fingerprint ?? null,
+      });
     const row = this.getPrDecisionByTaskPr(input.taskId, input.prNumber);
     if (!row) {
       throw new Error(
@@ -424,6 +493,7 @@ export class TaskStore {
           reviewer_login: string | null;
           merged_at: number | null;
           created_at: number;
+          fingerprint: string | null;
         }
       | undefined;
     if (!row) return null;
@@ -436,6 +506,7 @@ export class TaskStore {
       reviewerLogin: row.reviewer_login,
       mergedAt: row.merged_at,
       createdAt: row.created_at,
+      fingerprint: row.fingerprint,
     };
   }
 
@@ -454,6 +525,7 @@ export class TaskStore {
         reviewer_login: string | null;
         merged_at: number | null;
         created_at: number;
+        fingerprint: string | null;
       }>;
     return rows.map((r) => ({
       id: r.id,
@@ -464,6 +536,7 @@ export class TaskStore {
       reviewerLogin: r.reviewer_login,
       mergedAt: r.merged_at,
       createdAt: r.created_at,
+      fingerprint: r.fingerprint,
     }));
   }
 
