@@ -82,7 +82,6 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(ls *)',
     'Bash(cat *)',
     'Bash(grep *)',
-    'Bash(find *)',
     'Bash(mkdir *)',
     'Bash(mv *)',
     'Bash(cp *)',
@@ -108,6 +107,12 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(git merge *)',
     'Bash(git worktree *)',
     'Bash(rm *)',
+    'Bash(rmdir *)',
+    // `find -delete` and `find -exec rm` are well-known destructive escape
+    // hatches. Denying `find` outright (rather than allowlisting the
+    // read-only forms) is the simplest defence — workers can use Glob/Grep
+    // for read-only discovery.
+    'Bash(find *)',
     'Bash(sudo *)',
     'Bash(chmod *)',
     'Bash(chown *)',

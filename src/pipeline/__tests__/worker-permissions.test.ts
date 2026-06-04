@@ -14,13 +14,17 @@ import { describe, it, expect } from 'vitest';
 import { WORKER_CLAUDE_PERMISSIONS } from '../factory.js';
 
 describe('WORKER_CLAUDE_PERMISSIONS — destructive-command guard', () => {
-  it('does not allow blanket Bash(git *) or Bash(rm *)', () => {
+  it('does not allow blanket Bash(git *), Bash(rm *), or Bash(find *)', () => {
     expect(WORKER_CLAUDE_PERMISSIONS.allow).not.toContain('Bash(git *)');
     expect(WORKER_CLAUDE_PERMISSIONS.allow).not.toContain('Bash(rm *)');
     // `Bash(git branch *)` is broad enough to permit `git branch -D` — keep
     // it out of the allow list (we whitelist `--show-current` / `--list *`
     // explicitly instead).
     expect(WORKER_CLAUDE_PERMISSIONS.allow).not.toContain('Bash(git branch *)');
+    // `Bash(find *)` allows `find . -delete` and `find . -exec rm -rf {} +` —
+    // a trivial destructive escape hatch. Workers use Glob/Grep for
+    // read-only discovery instead.
+    expect(WORKER_CLAUDE_PERMISSIONS.allow).not.toContain('Bash(find *)');
   });
 
   it('explicitly denies the destructive git and shell forms', () => {
@@ -34,6 +38,8 @@ describe('WORKER_CLAUDE_PERMISSIONS — destructive-command guard', () => {
       'Bash(git rebase *)',
       'Bash(git worktree *)',
       'Bash(rm *)',
+      'Bash(rmdir *)',
+      'Bash(find *)',
       'Bash(sudo *)',
       'Bash(curl *)',
       'Bash(ssh *)',
