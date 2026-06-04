@@ -14,6 +14,35 @@ export const DEFAULT_WORKERS_CONFIG = join(process.cwd(), 'config', 'workers.jso
  */
 export const API_AUTH_PROFILE = 'api';
 
+/**
+ * Single-seat Max-plan policy enforcement (canonical rule #1 in CLAUDE.md;
+ * audit AUDIT-IFleet-a394a4f1).
+ *
+ * The Claude Max plan is a flat-fee shared quota — running multiple Opus
+ * sessions in parallel against the same account burns the nightly quota
+ * faster than the operator can react, and the `BUDGET_USD` cap in
+ * `SprintManager.checkBudget` intentionally bypasses Max-plan workers (the
+ * CLI's per-call USD numbers are not real spend on a Max subscription).
+ *
+ * Enforcing the cap *in code* — not just in `config/workers.json` — means a
+ * future operator who widens the concurrency in config gets a loud boot
+ * failure instead of silent quota burn. Tier prefix `max-` matches Anthropic's
+ * Max-100 / Max-200 naming (`config/workers.json`).
+ */
+export function validateMaxPlanConcurrency(
+  workers: ReadonlyArray<WorkerConfig>,
+): void {
+  for (const w of workers) {
+    if (typeof w.tier === 'string' && w.tier.startsWith('max-') && w.maxConcurrent > 1) {
+      throw new Error(
+        `WorkerConfig "${w.id}": tier "${w.tier}" is a Claude Max-plan ` +
+          `subscription; maxConcurrent must be 1 to honor the single-seat ` +
+          `policy (AUDIT-IFleet-a394a4f1). Got maxConcurrent=${w.maxConcurrent}.`,
+      );
+    }
+  }
+}
+
 interface WorkersFile {
   workers: ReadonlyArray<WorkerConfig>;
 }
@@ -45,7 +74,12 @@ export class WorkerRegistry {
     try {
       const raw = readFileSync(this.configPath, 'utf8');
       const parsed = JSON.parse(raw) as WorkersFile;
-      this.workers = (parsed.workers ?? []).filter((w) => w.enabled);
+      const enabled = (parsed.workers ?? []).filter((w) => w.enabled);
+      // Reject configs that violate the single-seat Max-plan policy. The
+      // watcher will re-trigger on the next file change, so an operator who
+      // corrects the config is automatically un-stuck.
+      validateMaxPlanConcurrency(enabled);
+      this.workers = enabled;
     } catch (err) {
       console.warn(`[WorkerRegistry] failed to load config from ${this.configPath}: ${String(err)} — booting with zero workers`);
       this.workers = [];
