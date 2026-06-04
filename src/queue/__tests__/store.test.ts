@@ -187,7 +187,8 @@ describe('TaskStore', () => {
       assert.equal(recovered, 1);
       const repicked = store.pickNext();
       assert.equal(repicked?.id, t.id);
-      assert.equal(repicked?.state, 'pending');
+      // pickNext() now atomically claims the row, so state is in_flight on return.
+      assert.equal(repicked?.state, 'in_flight');
       store.close();
     } finally {
       cleanup();
@@ -371,6 +372,57 @@ describe('TaskStore', () => {
       assert.equal(byChannel.length, 1);
       const byMissingChannel = store.list({ channelId: 'nope' });
       assert.equal(byMissingChannel.length, 0);
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('TaskStore.pickNext — claim atomicity', () => {
+  it('TOCTOU: two stores on the same DB cannot both claim the same task — AUDIT-IFleet-de355093', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      // Two TaskStore handles on the same file ≈ two daemon processes.
+      const storeA = new TaskStore(path);
+      const storeB = new TaskStore(path);
+
+      storeA.insert(fakeGithubTask());
+
+      // Both call pickNext (synchronous, same event-loop tick — unit-test
+      // approximation of cross-process contention). BEGIN IMMEDIATE ensures
+      // the second call finds no pending row after the first claims it.
+      const claimedA = storeA.pickNext();
+      const claimedB = storeB.pickNext();
+
+      const winners = [claimedA, claimedB].filter(Boolean);
+      assert.equal(
+        winners.length,
+        1,
+        `exactly one pickNext must claim the task; got ${JSON.stringify([claimedA?.id, claimedB?.id])}`,
+      );
+
+      storeA.close();
+      storeB.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('pickNext returns task already in in_flight state — no separate updateState needed', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask();
+      store.insert(task);
+
+      const claimed = store.pickNext();
+      if (!claimed) throw new Error('expected pickNext to return a task');
+      assert.equal(claimed.state, 'in_flight', 'returned task must already be in_flight');
+
+      // DB row must be in_flight; a second pickNext must return null.
+      assert.equal(store.pickNext(), null, 'task must not be re-claimable after pickNext');
+
       store.close();
     } finally {
       cleanup();

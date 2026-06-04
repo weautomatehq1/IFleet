@@ -293,19 +293,35 @@ export class TaskStore {
   //     'failed'     — terminal failure
   //     'blocked'    — needs operator attention (HITL)
   //
-  // pickNext() reads state = 'pending' (above). recoverStale() resets any
+  // pickNext() atomically claims the task inside BEGIN IMMEDIATE so two
+  // control-plane processes sharing the SQLite file cannot both observe the
+  // same row as 'pending' (AUDIT-IFleet-de355093). recoverStale() resets any
   // 'in_flight' row whose picked_at is older than maxAgeMs back to 'pending'.
   // The two share the 'pending' / 'in_flight' vocabulary on purpose.
   pickNext(filter: PickFilter = {}): QueuedTask | null {
     const params: Record<string, unknown> = {};
-    let sql = `SELECT * FROM tasks WHERE state = 'pending'`;
+    let selectSql = `SELECT * FROM tasks WHERE state = 'pending'`;
     if (filter.repo) {
-      sql += ' AND repo = @repo';
+      selectSql += ' AND repo = @repo';
       params['repo'] = filter.repo;
     }
-    sql += ` ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC LIMIT 1`;
-    const row = this.db.prepare(sql).get(params) as TaskRow | undefined;
-    return row ? rowToTask(row) : null;
+    selectSql += ` ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC LIMIT 1`;
+
+    const now = Date.now();
+    const claimFn = this.db.transaction(() => {
+      const row = this.db.prepare(selectSql).get(params) as TaskRow | undefined;
+      if (!row) return null;
+      const result = this.db
+        .prepare(
+          `UPDATE tasks SET state = 'in_flight', picked_at = @now, state_meta = NULL WHERE id = @id AND state = 'pending'`,
+        )
+        .run({ now, id: row.id });
+      if (result.changes !== 1) return null;
+      return { ...row, state: 'in_flight', picked_at: now } as TaskRow;
+    });
+
+    const claimed = claimFn.immediate() as TaskRow | null;
+    return claimed ? rowToTask(claimed) : null;
   }
 
   /**
