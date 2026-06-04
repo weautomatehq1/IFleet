@@ -46,7 +46,7 @@ ledger and a PM2 restart wiped it, letting any captured signed request
 with a timestamp inside the 5-minute skew window be replayed against the
 freshly-started process.
 
-**Atomic prune + insert (AUDIT-IFleet-cf106efc, 2026-06-04).**
+**Atomic prune + insert (PR #334 / AUDIT-IFleet-cf106efc, 2026-06-04).**
 `SqliteNonceLedger.registerOrReject` wraps the prune-expired + `INSERT OR
 IGNORE` pair inside a single `BEGIN IMMEDIATE` transaction (better-sqlite3
 `txn.immediate(...)`). The IMMEDIATE lock serialises writers across
