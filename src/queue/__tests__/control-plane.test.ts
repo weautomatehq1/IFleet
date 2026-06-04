@@ -444,6 +444,43 @@ describe('control plane HTTP', () => {
     }
   });
 
+  it('race: two SqliteNonceLedger instances on the same DB accept a nonce exactly once — AUDIT-IFleet-63037351', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ifleet-nonce-race-'));
+    const dbPath = join(dir, 'tasks.db');
+    try {
+      const ttlMs = 6 * 60 * 1000;
+      const nonce = 'race-test-nonce-identical';
+
+      // Open two TaskStore/SqliteNonceLedger pairs on the same file.
+      // This simulates two control-plane processes sharing the SQLite store.
+      const storeA = new TaskStore(dbPath);
+      const storeB = new TaskStore(dbPath);
+      const ledgerA = storeA.createNonceLedger(ttlMs);
+      const ledgerB = storeB.createNonceLedger(ttlMs);
+
+      // Drive both calls within the same millisecond. Because better-sqlite3
+      // is synchronous the calls serialize inside the process, but the UNIQUE
+      // constraint on nonce_ledger ensures exactly one INSERT succeeds — the
+      // loser's result.changes will be 0 (INSERT OR IGNORE, row already
+      // present) and it returns false.
+      const now = Date.now();
+      const results = await Promise.all([
+        Promise.resolve(ledgerA.registerOrReject(nonce, now)),
+        Promise.resolve(ledgerB.registerOrReject(nonce, now)),
+      ]);
+
+      const trueCount = results.filter(Boolean).length;
+      assert.equal(trueCount, 1, `exactly one registerOrReject must return true, got: ${JSON.stringify(results)}`);
+
+      ledgerA.destroy();
+      ledgerB.destroy();
+      storeA.close();
+      storeB.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('cancel dispatch does NOT call queue.markFailed even when resolveTask returns a task', async () => {
     let onCancelCalled = false;
     let markFailedCalled = false;
