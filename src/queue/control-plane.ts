@@ -45,6 +45,13 @@ export interface ControlPlaneOptions {
   /** Max age (seconds) for a signed request before it is rejected as stale. */
   maxSkewSec?: number;
   /**
+   * Replay-protection ledger. Production wiring passes a SQLite-backed
+   * ledger from `TaskStore.createNonceLedger(...)` so replay protection
+   * survives control-plane restart (AUDIT-IFleet-e664f9f3). If omitted, an
+   * in-process Map-backed ledger is created — tests rely on this default.
+   */
+  nonceLedger?: NonceLedger;
+  /**
    * Hook called when a new task should be created. Receives the parsed
    * command (including Discord-source extras) so the handler can ingest
    * directly into the unified store. The returned taskId is echoed back to
@@ -89,16 +96,30 @@ const NONCE_MAX_LEN = 64;
 const NONCE_TTL_PADDING_SEC = 60;
 
 /**
+ * Replay-protection ledger contract. Production wires a SQLite-backed
+ * implementation (see `TaskStore.createNonceLedger` in `./store.ts`) so the
+ * record survives control-plane restart. Tests default to the in-memory
+ * fallback created below.
+ */
+export interface NonceLedger {
+  /** Returns true if the nonce was fresh and is now recorded. False if already seen. */
+  registerOrReject(nonce: string, now?: number): boolean;
+  /** Release any owned resources (e.g. periodic timers). */
+  destroy(): void;
+}
+
+/**
  * In-memory nonce ledger. Holds (nonce → expiresAtMs). On every request we
  * lazily sweep expired entries, then reject any nonce already in the map.
  * The TTL is `maxSkewSec + NONCE_TTL_PADDING_SEC` so an attacker who captured
  * a signed request cannot replay it inside the timestamp-skew window.
  *
- * This is per-process state — control-plane is single-process today. If we
- * ever run multi-instance behind a load balancer the store has to move to a
- * shared backend (sqlite/redis); the call site stays the same.
+ * Per-process state — does NOT survive restart. The production wiring in
+ * `src/server.ts` passes a SQLite-backed ledger instead so PM2 restarts
+ * cannot reopen the replay window (AUDIT-IFleet-e664f9f3). This class
+ * remains for tests and for callers that don't want a DB dependency.
  */
-class NonceStore {
+export class MemoryNonceLedger implements NonceLedger {
   private readonly seen = new Map<string, number>();
   private readonly timer: NodeJS.Timeout;
 
@@ -112,7 +133,6 @@ class NonceStore {
     clearInterval(this.timer);
   }
 
-  /** Returns true if the nonce was fresh and is now recorded. False if seen. */
   registerOrReject(nonce: string, now: number = Date.now()): boolean {
     this.sweep(now);
     if (this.seen.has(nonce)) return false;
@@ -129,7 +149,8 @@ class NonceStore {
 
 export function createControlPlane(opts: ControlPlaneOptions): ControlPlane {
   const maxSkew = opts.maxSkewSec ?? DEFAULT_MAX_SKEW;
-  const nonceStore = new NonceStore((maxSkew + NONCE_TTL_PADDING_SEC) * 1000);
+  const nonceStore: NonceLedger =
+    opts.nonceLedger ?? new MemoryNonceLedger((maxSkew + NONCE_TTL_PADDING_SEC) * 1000);
   const server = createServer((req, res) => {
     void handleRequest(req, res, opts, maxSkew, nonceStore).catch((err) => {
       console.error('[control-plane] unhandled error:', err);
@@ -163,7 +184,7 @@ async function handleRequest(
   res: ServerResponse,
   opts: ControlPlaneOptions,
   maxSkew: number,
-  nonceStore: NonceStore,
+  nonceStore: NonceLedger,
 ): Promise<void> {
   if (req.method === 'GET' && req.url === '/healthz') {
     // Unauthenticated endpoint; do not surface version/build info to

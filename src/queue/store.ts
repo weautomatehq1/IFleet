@@ -50,6 +50,15 @@ CREATE INDEX IF NOT EXISTS idx_pr_decisions_repo ON pr_decisions(repo);
 CREATE INDEX IF NOT EXISTS idx_pr_decisions_task ON pr_decisions(task_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_decisions_task_pr
   ON pr_decisions(task_id, pr_number);
+
+-- Nonce ledger — persistent HMAC-replay protection for the control plane.
+-- See createNonceLedger() below and src/queue/control-plane.ts NonceLedger.
+-- Persisted to survive PM2 restart (AUDIT-IFleet-e664f9f3).
+CREATE TABLE IF NOT EXISTS nonce_ledger (
+  nonce TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_nonce_ledger_expires ON nonce_ledger(expires_at);
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -540,8 +549,63 @@ export class TaskStore {
     }));
   }
 
+  /**
+   * Return a SQLite-backed nonce ledger that shares this store's DB handle.
+   * The ledger survives control-plane restarts so a captured signed request
+   * cannot be replayed inside the maxSkewSec window after PM2 restart
+   * (AUDIT-IFleet-e664f9f3). `ttlMs` should be `(maxSkewSec + padding) * 1000`.
+   */
+  createNonceLedger(ttlMs: number): SqliteNonceLedger {
+    return new SqliteNonceLedger(this.db, ttlMs);
+  }
+
   close(): void {
     this.db.close();
+  }
+}
+
+/**
+ * Persistent nonce ledger used by the control plane to reject replayed
+ * signed requests. Stored in the `nonce_ledger` table on the shared
+ * tasks DB so the record survives a control-plane restart.
+ *
+ * `registerOrReject` opportunistically prunes expired rows on every call;
+ * a periodic sweep is unnecessary because the per-insert prune bounds the
+ * table size at the count of nonces signed within the TTL window.
+ */
+export class SqliteNonceLedger {
+  private readonly insertStmt: Database.Statement<{ nonce: string; expires_at: number }>;
+  private readonly selectStmt: Database.Statement<{ nonce: string }>;
+  private readonly pruneStmt: Database.Statement<{ now: number }>;
+
+  constructor(
+    private readonly db: Database.Database,
+    private readonly ttlMs: number,
+  ) {
+    this.insertStmt = this.db.prepare(
+      `INSERT OR IGNORE INTO nonce_ledger (nonce, expires_at) VALUES (@nonce, @expires_at)`,
+    );
+    this.selectStmt = this.db.prepare(`SELECT 1 AS one FROM nonce_ledger WHERE nonce = @nonce`);
+    this.pruneStmt = this.db.prepare(`DELETE FROM nonce_ledger WHERE expires_at <= @now`);
+  }
+
+  /** Returns true if the nonce was fresh and is now recorded. False if already seen. */
+  registerOrReject(nonce: string, now: number = Date.now()): boolean {
+    this.pruneStmt.run({ now });
+    if (this.selectStmt.get({ nonce })) return false;
+    this.insertStmt.run({ nonce, expires_at: now + this.ttlMs });
+    return true;
+  }
+
+  /** No-op: no timers or async resources to release. Kept for interface parity with in-memory ledger. */
+  destroy(): void {
+    // intentionally empty
+  }
+
+  /** Test helper — number of rows currently in the ledger. */
+  size(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM nonce_ledger`).get() as { n: number };
+    return row.n;
   }
 }
 

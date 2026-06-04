@@ -73,10 +73,20 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
 
   const discordSource = new DiscordSource({ router, out: discordOut });
 
+  // Persistent replay-protection ledger. Survives PM2 restart so a captured
+  // signed request can't be replayed inside the maxSkewSec window after the
+  // process boots back up (AUDIT-IFleet-e664f9f3).
+  const DEFAULT_MAX_SKEW_SEC = 5 * 60;
+  const NONCE_TTL_PADDING_SEC = 60;
+  const nonceLedger = store.createNonceLedger(
+    (DEFAULT_MAX_SKEW_SEC + NONCE_TTL_PADDING_SEC) * 1000,
+  );
+
   const cp = createControlPlane({
     queue,
     hmacSecret: secret,
     port,
+    nonceLedger,
     onSprintGoal: async (cmd) => {
       // messageId is optional — slash commands provide idempotencyKey instead.
       // DiscordSource.ingest() requires either messageId or idempotencyKey for

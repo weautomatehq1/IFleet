@@ -226,10 +226,18 @@ async function main(): Promise<void> {
   orchestrator.on('event', verifierController.onEvent);
 
   // -------- ControlPlane HTTP listener (daemon-local) --------
+  // Persistent nonce ledger — shares the TaskStore DB so replay protection
+  // survives PM2 restart (AUDIT-IFleet-e664f9f3).
+  const CP_MAX_SKEW_SEC = 5 * 60;
+  const CP_NONCE_TTL_PADDING_SEC = 60;
+  const nonceLedger = store.createNonceLedger(
+    (CP_MAX_SKEW_SEC + CP_NONCE_TTL_PADDING_SEC) * 1000,
+  );
   const cp = createControlPlane({
     queue: legacyQueueShim(githubQueue),
     hmacSecret,
     port,
+    nonceLedger,
     onSprintGoal: async (cmd) => {
       if (!cmd.channelId || !cmd.userId || !cmd.userLabel) {
         throw new Error('sprint_goal requires Discord-source fields (channelId, userId, userLabel)');
