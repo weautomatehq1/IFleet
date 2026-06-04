@@ -204,6 +204,8 @@ async function main(): Promise<void> {
     });
   }
 
+  const discordOutbox = store.createDiscordOutbox();
+
   const orchestrator = new Orchestrator({
     store: orchestratorStore,
     adapter: { spawn: () => Promise.reject(new Error('raw spawn disabled — use pipelineFactory')) },
@@ -220,6 +222,7 @@ async function main(): Promise<void> {
     reposConfig: reposMap,
     briefLoader: { loadBrief: async () => '' },
     discordOut,
+    discordOutbox,
     queuedTaskLoader: (taskId) => store.getById(taskId),
   });
 
