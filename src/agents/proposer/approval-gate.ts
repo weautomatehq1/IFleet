@@ -1,22 +1,27 @@
-// Lane T5 owns this file (proposer-side surface).
+// M5 — proposer-side approval-gate seam.
 //
-// `postProposalsForApproval` writes one row per candidate into
-// `goal_proposals`, posts a Discord message per candidate in #ifleet-proposals,
-// and returns the count actually posted. T5's PR replaces this stub.
+// Thin delegation to `src/discord/proposals.ts` so the orchestrator
+// (src/agents/proposer/index.ts) keeps its single stable import point:
+//   import { postProposalsForApproval } from './approval-gate.ts';
 //
-// NB: this lives in the proposer module instead of `src/orchestrator/
-// approval-gate.ts` because the existing approval-gate is about
-// architect-plan HITL, whose verdict union is `'approve' | 'reject' |
-// 'cancel'`. T5 extends that gate with a `kind: 'proposal'` flavour AND
-// exposes the proposer-side entry point here so the orchestrator stays
-// importing one stable function.
+// The real Discord posting + DB write lives in `src/discord/proposals.ts`
+// to keep file ownership clean (Discord adapters live under src/discord).
+// This wrapper exists because T3's orchestrator already imports from this
+// path; rerouting the import would have churned T3's done-report contract.
+//
+// Production needs a live discord.js `Client`; we resolve one lazily via
+// `proposerDiscordClient()` which is registered at daemon boot. A null
+// client falls into the dry-run path (logs + returns 0) so cron runs that
+// happen before the daemon has come up cannot crash.
 
 import type { Client } from 'discord.js';
 
-import type {
-  DedupedCandidate,
-  ProposerConfig,
-} from './types.ts';
+import {
+  discordPostDepsFromClient,
+  postProposalsForApproval as postProposalsForApprovalImpl,
+  type DiscordPostDeps,
+} from '../../discord/proposals.ts';
+import type { DedupedCandidate, ProposerConfig } from './types.ts';
 
 let cachedClient: Client | null = null;
 
@@ -35,17 +40,17 @@ export function _resetProposerDiscordClient(): void {
 }
 
 export async function postProposalsForApproval(
-  _top: DedupedCandidate[],
-  _cfg: ProposerConfig,
+  candidates: DedupedCandidate[],
+  cfg: ProposerConfig,
+  depsOverride?: DiscordPostDeps,
 ): Promise<number> {
-  if (!cachedClient) {
+  const deps = depsOverride ?? (cachedClient ? discordPostDepsFromClient(cachedClient) : null);
+  if (!deps) {
     console.warn(
-      '[proposer/approval-gate] no Discord client registered — skipping candidates. ' +
-        'Daemon must call registerProposerDiscordClient() at boot.',
+      '[proposer/approval-gate] no Discord client registered — skipping ' +
+        `${candidates.length} candidates. Daemon must call registerProposerDiscordClient() at boot.`,
     );
     return 0;
   }
-  throw new Error(
-    'Lane T5 not landed yet — approval-gate stub. See splits/20260604-0910-m5-proposer-substrate/MASTER.md',
-  );
+  return postProposalsForApprovalImpl(candidates, cfg, deps);
 }

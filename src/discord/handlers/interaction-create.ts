@@ -30,6 +30,8 @@ import {
   dbUpdateFindingStatus,
   normaliseAuditRepo,
 } from '../../audit/audit-store.js';
+import { recordProposalDecision } from '../../orchestrator/approval-gate.js';
+import type { ProposalDecision } from '../../agents/proposer/types.js';
 
 export interface InteractionDeps {
   router: ChannelRouter;
@@ -378,6 +380,42 @@ async function handleButton(
     return;
   }
 
+  // M5 — proposal buttons persist a decision directly to goal_proposals;
+  // they do NOT round-trip through the control plane (no in-flight task
+  // to resume). Approve → /ship enqueue is M5.2 follow-up.
+  if (
+    parsed.verb === 'proposal_approve' ||
+    parsed.verb === 'proposal_reject' ||
+    parsed.verb === 'proposal_defer'
+  ) {
+    const decision: ProposalDecision =
+      parsed.verb === 'proposal_approve'
+        ? 'approved'
+        : parsed.verb === 'proposal_reject'
+          ? 'rejected'
+          : 'deferred';
+    try {
+      const result = await recordProposalDecision({
+        kind: 'proposal',
+        proposalId: parsed.taskId,
+        decision,
+        decidedBy: interaction.user.id,
+      });
+      if (!result.updated) {
+        await interaction.editReply(
+          `⚠ No proposal with id \`${parsed.taskId}\` — it may have been pruned.`,
+        );
+        return;
+      }
+      const verbLabel =
+        decision === 'approved' ? 'Approved' : decision === 'rejected' ? 'Rejected' : 'Deferred';
+      await interaction.editReply(`✔ ${verbLabel} proposal \`${parsed.taskId}\`.`);
+    } catch (err) {
+      await interaction.editReply(formatErrorReply(err));
+    }
+    return;
+  }
+
   const source: DiscordCommandSource = {
     kind: 'discord',
     channelId: interaction.channelId,
@@ -405,6 +443,14 @@ export function buildCommandFromButton(
   if (verb === 'verify_retry') return { type: 'verify', taskId, source };
   if (verb === 'verify_force_pr') {
     return { type: 'force_pr', taskId, reason: 'force-pr via discord (verifier failed)', source };
+  }
+  // M5 proposal verbs are persisted to goal_proposals directly — they have
+  // no control-plane command. handleButton routes them BEFORE this function
+  // ever sees them; reaching this branch is a programmer error.
+  if (verb === 'proposal_approve' || verb === 'proposal_reject' || verb === 'proposal_defer') {
+    throw new Error(
+      `buildCommandFromButton called with proposal verb '${verb}' — these are handled inline in handleButton via recordProposalDecision.`,
+    );
   }
   // Remaining verbs (reject, cancel, verify_cancel) all map to cancel.
   const reason =
