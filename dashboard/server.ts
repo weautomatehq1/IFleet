@@ -69,7 +69,7 @@ interface PrDecisionRow {
   pr_number: number | null;
   verdict: string;
   reviewer_login: string | null;
-  decided_at: number;
+  created_at: number;
 }
 
 interface BudgetRow {
@@ -137,12 +137,12 @@ export function listTaskQueue(tasksDb: Database.Database, limit = 50) {
   }));
 }
 
-export function listPrDecisions(stateDb: Database.Database, limit = 20) {
-  const rows = stateDb
+export function listPrDecisions(tasksDb: Database.Database, limit = 20) {
+  const rows = tasksDb
     .prepare(
-      `SELECT id, task_id, repo, pr_number, verdict, reviewer_login, decided_at
+      `SELECT id, task_id, repo, pr_number, verdict, reviewer_login, created_at
          FROM pr_decisions
-        ORDER BY decided_at DESC
+        ORDER BY created_at DESC
         LIMIT @limit`,
     )
     .all({ limit }) as PrDecisionRow[];
@@ -153,7 +153,7 @@ export function listPrDecisions(stateDb: Database.Database, limit = 20) {
     prNumber: r.pr_number,
     verdict: r.verdict,
     reviewerLogin: r.reviewer_login,
-    decidedAt: r.decided_at,
+    createdAt: r.created_at,
   }));
 }
 
@@ -225,7 +225,7 @@ export function createDashboardServer(options: DashboardServerOptions = {}) {
       }
       if (path === '/api/pr-decisions') {
         const limit = clampInt(url.searchParams.get('limit'), 20, 1, 200);
-        sendJson(res, 200, listPrDecisions(stateDb, limit));
+        sendJson(res, 200, listPrDecisions(tasksDb, limit));
         return;
       }
       if (path === '/api/budget') {
