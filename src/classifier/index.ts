@@ -45,9 +45,13 @@ interface RoutingConfig {
 }
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
-const config: RoutingConfig = JSON.parse(
-  readFileSync(resolve(REPO_ROOT, 'config', 'routing.json'), 'utf-8'),
-) as RoutingConfig;
+const _routingJsonPath = resolve(REPO_ROOT, 'config', 'routing.json');
+let config: RoutingConfig;
+try {
+  config = JSON.parse(readFileSync(_routingJsonPath, 'utf-8')) as RoutingConfig;
+} catch (err) {
+  throw new Error(`classifier: cannot load routing config at ${_routingJsonPath}: ${err instanceof Error ? err.message : String(err)}`);
+}
 
 const FALLBACK_TIERS: Record<Tier, string> = {
   haiku: 'claude-haiku-4-5-20251001',

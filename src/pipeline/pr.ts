@@ -54,7 +54,7 @@ interface FormatInput {
 }
 
 function formatPrBody(input: FormatInput): string {
-  return [
+  const lines = [
     `## Technical`,
     `- Task: \`${input.task.id}\` — ${input.task.title}`,
     `- Editor: \`${input.editorSpec.workerId}\` (${input.editorSpec.provider}/${input.editorSpec.model})`,
@@ -65,7 +65,9 @@ function formatPrBody(input: FormatInput): string {
     ``,
     `## Review summary`,
     input.reviewSummary,
-    ``,
-    `Closes #${input.task.issueNumber}`,
-  ].join('\n');
+  ];
+  if (input.task.issueNumber > 0) {
+    lines.push(``, `Closes #${input.task.issueNumber}`);
+  }
+  return lines.join('\n');
 }

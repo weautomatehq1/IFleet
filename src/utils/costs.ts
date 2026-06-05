@@ -41,15 +41,23 @@ export async function appendCostRecord(repoRoot: string, record: CostRecord): Pr
 export async function readCostLog(repoRoot: string): Promise<CostRecord[]> {
   const costFile = join(repoRoot, '.omc', 'costs.json');
 
+  let content: string;
   try {
-    const content = await fs.readFile(costFile, 'utf-8');
-    return content
-      .split('\n')
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as CostRecord);
+    content = await fs.readFile(costFile, 'utf-8');
   } catch {
     return [];
   }
+  return content
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line) as CostRecord];
+      } catch {
+        console.warn('[costs] skipping unparseable line in costs.json:', line.slice(0, 120));
+        return [];
+      }
+    });
 }
 
 export function summarizeCosts(records: CostRecord[]): CostSummary {
