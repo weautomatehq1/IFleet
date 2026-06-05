@@ -44,7 +44,10 @@ export function getKgPool(overrideUrl?: string): Pool {
     connectionTimeoutMillis: 8_000,
     // Supabase direct connection requires TLS; node-postgres needs the explicit hint
     // because the URL alone doesn't enable SSL by default.
-    ssl: url.includes('supabase.co') ? { rejectUnauthorized: false } : undefined,
+    // ssl:true uses the system trust store — Supabase certs are CA-signed so
+    // verification passes. rejectUnauthorized:false was replaced to close
+    // AUDIT-IFleet-babb7442 (MitM risk on Supabase connections).
+    ssl: url.includes('supabase.co') ? true : undefined,
   };
   cachedPool = new Pool(config);
   return cachedPool;

@@ -52,7 +52,7 @@ const config: RoutingConfig = JSON.parse(
 const FALLBACK_TIERS: Record<Tier, string> = {
   haiku: 'claude-haiku-4-5-20251001',
   sonnet: 'claude-sonnet-4-6',
-  opus: 'claude-opus-4-7',
+  opus: 'claude-opus-4-8',
 };
 
 const TIERS: Record<Tier, string> = { ...FALLBACK_TIERS, ...(config.tiers ?? {}) };
@@ -69,6 +69,17 @@ const HIGH_KEYWORDS = [
   'stripe',
   'supabase',
 ];
+
+// Word-boundary-aware patterns for HIGH_KEYWORDS scoring.
+// 'critical' uses full boundaries so 'noncritical' is not a false positive.
+// 'auth' uses a prefix boundary + negative lookahead so 'author' is excluded
+// while 'authentication' / 'authorization' / 'authorize' still match.
+// Fixes AUDIT-IFleet-f3eb99f3.
+const HIGH_KEYWORD_RE: readonly RegExp[] = HIGH_KEYWORDS.map((kw) => {
+  if (kw === 'critical') return /\bcritical\b/;
+  if (kw === 'auth') return /\bauth(?!or\b)/;
+  return new RegExp(`\\b${kw}`);
+});
 
 const MEDIUM_KEYWORDS = [
   'refactor',
@@ -126,8 +137,8 @@ function makeSpec(provider: string, model: string, role: string): WorkerSpec {
 
 function scoreKeywords(text: string): number {
   let score = 0;
-  for (const kw of HIGH_KEYWORDS) {
-    if (text.includes(kw)) score += 3;
+  for (const re of HIGH_KEYWORD_RE) {
+    if (re.test(text)) score += 3;
   }
   for (const kw of MEDIUM_KEYWORDS) {
     if (text.includes(kw)) score += 1;
@@ -202,7 +213,7 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     task.mode ?? detectExplicitMode({ labels: task.labels, body: task.body });
 
   const rawScore = scoreKeywords(text);
-  const hasHighKeyword = HIGH_KEYWORDS.some(kw => text.includes(kw));
+  const hasHighKeyword = HIGH_KEYWORD_RE.some((re) => re.test(text));
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
   // M4.6 trigger #1: canonical category keyword present in text (HIGH_KEYWORDS
   // hit). MEDIUM_KEYWORD aggregation and priority:high bumping a non-category

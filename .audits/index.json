@@ -1,11 +1,92 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-03T21:55:56Z",
+  "last_updated": "2026-06-05T04:22:18Z",
   "open_findings": 0,
-  "by_severity": {
-    "CRITICAL": 0,
-    "IMPORTANT": 0,
-    "COSMETIC": 0
-  },
-  "findings": []
+  "by_severity": { "CRITICAL": 0, "IMPORTANT": 0, "COSMETIC": 0 },
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-babb7442",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "TLS certificate verification disabled for Supabase PostgreSQL connection",
+      "detail": "pg-client.ts:47 set `rejectUnauthorized: false` for Supabase connections, disabling TLS certificate validation. An attacker performing DNS poisoning could intercept all knowledge-graph database traffic. Fixed: changed ssl option to `true` (uses system trust store with full verification). Supabase certs are CA-signed so verification passes cleanly.",
+      "file_globs": ["src/agents/indexer/pg-client.ts"],
+      "fix_sketch": "ssl: url.includes('supabase.co') ? true : undefined",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-05T04:17:17Z",
+      "closed_at": "2026-06-05T04:22:18Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1fc04306",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Opus model version claude-opus-4-7 outdated in routing config",
+      "detail": "config/routing.json referenced claude-opus-4-7 but current latest Opus is claude-opus-4-8. All opus-tier routes (security/auth/migration/critical tasks) would fail API calls if 4-7 is deprecated. Fixed: updated all references in routing.json to claude-opus-4-8.",
+      "file_globs": ["config/routing.json"],
+      "fix_sketch": "Replace all claude-opus-4-7 with claude-opus-4-8.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-05T04:17:17Z",
+      "closed_at": "2026-06-05T04:22:18Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d3911e58",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Opus model version claude-opus-4-7 outdated in classifier fallback tiers",
+      "detail": "src/classifier/index.ts FALLBACK_TIERS hardcoded claude-opus-4-7 as the opus tier fallback. Fixed: updated to claude-opus-4-8 and aligned 32 references in classifier test file.",
+      "file_globs": ["src/classifier/index.ts", "src/classifier/__tests__/classifier.test.ts"],
+      "fix_sketch": "Change opus: 'claude-opus-4-7' to opus: 'claude-opus-4-8' in FALLBACK_TIERS; bulk-replace in tests.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-05T04:17:17Z",
+      "closed_at": "2026-06-05T04:22:18Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f3eb99f3",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "HIGH_KEYWORDS substring matching routes noncritical tasks to Opus architect",
+      "detail": "scoreKeywords() and hasHighKeyword used text.includes(kw) causing false positives: 'noncritical' matched 'critical' (score +3 → opus tier), 'author' matched 'auth'. Fixed: introduced HIGH_KEYWORD_RE array with word-boundary regex patterns. 'critical' uses full word boundaries; 'auth' uses prefix-boundary with negative lookahead to exclude 'author' while still matching 'authentication'/'authorization'. Both scoreKeywords() and hasHighKeyword updated.",
+      "file_globs": ["src/classifier/index.ts"],
+      "fix_sketch": "Add HIGH_KEYWORD_RE = HIGH_KEYWORDS.map(kw => kw==='critical' ? /\\bcritical\\b/ : kw==='auth' ? /\\bauth(?!or\\b)/ : new RegExp('\\\\b'+kw)). Use in scoreKeywords and hasHighKeyword.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-05T04:17:17Z",
+      "closed_at": "2026-06-05T04:22:18Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-99eafa0d",
+      "severity": "COSMETIC",
+      "category": "redo",
+      "title": "Unused defaultModel field in routing.json",
+      "detail": "config/routing.json declared `defaultModel: 'sonnet-4.6'` but no TypeScript code reads this field (RoutingConfig interface omits it). Misleads future readers. Fixed: removed the unused field.",
+      "file_globs": ["config/routing.json"],
+      "fix_sketch": "Remove the defaultModel line from routing.json.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-05T04:17:17Z",
+      "closed_at": "2026-06-05T04:22:18Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-37a53003",
+      "severity": "COSMETIC",
+      "category": "redo",
+      "title": "CLAUDE.md references M4.6/M4.7/M4.8 as pending after ADR-0004 marked them resolved",
+      "detail": "CLAUDE.md warned that mode:* override, category:*, and severity:* label paths were not yet canonical-aligned, but ADR-0004 marks M4.6/M4.7/M4.8 as resolved in PR #301/#304 (2026-06-03). Fixed: updated the routing paragraph to reflect full alignment.",
+      "file_globs": ["CLAUDE.md"],
+      "fix_sketch": "Replace the 'not yet complete' paragraph with a statement that M4.6/M4.7/M4.8 were resolved in PR #301 and #304.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-05T04:17:17Z",
+      "closed_at": "2026-06-05T04:22:18Z",
+      "closing_pr": null
+    }
+  ]
 }

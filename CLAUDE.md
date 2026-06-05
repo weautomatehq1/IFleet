@@ -10,7 +10,7 @@ This repo inherits global rules from `~/.claude/CLAUDE.md`. Single-seat operatio
 
 IFleet implements the canonical pattern at `~/.claude/skills/CANONICAL-PATTERN.md`. Where this doc and the canonical spec conflict, the canonical spec wins and the conflict is a bug to file (label: `realign:<area>`).
 
-The routing policy in `docs/MODEL-ROUTING.md` is the canonical correctness-first matrix on the **scorer + routing.json rule paths** (M4.5 Phase C migration shipped 2026-06-03 — Phase B Opus cap removed; see [ADR-0004](docs/adr/0004-canonical-routing-alignment.md)). End-to-end canonical alignment on the **`mode:*` override path and explicit `category:*` / `severity:*` label paths** is not yet complete — those are tracked in ADR-0004 §Known limitations as M4.6 / M4.7 / M4.8 follow-ups. Operators relying on `mode:tdd` / `mode:ulw` / `mode:ralph` / `mode:deslop` today should know those modes can still downshift a canonical-Opus assignment back to Sonnet/Haiku; the supersedure protocol (canonical §7) tracks the gap until the follow-ups land.
+The routing policy in `docs/MODEL-ROUTING.md` is the canonical correctness-first matrix on the **scorer + routing.json rule paths** (M4.5 Phase C migration shipped 2026-06-03 — Phase B Opus cap removed; see [ADR-0004](docs/adr/0004-canonical-routing-alignment.md)). M4.6 (mode override category protection), M4.7 (explicit category/severity label parsing), and M4.8 (reviewer derivation after mode overrides) were resolved in PR #301 and PR #304 on 2026-06-03. The scorer + routing.json + mode + category/severity paths are now fully canonical-aligned.
 
 ## Identity
 

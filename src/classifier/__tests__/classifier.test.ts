@@ -12,7 +12,7 @@ describe('classifyTask — rule overrides', () => {
       body: 'check the auth flow',
       labels: ['auto:ship', 'verify:typecheck', 'verify:lint', 'verify:test'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -22,7 +22,7 @@ describe('classifyTask — rule overrides', () => {
       body: 'check the auth flow',
       labels: ['auto:ship', 'complexity:high'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -45,7 +45,7 @@ describe('classifyTask — rule overrides', () => {
       body: '',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -55,7 +55,7 @@ describe('classifyTask — rule overrides', () => {
       body: 'seed data for local dev',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -65,7 +65,7 @@ describe('classifyTask — rule overrides', () => {
       body: 'seed data for local dev',
       labels: ['auto:ship', 'complexity:high'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -112,7 +112,7 @@ describe('classifyTask — dynamic scorer', () => {
       labels: ['auto:ship'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('high-weight keyword + complexity:high promotes architect to opus', () => {
@@ -122,7 +122,7 @@ describe('classifyTask — dynamic scorer', () => {
       labels: ['auto:ship', 'complexity:high'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('editor is one tier below architect (with complexity:high → opus/sonnet)', () => {
@@ -131,7 +131,7 @@ describe('classifyTask — dynamic scorer', () => {
       body: '',
       labels: ['auto:ship', 'complexity:high'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
@@ -169,7 +169,7 @@ describe('classifyTask — dynamic scorer', () => {
     // the tier up one. Pre-Phase C the Opus cap demoted this back to sonnet;
     // post-M4.5 the canonical correctness-first policy lets priority:high
     // reach opus when the operator asked for it.
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('priority:high + complexity:high promotes architect to opus', () => {
@@ -178,7 +178,7 @@ describe('classifyTask — dynamic scorer', () => {
       body: '',
       labels: ['auto:ship', 'priority:high', 'complexity:high'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('complexity:low does NOT demote a payments-category override (canonical §3.2: override #1 wins regardless of severity)', () => {
@@ -192,7 +192,7 @@ describe('classifyTask — dynamic scorer', () => {
       body: '',
       labels: ['auto:ship', 'complexity:low'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('MEDIUM_KEYWORD + complexity:low stays at sonnet (no override, no demotion)', () => {
@@ -228,7 +228,7 @@ describe('classifyTask — dynamic scorer', () => {
       labels: ['auto:ship', 'complexity:high'],
     });
     assert.equal(result.reviewer.provider, 'claude');
-    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+    assert.equal(result.reviewer.model, 'claude-opus-4-8');
   });
 });
 
@@ -278,7 +278,7 @@ describe('classifyTask — rule override + complexity hint (issue #43, post-M4.5
       labels: ['auto:ship', 'complexity:low'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('SQL rule (architect→opus) with NO complexity label routes architect to opus', () => {
@@ -290,7 +290,7 @@ describe('classifyTask — rule override + complexity hint (issue #43, post-M4.5
       labels: ['auto:ship'],
     });
     assert.equal(result.architect.provider, 'claude');
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 });
 
@@ -298,7 +298,7 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
   const TIER_RANK: Record<string, number> = {
     'claude-haiku-4-5-20251001': 0,
     'claude-sonnet-4-6': 1,
-    'claude-opus-4-7': 2,
+    'claude-opus-4-8': 2,
   };
 
   function assertReviewerGteArchitect(
@@ -345,7 +345,7 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'rule-override (no complexity)',
     );
-    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+    assert.equal(result.reviewer.model, 'claude-opus-4-8');
   });
 
   it('rule-override (architect role) with complexity:low keeps reviewer >= architect (migration override #1 wins)', () => {
@@ -359,7 +359,7 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'rule-override + complexity:low',
     );
-    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+    assert.equal(result.reviewer.model, 'claude-opus-4-8');
   });
 
   it('rule-override (architect role) with complexity:high keeps reviewer >= architect', () => {
@@ -373,7 +373,7 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'rule-override + complexity:high',
     );
-    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+    assert.equal(result.reviewer.model, 'claude-opus-4-8');
   });
 
   it('explicit complexity:high (scorer path) keeps reviewer >= architect', () => {
@@ -387,8 +387,8 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'complexity:high',
     );
-    assert.equal(result.architect.model, 'claude-opus-4-7');
-    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
+    assert.equal(result.reviewer.model, 'claude-opus-4-8');
   });
 
   it('explicit complexity:low does NOT demote a payments-category override (reviewer mirrors at opus)', () => {
@@ -403,8 +403,8 @@ describe('classifyTask — reviewer >= architect invariant (issue #44)', () => {
       result.reviewer.model,
       'complexity:low + payments override',
     );
-    assert.equal(result.architect.model, 'claude-opus-4-7');
-    assert.equal(result.reviewer.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
+    assert.equal(result.reviewer.model, 'claude-opus-4-8');
   });
 });
 
@@ -424,7 +424,7 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
       body: 'check the auth flow',
       labels: ['auto:ship', 'mode:tdd'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
@@ -437,7 +437,7 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
       body: '',
       labels: ['auto:ship', 'mode:ulw'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('M4.6 — SQL rule + mode:deslop: architect stays Opus (migration category, rule trigger)', () => {
@@ -451,7 +451,7 @@ describe('classifyTask — mode override interaction (M4.6 + M4.8)', () => {
       body: 'seed data for local dev',
       labels: ['auto:ship', 'mode:deslop'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
@@ -569,7 +569,7 @@ describe('classifyTask — category:*/severity:* label overrides (M4.7)', () => 
       body: '',
       labels: ['auto:ship', 'category:security'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.architect.provider, 'claude');
   });
 
@@ -579,7 +579,7 @@ describe('classifyTask — category:*/severity:* label overrides (M4.7)', () => 
       body: '',
       labels: ['auto:ship', 'category:payments'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('M4.7 — severity:critical label routes architect to Opus regardless of category', () => {
@@ -590,7 +590,7 @@ describe('classifyTask — category:*/severity:* label overrides (M4.7)', () => 
       body: '',
       labels: ['auto:ship', 'severity:critical'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 
   it('M4.7 — category:auth + mode:tdd: architect stays Opus (M4.6 interaction)', () => {
@@ -603,7 +603,7 @@ describe('classifyTask — category:*/severity:* label overrides (M4.7)', () => 
       body: '',
       labels: ['auto:ship', 'category:auth', 'mode:tdd'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.equal(result.editor.model, 'claude-sonnet-4-6');
   });
 
@@ -635,7 +635,7 @@ describe('classifyTask — category:*/severity:* label overrides (M4.7)', () => 
       body: '',
       labels: ['auto:ship', 'category:security'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
   });
 });
 
@@ -655,7 +655,7 @@ describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-
       body: '',
       labels: ['auto:ship', 'complexity:high'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
     assert.equal(result.planReviewer?.model, 'claude-sonnet-4-6');
     assert.equal(result.planReviewer?.provider, 'claude');
@@ -671,7 +671,7 @@ describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-
       body: '',
       labels: ['auto:ship'],
     });
-    assert.equal(result.architect.model, 'claude-opus-4-7');
+    assert.equal(result.architect.model, 'claude-opus-4-8');
     assert.ok(result.planReviewer, 'planReviewer must be set on every decision');
     assert.equal(result.planReviewer?.model, 'claude-sonnet-4-6');
   });

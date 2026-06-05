@@ -1,10 +1,9 @@
 {
   "$schema": "./routing.schema.json",
-  "defaultModel": "sonnet-4.6",
   "tiers": {
     "haiku": "claude-haiku-4-5-20251001",
     "sonnet": "claude-sonnet-4-6",
-    "opus": "claude-opus-4-7"
+    "opus": "claude-opus-4-8"
   },
   "modes": {
     "ralph": {
@@ -30,7 +29,7 @@
   "rules": [
     {
       "match": { "keywords": ["architect", "design", "security", "auth", "migration", "rls", "critical"] },
-      "route": { "provider": "claude", "model": "claude-opus-4-7", "role": "architect" }
+      "route": { "provider": "claude", "model": "claude-opus-4-8", "role": "architect" }
     },
     {
       "match": { "keywords": ["refactor", "rename", "boilerplate", "test gen", "stub", "format"] },
@@ -42,7 +41,7 @@
     },
     {
       "match": { "fileGlobs": ["**/*.sql", "migrations/**", "supabase/**"] },
-      "route": { "provider": "claude", "model": "claude-opus-4-7", "role": "architect" }
+      "route": { "provider": "claude", "model": "claude-opus-4-8", "role": "architect" }
     }
   ],
   "pipeline": {
@@ -53,7 +52,7 @@
       "rule": "not-weaker-than-architect",
       "default": { "provider": "claude", "model": "claude-haiku-4-5-20251001" },
       "floors": {
-        "claude-opus-4-7": "claude-sonnet-4-6",
+        "claude-opus-4-8": "claude-sonnet-4-6",
         "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
         "claude-haiku-4-5-20251001": "claude-haiku-4-5-20251001"
       },
