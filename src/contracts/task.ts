@@ -46,10 +46,4 @@ export interface QueuedTask {
   mode?: SprintMode | null;
 }
 
-export function isDiscordSource(s: TaskSource): s is Extract<TaskSource, { kind: 'discord' }> {
-  return s.kind === 'discord';
-}
 
-export function isGitHubSource(s: TaskSource): s is Extract<TaskSource, { kind: 'github' }> {
-  return s.kind === 'github';
-}

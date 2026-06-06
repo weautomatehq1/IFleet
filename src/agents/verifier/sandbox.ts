@@ -256,7 +256,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         continue;
       }
 
-      let outcome = await this.runPhase(kind, worktreePath, useFallback, hasEnvFile ? envFilePath : undefined);
+      let outcome = await this.runPhase(kind, worktreePath, useFallback, hasEnvFile ? envFilePath : undefined, kind === 'install');
       phaseReports.push(outcome.report);
       rawLogChunks.push(
         `=== ${kind} (exit=${outcome.report.exitCode}, ${outcome.report.durationMs}ms) ===\n${outcome.rawOutput}\n`,
@@ -268,7 +268,7 @@ export class DockerSandboxRunner implements SandboxRunner {
           /network|ENOTFOUND|ECONNRESET|ERR_PNPM_FETCH/i.test(outcome.rawOutput)
         ) {
           await sleep(2000);
-          outcome = await this.runPhase('install', worktreePath, useFallback, hasEnvFile ? envFilePath : undefined);
+          outcome = await this.runPhase('install', worktreePath, useFallback, hasEnvFile ? envFilePath : undefined, true);
           phaseReports.pop();
           phaseReports.push(outcome.report);
           rawLogChunks.push(
@@ -333,11 +333,12 @@ export class DockerSandboxRunner implements SandboxRunner {
     worktreePath: string,
     useFallback: boolean,
     envFilePath?: string,
+    withNetwork?: boolean,
   ): Promise<PhaseRunOutcome> {
     const startedAt = this.now();
     const argv = buildPhaseArgv(kind);
     const command = useFallback ? this.pnpmBin : this.dockerBin;
-    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath);
+    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath, withNetwork);
     const result = await this.runCommand(command, args, {
       ...(useFallback ? { cwd: worktreePath } : {}),
       timeoutMs: this.timeoutMs,
@@ -498,6 +499,8 @@ function buildDockerArgs(
   memoryMb: number,
   innerArgv: string[],
   envFilePath?: string,
+  /** Allow outbound network access (install phase only). Default: false (none). */
+  withNetwork?: boolean,
 ): string[] {
   const args = [
     'run',
@@ -505,9 +508,12 @@ function buildDockerArgs(
     '--memory',
     `${memoryMb}m`,
     '--network',
-    'bridge',
+    withNetwork ? 'bridge' : 'none',
     '--user',
-    'root',
+    '1000:1000',
+    '--cap-drop',
+    'ALL',
+    '--no-new-privileges',
   ];
   if (envFilePath) {
     args.push('--env-file', envFilePath);

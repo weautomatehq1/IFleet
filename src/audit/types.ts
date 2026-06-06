@@ -50,11 +50,17 @@ export function isActiveAuditStatus(status: AuditStatus): boolean {
   return (ACTIVE_AUDIT_STATUSES as readonly string[]).includes(status);
 }
 
-export const AUDIT_SEVERITIES: readonly AuditSeverity[] = [
+/**
+ * All severity levels in severity order (worst first). The `satisfies` clause
+ * ensures this array covers every AuditSeverity member — adding a new severity
+ * to the union without updating this list will produce a compile-time error.
+ * Used by the audit scanner to sort findings and by tests as the exhaustive list.
+ */
+export const AUDIT_SEVERITIES = [
   'CRITICAL',
   'IMPORTANT',
   'COSMETIC',
-];
+] as const satisfies readonly AuditSeverity[];
 
 export interface AuditFinding {
   id: string;

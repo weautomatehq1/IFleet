@@ -395,15 +395,17 @@ export class SprintManager {
         handle,
         startedAt: this.now(),
       });
+      // Re-read the task after the assigned-state save so the running-state
+      // save does not silently drop fields written by the assigned transition.
+      const assignedTask = this.store.loadTask(task.id) ?? task;
       this.store.saveTask({
-        ...task,
+        ...assignedTask,
         brief,
         state: {
           kind: 'running',
           workerId,
           startedAt: this.now(),
         },
-        attempts: task.attempts + 1,
         updatedAt: this.now(),
       });
       void this.awaitHandle(task.id);

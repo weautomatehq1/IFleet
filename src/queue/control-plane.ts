@@ -446,10 +446,6 @@ export function parseCommand(body: string): ControlCommand {
 // Re-export the shared HMAC primitives. Existing call sites and tests import
 // `signPayload`/`verifySignature` from this module — keep that surface stable
 // while routing through src/contracts/hmac.ts so the signer never drifts.
-export function signLegacyPayload(secret: string, timestamp: string, nonce: string, body: string): string {
-  return signPayload({ timestamp, nonce, body }, secret);
-}
-
 export function verifySignature(
   secret: string,
   timestamp: string,

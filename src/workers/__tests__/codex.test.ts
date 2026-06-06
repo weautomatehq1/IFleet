@@ -99,7 +99,10 @@ test('codex adapter: spawn args use exec --json and pass tmp file', async () => 
   assert.ok(call.args.includes('--sandbox'));
   assert.ok(call.args.includes('workspace-write'));
   assert.ok(call.args.includes('--output-last-message'));
-  assert.equal(call.args[call.args.length - 1], 'do the thing');
+  // The last arg is the brief wrapped in a DATA block (defense-in-depth).
+  // Verify the original brief text is present inside the wrapper.
+  const lastArg = call.args[call.args.length - 1];
+  assert.ok(typeof lastArg === 'string' && lastArg.includes('do the thing'), `expected brief in last arg, got: ${lastArg}`);
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 

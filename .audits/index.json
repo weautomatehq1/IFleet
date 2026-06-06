@@ -1,11 +1,96 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-03T21:55:56Z",
+  "last_updated": "2026-06-06T04:11:36Z",
   "open_findings": 0,
   "by_severity": {
     "CRITICAL": 0,
     "IMPORTANT": 0,
     "COSMETIC": 0
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-d1a3f892",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Docker verifier container runs as root with bridge networking, contradicting doc comment",
+      "detail": "buildDockerArgs() in src/agents/verifier/sandbox.ts passes --user root and --network bridge to every docker run invocation. The module-level docstring explicitly says 'no host network by default' but the implementation uses bridge (full outbound access), not none.",
+      "file_globs": ["src/agents/verifier/sandbox.ts"],
+      "fix_sketch": "Change '--network', 'bridge' to '--network', 'none' in buildDockerArgs(). Add '--user', '1000' and '--cap-drop', 'ALL', '--no-new-privileges'. Run install phase with bridge separately, then set none for build/typecheck/lint/test phases.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-06T04:11:36Z",
+      "closed_at": "2026-06-06T04:20:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a7c20e15",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "signLegacyPayload is an exported dead function with misleading argument order",
+      "detail": "src/queue/control-plane.ts exports signLegacyPayload(secret, timestamp, nonce, body) which inverts argument order vs signPayload({timestamp, nonce, body}, secret). No production callsite imports it, but its presence is a trap for future callers.",
+      "file_globs": ["src/queue/control-plane.ts"],
+      "fix_sketch": "Remove the signLegacyPayload export entirely. No production importers exist.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-06T04:11:36Z",
+      "closed_at": "2026-06-06T04:20:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b3e79c41",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "SprintManager.dispatch double-saves task using stale base object for running-state transition",
+      "detail": "dispatch() saves the task twice: once for 'assigned' state with attempts+1, then again for 'running' state spreading the original stale task object. Any fields written in the assigned-state save will be silently dropped by the running-state spread.",
+      "file_globs": ["src/orchestrator/sprint.ts"],
+      "fix_sketch": "After the first saveTask (assigned state), reload: const assignedTask = this.store.loadTask(task.id) ?? task; then use assignedTask as the spread base for the running-state save.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-06T04:11:36Z",
+      "closed_at": "2026-06-06T04:20:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c9d11b07",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Codex adapter passes raw user brief as CLI argument without injection sanitization layer",
+      "detail": "buildCodexArgs() in src/workers/codex.ts appends opts.brief directly as a positional CLI argument with no DATA-block wrapping, unlike the Claude adapter which applies wrapBriefAsData(). No active injection vector since spawn uses shell:false, but there is no defense-in-depth layer.",
+      "file_globs": ["src/workers/codex.ts"],
+      "fix_sketch": "Apply wrapBriefAsData() from claude-env.ts before passing the brief to the codex CLI, or validate the brief does not contain shell metacharacter sequences.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-06T04:11:36Z",
+      "closed_at": "2026-06-06T04:20:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e4b88f53",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Dead exported type guards isDiscordSource and isGitHubSource in src/contracts/task.ts",
+      "detail": "isDiscordSource and isGitHubSource are exported but have no production callsites. Inline kind checks (task.source.kind === 'discord') are used throughout instead.",
+      "file_globs": ["src/contracts/task.ts"],
+      "fix_sketch": "Remove isDiscordSource and isGitHubSource. Update test-only usages to use inline kind checks.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-06T04:11:36Z",
+      "closed_at": "2026-06-06T04:20:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f2a99d34",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "AUDIT_SEVERITIES constant in src/audit/types.ts exported but has no production importers",
+      "detail": "AUDIT_SEVERITIES is an exported array constant with no production importers per ts-prune. Creates a second source of truth that can drift from the AuditSeverity union type.",
+      "file_globs": ["src/audit/types.ts"],
+      "fix_sketch": "Remove the export or add a satisfies readonly AuditSeverity[] assertion to make the array load-bearing as a compile-time exhaustiveness check.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-06T04:11:36Z",
+      "closed_at": "2026-06-06T04:20:00Z",
+      "closing_pr": null
+    }
+  ]
 }

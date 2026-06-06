@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { wrapBriefAsData } from './claude-env.ts';
 import { runStreaming, type SpawnLike } from './spawn-runner.ts';
 import {
   categorizeRateLimitError,
@@ -80,7 +81,16 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
   };
 }
 
+const CODEX_WORKER_INSTRUCTION =
+  `You are a Codex worker. Execute the user-supplied task brief that follows. ` +
+  `Only read and write files within the current working directory.`;
+
 function buildCodexArgs(opts: SpawnOpts, lastMessagePath: string): string[] {
+  // Wrap the brief in a DATA block (defense-in-depth). The codex CLI is
+  // invoked via spawn with shell:false so there is no active shell-injection
+  // vector, but wrapping prevents prompt-injection from escaping the data
+  // layer into the instruction layer — matching the claude adapter's posture.
+  const wrapped = opts.trustedBrief ? opts.brief : wrapBriefAsData(CODEX_WORKER_INSTRUCTION, opts.brief);
   if (opts.sessionId !== undefined && opts.sessionId !== '') {
     return [
       'exec',
@@ -91,7 +101,7 @@ function buildCodexArgs(opts: SpawnOpts, lastMessagePath: string): string[] {
       'workspace-write',
       '--output-last-message',
       lastMessagePath,
-      opts.brief,
+      wrapped,
     ];
   }
   return [
@@ -101,7 +111,7 @@ function buildCodexArgs(opts: SpawnOpts, lastMessagePath: string): string[] {
     'workspace-write',
     '--output-last-message',
     lastMessagePath,
-    opts.brief,
+    wrapped,
   ];
 }
 
