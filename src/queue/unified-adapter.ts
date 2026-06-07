@@ -53,8 +53,8 @@ export class UnifiedQueueAdapter {
 
   async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
     const current = this.store.getById(task.id);
-    if (current?.state === 'failed' || current?.state === 'cancelled') {
-      console.warn(`[unified-queue] markCompleted skipped for ${task.id} — task already ${current.state} (concurrent cancel)`);
+    if (current?.state === 'failed') {
+      console.warn(`[unified-queue] markCompleted skipped for ${task.id} — task already failed (concurrent cancel)`);
       return;
     }
     this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
