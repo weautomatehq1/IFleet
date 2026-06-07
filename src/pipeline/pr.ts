@@ -54,9 +54,13 @@ interface FormatInput {
 }
 
 function formatPrBody(input: FormatInput): string {
+  const issueUrl = input.task.issueNumber > 0
+    ? `https://github.com/${input.task.repo}/issues/${input.task.issueNumber}`
+    : null;
   const lines = [
     `## Technical`,
     `- Task: \`${input.task.id}\` — ${input.task.title}`,
+    ...(issueUrl ? [`- Source: ${issueUrl}`] : []),
     `- Editor: \`${input.editorSpec.workerId}\` (${input.editorSpec.provider}/${input.editorSpec.model})`,
     `- Reviewer: \`${input.reviewerSpec.workerId}\` (${input.reviewerSpec.provider}/${input.reviewerSpec.model})`,
     ``,

@@ -23,7 +23,7 @@
  * Run: `pnpm start:control-plane`
  */
 
-import { resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath, join } from 'node:path';
 import { createControlPlane } from './queue/control-plane.js';
 import { DiscordSource } from './queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from './queue/store.js';
@@ -56,7 +56,9 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   if (!secret) throw new Error('IFLEET_HMAC_SECRET is required');
 
   const port = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
-  const store = deps.store ?? new TaskStore(env['IFLEET_STATE_DIR'] ? undefined : defaultTasksDbPath());
+  const store = deps.store ?? new TaskStore(
+    env['IFLEET_STATE_DIR'] ? join(env['IFLEET_STATE_DIR'], 'tasks.db') : defaultTasksDbPath(),
+  );
 
   // Crash-recovery sweep: any task left `in_flight` past the threshold (30
   // min default) is treated as orphaned and reset to `pending` so the daemon

@@ -22,9 +22,13 @@ export class GitHubIssuesSource implements TaskSource {
     // pickNext + excludeIds loop until exhausted. Cheap because pickNext only
     // does N issues worth of work and the unified store already de-dupes.
     const exclude = new Set<string>();
+    const MAX_DRAIN = 200;
+    let drainCount = 0;
     for (;;) {
+      if (drainCount++ >= MAX_DRAIN) break;
       const next = await this.queue.pickNext({ excludeIds: Array.from(exclude) });
       if (!next) break;
+      if (exclude.has(next.id)) break;
       exclude.add(next.id);
       const unified = legacyToUnified(next);
       const res = store.insert(unified);

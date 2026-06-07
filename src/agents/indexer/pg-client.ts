@@ -11,6 +11,7 @@
  * the typecheck and parser unit tests without Postgres).
  */
 
+import { readFileSync } from 'node:fs';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 
 let cachedPool: Pool | undefined;
@@ -42,9 +43,14 @@ export function getKgPool(overrideUrl?: string): Pool {
     max: 5,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 8_000,
-    // Supabase direct connection requires TLS; node-postgres needs the explicit hint
-    // because the URL alone doesn't enable SSL by default.
-    ssl: url.includes('supabase.co') ? { rejectUnauthorized: false } : undefined,
+    // Supabase direct connection requires TLS. If SUPABASE_CA_CERT_PATH is set,
+    // use it with full verification. Otherwise fall back to rejectUnauthorized:false
+    // — acceptable only for Supabase's managed TLS; rotate to pinned cert when possible.
+    ssl: url.includes('supabase.co')
+      ? process.env['SUPABASE_CA_CERT_PATH']
+        ? { ca: readFileSync(process.env['SUPABASE_CA_CERT_PATH'], 'utf8'), rejectUnauthorized: true }
+        : { rejectUnauthorized: false }
+      : undefined,
   };
   cachedPool = new Pool(config);
   return cachedPool;

@@ -190,7 +190,9 @@ export class DefaultPipelineRunner implements PipelineRunner {
         // Post the escalation to the issue when one exists, so the human
         // pinged on Discord can see the structured disagreement.
         if (input.task.issueNumber > 0) {
-          await input.issues.comment(input.task.issueNumber, escalation).catch(() => {});
+          await input.issues.comment(input.task.issueNumber, escalation).catch((err: unknown) => {
+            console.warn('[pipeline] escalation comment failed:', err instanceof Error ? err.message : String(err));
+          });
         }
         return failed(attempts, `plan-reviewer escalated after ${planAttempt} vetoes`);
       }
@@ -548,7 +550,9 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
       durationMs: attempt.endedAt - attempt.startedAt,
       startedAt: new Date(attempt.startedAt).toISOString(),
       worktreePath: input.worktreePath,
-    }).catch(() => {}); // never let cost logging break the pipeline
+    }).catch((err: unknown) => {
+      console.warn('[pipeline] cost logging failed:', err instanceof Error ? err.message : String(err));
+    });
   }
 }
 

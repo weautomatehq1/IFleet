@@ -7,7 +7,7 @@
 // daemon restarts and is shared between the smoke runner cron and the
 // long-running daemon.
 
-import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync, renameSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const FLAG_REL = '.omc/PAUSED';
@@ -74,7 +74,9 @@ export function setFleetPaused(opts: { reason?: string; by?: string } = {}, repo
     ...(opts.reason ? { reason: opts.reason } : {}),
     ...(opts.by ? { by: opts.by } : {}),
   });
-  writeFileSync(path, body, 'utf8');
+  const tmpPath = `${path}.tmp`;
+  writeFileSync(tmpPath, body, 'utf8');
+  renameSync(tmpPath, path);
 }
 
 /** Remove the PAUSED flag. No-op when the flag is already absent. */

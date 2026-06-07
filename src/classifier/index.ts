@@ -305,7 +305,7 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     // Explicit `category:*` labels are out of scope here — tracked as M4.7.
     if (matchedRule.route.role === 'architect' && matchedRule.route.model === TIERS.opus) {
       const signal = (matchedKeyword ?? matchedGlob ?? '').toLowerCase();
-      if (signal && CATEGORY_NEEDLES.some((needle) => signal.includes(needle))) {
+      if (signal && CATEGORY_NEEDLES.includes(signal)) {
         categoryOverrideTriggered = true;
       }
     }

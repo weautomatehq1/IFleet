@@ -118,7 +118,7 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
       let resolvedId = taskId;
       if (taskId.startsWith('__channel_current__:')) {
         const channelId = taskId.slice('__channel_current__:'.length);
-        if (!/^\d{5,32}$/.test(channelId)) {
+        if (!/^\d{17,20}$/.test(channelId)) {
           console.warn('[daemon] onCancel: invalid channelId in sentinel:', channelId);
           return;
         }
@@ -270,7 +270,7 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
     onStatus: (taskId) => {
       if (taskId.startsWith('__channel__:')) {
         const channelId = taskId.slice('__channel__:'.length);
-        if (!/^\d{5,32}$/.test(channelId)) return null;
+        if (!/^\d{17,20}$/.test(channelId)) return null;
         const tasks = store.list({ channelId }, 5);
         if (tasks.length === 0) return `No recent tasks in <#${channelId}>.`;
         return tasks

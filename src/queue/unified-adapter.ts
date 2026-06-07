@@ -52,7 +52,11 @@ export class UnifiedQueueAdapter {
   }
 
   async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
-    this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
+    const updated = this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() }, 'in_flight');
+    if (!updated) {
+      console.warn(`[unified-queue] markCompleted skipped for ${task.id} — task not in_flight (concurrent state change)`);
+      return;
+    }
     try {
       await this.sourceFor(task).markCompleted(task, prUrl, totalTokens);
     } catch (err) {

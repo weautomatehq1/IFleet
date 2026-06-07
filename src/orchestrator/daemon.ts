@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   console.warn('[daemon] booting IFleet daemon');
 
   // -------- Persistent state --------
-  const store = new TaskStore(process.env['IFLEET_STATE_DIR'] ? undefined : defaultTasksDbPath());
+  const store = new TaskStore(defaultTasksDbPath());
   const staleCount = store.recoverStale();
   if (staleCount > 0) console.warn(`[daemon] recovered ${staleCount} stale in_flight task(s) → pending`);
 
