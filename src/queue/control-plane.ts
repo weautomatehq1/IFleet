@@ -362,7 +362,8 @@ export function parseCommand(body: string): ControlCommand {
       if (userId) cmd.userId = userId;
       const userLabel = pickStr('userLabel');
       if (userLabel) cmd.userLabel = userLabel;
-      if (typeof parsed.idempotencyKey === 'string') cmd.idempotencyKey = parsed.idempotencyKey;
+      const idempotencyKey = pickStr('idempotencyKey');
+      if (idempotencyKey) cmd.idempotencyKey = idempotencyKey;
       if (typeof parsed.planOnly === 'boolean') cmd.planOnly = parsed.planOnly;
       return cmd;
     }

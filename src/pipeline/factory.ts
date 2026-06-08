@@ -83,8 +83,6 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(cat *)',
     'Bash(grep *)',
     'Bash(mkdir *)',
-    'Bash(mv *)',
-    'Bash(cp *)',
     'Edit(*)',
     'Write(*)',
     'Read(*)',
@@ -138,6 +136,10 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(wget *)',
     'Bash(ssh *)',
     'Bash(scp *)',
+    'Bash(mv)',
+    'Bash(mv *)',
+    'Bash(cp)',
+    'Bash(cp *)',
   ],
 } as const;
 

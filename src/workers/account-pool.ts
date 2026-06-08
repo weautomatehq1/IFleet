@@ -99,7 +99,7 @@ export function createAccountPool(
     const t = now();
     for (const candidate of eligible) {
       const until = pausedUntil.get(candidate.id);
-      if (until === undefined) return 0;
+      if (until === undefined) continue;
       if (until === Number.POSITIVE_INFINITY) continue;
       const wait = Math.max(0, until - t);
       if (wait < soonest) soonest = wait;

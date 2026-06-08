@@ -199,6 +199,10 @@ export class StateStore {
     }
   }
 
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   close(): void {
     this.db.close();
   }

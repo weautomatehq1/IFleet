@@ -366,15 +366,16 @@ export class TaskStore {
                   attempts = attempts + 1
             WHERE state = 'in_flight'
               AND picked_at IS NOT NULL
-              AND picked_at < @cutoff`,
+              AND picked_at < @cutoff
+              AND attempts + 1 < @maxAttempts`,
         )
-        .run({ now, cutoff });
+        .run({ now, cutoff, maxAttempts });
       return failedResult.changes + recoveredResult.changes;
     });
     return runRecovery() as number;
   }
 
-  updateState(taskId: string, state: TaskState, meta?: Record<string, unknown>): void {
+  updateState(taskId: string, state: TaskState, meta?: Record<string, unknown>, fromState?: TaskState): boolean {
     const now = Date.now();
     const stamps: Record<string, unknown> = {};
     if (state === 'in_flight') stamps['picked_at'] = now;
@@ -389,7 +390,12 @@ export class TaskStore {
     };
     if ('picked_at' in stamps) setParts.push('picked_at = @picked_at');
     if ('completed_at' in stamps) setParts.push('completed_at = @completed_at');
-    this.db.prepare(`UPDATE tasks SET ${setParts.join(', ')} WHERE id = @id`).run(params);
+    const whereClause = fromState
+      ? `WHERE id = @id AND state = @fromState`
+      : `WHERE id = @id`;
+    if (fromState) params['fromState'] = fromState;
+    const result = this.db.prepare(`UPDATE tasks SET ${setParts.join(', ')} ${whereClause}`).run(params);
+    return result.changes > 0;
   }
 
   getById(taskId: string): QueuedTask | null {

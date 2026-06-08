@@ -366,6 +366,7 @@ export class SprintManager {
         return;
       }
     }
+    const newAttempts = task.attempts + 1;
     const nextTaskState: TaskState = {
       kind: 'assigned',
       workerId,
@@ -375,7 +376,7 @@ export class SprintManager {
       ...task,
       brief,
       state: nextTaskState,
-      attempts: task.attempts + 1,
+      attempts: newAttempts,
       updatedAt: now,
     });
     this.emit({
@@ -384,7 +385,7 @@ export class SprintManager {
       taskId: task.id,
       workerId,
       kind: 'task.assigned',
-      payload: { attempt: task.attempts + 1 },
+      payload: { attempt: newAttempts },
     });
     try {
       const handle = await this.adapter.spawn(task.id, brief, {});
@@ -403,7 +404,7 @@ export class SprintManager {
           workerId,
           startedAt: this.now(),
         },
-        attempts: task.attempts + 1,
+        attempts: newAttempts,
         updatedAt: this.now(),
       });
       void this.awaitHandle(task.id);
@@ -415,7 +416,7 @@ export class SprintManager {
         ...task,
         brief,
         state: { kind: 'failed', at: this.now(), error: message },
-        attempts: task.attempts + 1,
+        attempts: newAttempts,
         updatedAt: this.now(),
       });
       this.emit({

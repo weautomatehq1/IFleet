@@ -17,11 +17,6 @@ import type { StateStore } from '../../orchestrator/store.js';
 import type { SprintId, TaskId } from '../../orchestrator/types.js';
 import type { VerifierFailure, VerifierRunResult, VerifierStatus } from './types.js';
 
-interface StoreInternal {
-  // Exposed by reading the runtime field; we don't call private methods.
-  db: Database.Database;
-}
-
 export interface PersistedVerifierRun {
   id: string;
   taskId: TaskId;
@@ -42,10 +37,7 @@ export class VerifierStoreBridge {
   private readonly db: Database.Database;
 
   constructor(store: StateStore) {
-    this.db = (store as unknown as StoreInternal).db;
-    if (!this.db) {
-      throw new Error('VerifierStoreBridge requires a StateStore with a `db` field');
-    }
+    this.db = store.getDb();
   }
 
   insertRun(args: {

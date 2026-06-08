@@ -153,8 +153,9 @@ export class GitRepoManager implements RepoManager {
           });
         }
       }
-      // Swallow remove-stage failure quietly if everything else cleaned up.
-      void removed;
+      if (removed.code !== 0) {
+        console.warn('[worktree] remove exited', removed.code, '— continuing cleanup');
+      }
     });
   }
 
