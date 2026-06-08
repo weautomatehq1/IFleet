@@ -1,11 +1,11 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-04T04:20:36Z",
-  "open_findings": 4,
+  "last_updated": "2026-06-08T04:16:30Z",
+  "open_findings": 3,
   "by_severity": {
     "CRITICAL": 0,
     "IMPORTANT": 2,
-    "COSMETIC": 2
+    "COSMETIC": 1
   },
   "findings": [
     {
@@ -88,9 +88,9 @@
       "fix_sketch": "Add a byte cap (e.g. 2 MB) and truncated flag mirroring spawn-util.ts. Append a truncation notice to the error message when the cap is hit.",
       "parallel_safe": true,
       "fingerprint": "AUDIT-IFleet-9cc2abb1",
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-06-04T04:19:27Z",
-      "closed_at": null,
+      "closed_at": "2026-06-08T04:16:30Z",
       "closing_pr": null
     },
     {
@@ -125,6 +125,59 @@
       "status": "open",
       "opened_at": "2026-06-04T04:19:27Z",
       "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a1b2c3d4",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "already-resolved Discord embed check is dead code — wrong sentinel string",
+      "detail": "discord-output.ts checks `prUrl === 'already-resolved'` in the postCompleted embed description, but no call site ever passes that literal. Already_resolved tasks always show 'Pull request opened.' instead of the intended 'Already resolved — no changes needed' message.",
+      "file_globs": [
+        "src/observability/discord-output.ts",
+        "src/orchestrator/index.ts",
+        "src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "Change discord-output.ts to check `!prUrl`. Pass `pr ?? ''` in orchestrator instead of `pr ?? '(no PR url)'`. Remove dead `!== 'already-resolved'` guard in discord.ts.",
+      "parallel_safe": false,
+      "fingerprint": "ifleet-already-resolved-dead-sentinel-2026-06-08",
+      "status": "fixed",
+      "opened_at": "2026-06-08T04:14:50Z",
+      "closed_at": "2026-06-08T04:16:30Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b5e6f7a8",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "sourceFor() switch default lacks TypeScript exhaustiveness check",
+      "detail": "unified-adapter.ts:sourceFor() throws in the default case but has no `const _exhaustive: never` assignment. Adding a new source kind to TaskSource without updating sourceFor() compiles silently.",
+      "file_globs": [
+        "src/queue/unified-adapter.ts"
+      ],
+      "fix_sketch": "Add `const _exhaustive: never = task.source;` in the default branch before the throw.",
+      "parallel_safe": true,
+      "fingerprint": "ifleet-sourcerfor-exhaustiveness-2026-06-08",
+      "status": "fixed",
+      "opened_at": "2026-06-08T04:14:50Z",
+      "closed_at": "2026-06-08T04:16:30Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c9d0e1f2",
+      "severity": "COSMETIC",
+      "category": "logic",
+      "title": "normaliseAuditRepo returns empty string when repo is exactly '/'",
+      "detail": "audit-store.ts:normaliseAuditRepo returns '' when the input is '/', which could be used as a DB key and silently corrupt reads/writes.",
+      "file_globs": [
+        "src/audit/audit-store.ts"
+      ],
+      "fix_sketch": "Guard: `const basename = repo.slice(slashIdx + 1); return basename || repo;`",
+      "parallel_safe": true,
+      "fingerprint": "ifleet-normalise-audit-repo-empty-2026-06-08",
+      "status": "fixed",
+      "opened_at": "2026-06-08T04:14:50Z",
+      "closed_at": "2026-06-08T04:16:30Z",
       "closing_pr": null
     }
   ]

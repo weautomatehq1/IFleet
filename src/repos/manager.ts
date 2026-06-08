@@ -210,6 +210,8 @@ export class GitRepoManager implements RepoManager {
 // helpers
 // -----------------------------------------------------------------------------
 
+const SPAWN_CAPTURE_CAP_BYTES = 2 * 1024 * 1024; // 2 MB — mirrors verify/spawn-util.ts
+
 async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     // Strip GIT_* vars so a parent pre-push hook's GIT_DIR/GIT_WORK_TREE
@@ -218,16 +220,28 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
       Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
     );
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
-    let stdout = '';
-    let stderr = '';
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8');
+      if (stdoutBytes < SPAWN_CAPTURE_CAP_BYTES) {
+        stdoutChunks.push(chunk);
+        stdoutBytes += chunk.length;
+      }
     });
     child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
+      if (stderrBytes < SPAWN_CAPTURE_CAP_BYTES) {
+        stderrChunks.push(chunk);
+        stderrBytes += chunk.length;
+      }
     });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    child.on('close', (code) => {
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8');
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+      resolve({ code: code ?? 0, stdout, stderr });
+    });
   });
 }
 

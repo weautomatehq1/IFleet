@@ -225,7 +225,7 @@ export class DiscordOutAdapter implements DiscordOut {
       const embed = new EmbedBuilder()
         .setTitle(`${STATUS_BADGE.done} Completed`)
         .setDescription(
-          prUrl === 'already-resolved'
+          !prUrl
             ? 'Already resolved — no changes needed. Finding closed.'
             : `Pull request opened.\n${prUrl}`,
         );

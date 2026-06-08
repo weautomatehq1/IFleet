@@ -320,7 +320,7 @@ export class Orchestrator {
         case 'task.completed': {
           const pr = event.payload['pr'] as string | undefined;
           const totalTokens = event.payload['totalTokens'] as number | undefined;
-          await out.postCompleted(threadId, pr ?? '(no PR url)');
+          await out.postCompleted(threadId, pr ?? '');
           this.taskThreadIds.delete(taskId);
 
           // Channel-level ping for discord-source tasks with a PR.

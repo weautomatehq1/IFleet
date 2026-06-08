@@ -1,0 +1,61 @@
+{
+  "audit_id": "audit-20260608T041450Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-06-08T04:14:50Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-a1b2c3d4",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "already-resolved Discord embed check is dead code — wrong sentinel string",
+      "detail": "discord-output.ts checks `prUrl === 'already-resolved'` in the postCompleted embed description, but no call site ever passes that literal. The orchestrator path passes `'(no PR url)'` and the sprint-bridge path passes `''`. As a result, already_resolved tasks always show 'Pull request opened.' with a broken/empty URL in the Discord thread instead of the intended 'Already resolved — no changes needed' message.",
+      "file_globs": [
+        "src/observability/discord-output.ts",
+        "src/orchestrator/index.ts",
+        "src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "Change discord-output.ts postCompleted to check `!prUrl` instead of `prUrl === 'already-resolved'`. Change orchestrator/index.ts to pass `pr ?? ''` instead of `pr ?? '(no PR url)'`. Remove the dead `prUrl !== 'already-resolved'` guard in discord.ts.",
+      "parallel_safe": false,
+      "fingerprint": "ifleet-already-resolved-dead-sentinel-2026-06-08",
+      "status": "fixed",
+      "opened_at": "2026-06-08T04:14:50Z",
+      "closed_at": "2026-06-08T04:16:30Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b5e6f7a8",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "sourceFor() switch default lacks TypeScript exhaustiveness check",
+      "detail": "unified-adapter.ts:sourceFor() switches on task.source.kind with cases 'github' and 'discord', then throws in the default. TypeScript cannot enforce exhaustiveness here because there is no `const _exhaustive: never = task.source` assignment. If a third source kind is added to the TaskSource union without updating sourceFor(), the compile passes silently and the runtime throw is the only guard.",
+      "file_globs": [
+        "src/queue/unified-adapter.ts"
+      ],
+      "fix_sketch": "Add `const _exhaustive: never = task.source;` in the default branch before the throw so TypeScript enforces exhaustiveness at compile time.",
+      "parallel_safe": true,
+      "fingerprint": "ifleet-sourcerfor-exhaustiveness-2026-06-08",
+      "status": "fixed",
+      "opened_at": "2026-06-08T04:14:50Z",
+      "closed_at": "2026-06-08T04:16:30Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c9d0e1f2",
+      "severity": "COSMETIC",
+      "category": "logic",
+      "title": "normaliseAuditRepo returns empty string when repo is exactly '/'",
+      "detail": "audit-store.ts:normaliseAuditRepo uses `repo.slice(slashIdx + 1)` after lastIndexOf('/'), which returns '' when repo is the degenerate string '/'. An empty string used as a DB key would silently corrupt reads/writes. In practice this cannot happen with valid GitHub slugs, but a defensive guard prevents silent corruption if the input is ever malformed.",
+      "file_globs": [
+        "src/audit/audit-store.ts"
+      ],
+      "fix_sketch": "After slicing, return `repo` (the original) when the result is an empty string: `const basename = repo.slice(slashIdx + 1); return basename || repo;`",
+      "parallel_safe": true,
+      "fingerprint": "ifleet-normalise-audit-repo-empty-2026-06-08",
+      "status": "fixed",
+      "opened_at": "2026-06-08T04:14:50Z",
+      "closed_at": "2026-06-08T04:16:30Z",
+      "closing_pr": null
+    }
+  ]
+}

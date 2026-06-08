@@ -36,7 +36,9 @@ const TERMINAL_SQL_LIST = TERMINAL_AUDIT_STATUSES.map((s) => `'${s}'`).join(', '
  */
 export function normaliseAuditRepo(repo: string): string {
   const slashIdx = repo.lastIndexOf('/');
-  return slashIdx === -1 ? repo : repo.slice(slashIdx + 1);
+  if (slashIdx === -1) return repo;
+  const basename = repo.slice(slashIdx + 1);
+  return basename || repo;
 }
 
 // ---------------------------------------------------------------------------
