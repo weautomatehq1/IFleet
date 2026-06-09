@@ -13,6 +13,8 @@ import { isFleetPaused } from '../fleet-control.js';
 import type { TaskContextRegistry } from './pr-decisions.js';
 import { recordPrDecisionMerged, recordPrDecisionRejected } from './pr-decisions.js';
 
+const VERIFIER_CTX_CLEANUP_MS = 60 * 60 * 1000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -207,7 +209,7 @@ export function wireSprintCompletion(
       if (event.kind === 'sprint.cancelled') {
         verifierCtx?.delete(task.id);
       } else {
-        setTimeout(() => verifierCtx?.delete(task.id), 60 * 60 * 1000).unref();
+        setTimeout(() => verifierCtx?.delete(task.id), VERIFIER_CTX_CLEANUP_MS).unref();
       }
       // sprint.failed / sprint.cancelled events carry only { from, to } in
       // payload — the actual error/reason lives on SprintState. Read it from

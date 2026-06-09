@@ -418,8 +418,9 @@ export class StateStore {
       let payload: Record<string, unknown> = {};
       try {
         payload = JSON.parse(r.payload_json) as Record<string, unknown>;
-      } catch {
+      } catch (err) {
         // tolerate corrupt rows — events are best-effort observability data
+        console.warn('[store] loadEventsBySprint: corrupt payload_json for sprint', sprintId, ':', err);
       }
       const event: OrchestratorEvent = {
         ts: r.ts,

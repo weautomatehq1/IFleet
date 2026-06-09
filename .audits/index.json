@@ -1,11 +1,22 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-03T21:55:56Z",
+  "last_updated": "2026-06-09T07:31:00Z",
   "open_findings": 0,
   "by_severity": {
     "CRITICAL": 0,
     "IMPORTANT": 0,
     "COSMETIC": 0
   },
-  "findings": []
+  "findings": [],
+  "audit_runs": [
+    {
+      "audit_id": "audit-20260609T072955Z",
+      "scanned_at": "2026-06-09T07:29:55Z",
+      "file": "2026-06-09T07:29:55Z.json",
+      "total": 4,
+      "open": 0,
+      "fixed": 4,
+      "by_severity": { "CRITICAL": 1, "IMPORTANT": 2, "COSMETIC": 1 }
+    }
+  ]
 }

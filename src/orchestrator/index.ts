@@ -383,7 +383,12 @@ export class Orchestrator {
     for (const id of this.activeSprintIds) {
       const flag = join(this.killFlagDir, id, 'cancel.flag');
       if (existsSync(flag)) {
-        void this.cancelSprint(id, 'kill flag detected');
+        this.cancelSprint(id, 'kill flag detected').catch((err) =>
+          console.error(
+            '[orchestrator] kill switch cancel failed:',
+            err instanceof Error ? err.message : String(err),
+          ),
+        );
       }
     }
   }
@@ -487,8 +492,8 @@ function parseBudgetEnv(): number | undefined {
 function msUntilHour(hour: number): number {
   const now = new Date();
   const target = new Date(now);
-  target.setHours(hour, 0, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1);
+  target.setUTCHours(hour, 0, 0, 0);
+  if (target <= now) target.setUTCDate(target.getUTCDate() + 1);
   return target.getTime() - now.getTime();
 }
 
