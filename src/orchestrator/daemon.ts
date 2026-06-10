@@ -121,7 +121,7 @@ async function main(): Promise<void> {
           payload: { method, reason },
         });
       } catch (err) {
-        console.warn('[daemon] discord.post_failed event append threw:', err);
+        console.error('[daemon] discord.post_failed event append threw:', err);
       }
     },
   });
@@ -269,31 +269,31 @@ async function main(): Promise<void> {
       approvalGate.drain();
     } catch (err) {
       shutdownErrors++;
-      console.warn('[daemon] approval drain failed:', err);
+      console.error('[daemon] approval drain failed:', err);
     }
     try {
       await orchestrator.stop();
     } catch (err) {
       shutdownErrors++;
-      console.warn('[daemon] orchestrator.stop failed:', err);
+      console.error('[daemon] orchestrator.stop failed:', err);
     }
     try {
       await client.destroy();
     } catch (err) {
       shutdownErrors++;
-      console.warn('[daemon] client.destroy failed:', err);
+      console.error('[daemon] client.destroy failed:', err);
     }
     try {
       await cp.stop();
     } catch (err) {
       shutdownErrors++;
-      console.warn('[daemon] cp.stop failed:', err);
+      console.error('[daemon] cp.stop failed:', err);
     }
     try {
       store.close();
     } catch (err) {
       shutdownErrors++;
-      console.warn('[daemon] store.close failed:', err);
+      console.error('[daemon] store.close failed:', err);
     }
     // Exit non-zero if any subsystem failed during teardown so PM2 and
     // the operator surface the issue instead of seeing a clean exit code

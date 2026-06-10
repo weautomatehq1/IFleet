@@ -336,7 +336,7 @@ export class TaskStore {
    * pickNext() which only consumes 'pending'.
    */
   recoverStale(maxAgeMs: number = DEFAULT_STALE_MS): number {
-    const maxAttempts = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
+    const maxAttempts = Math.max(1, Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5));
     const cutoff = Date.now() - maxAgeMs;
     const now = Date.now();
     // Both UPDATEs run in a single transaction so a concurrent pickNext() cannot

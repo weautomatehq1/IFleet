@@ -449,16 +449,17 @@ export class DockerSandboxRunner implements SandboxRunner {
 
 interface PackageJsonScripts {
   scripts: Record<string, string>;
+  hasPackageJson: boolean;
 }
 
 function readPackageJson(worktreePath: string): PackageJsonScripts {
   const path = join(worktreePath, 'package.json');
-  if (!existsSync(path)) return { scripts: {} };
+  if (!existsSync(path)) return { scripts: {}, hasPackageJson: false };
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as { scripts?: Record<string, string> };
-    return { scripts: parsed.scripts ?? {} };
+    return { scripts: parsed.scripts ?? {}, hasPackageJson: true };
   } catch {
-    return { scripts: {} };
+    return { scripts: {}, hasPackageJson: false };
   }
 }
 
@@ -477,7 +478,13 @@ function planPhases(pkg: PackageJsonScripts): PhasePlan {
   let partial = false;
   for (const kind of PHASE_ORDER) {
     if (kind === 'install') {
-      phases.set(kind, { skip: false });
+      // Skip install for repos with no package.json — pnpm install would fail
+      // and report a spurious install failure (AUDIT-IFleet-f3308f3d).
+      if (!pkg.hasPackageJson) {
+        phases.set(kind, { skip: true, skipReason: 'no package.json' });
+      } else {
+        phases.set(kind, { skip: false });
+      }
       continue;
     }
     const script = PHASE_TO_SCRIPT[kind as Exclude<VerifierFailureKind, 'install' | 'invariant'>];

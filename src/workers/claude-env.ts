@@ -17,19 +17,32 @@ const CLAUDE_ENV_ALLOWLIST = [
   'NODE_ENV',
   'LANG',
   'LC_ALL',
-  // Required for the `anthropic-api` adapter (src/workers/adapters/registry.ts)
-  // — the API-key fallback path when Max-plan auth is unavailable. Prompt-
-  // injection exfiltration risk is accepted because removing the key would
-  // break the fallback; treat any worker output that echoes env as suspect.
-  'ANTHROPIC_API_KEY',
   'CLAUDE_PATH',
 ] as const;
 
-export function claudeChildEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export interface ClaudeChildEnvOptions {
+  /**
+   * Pass true only for adapters that spawn subprocesses authenticated via
+   * ANTHROPIC_API_KEY (e.g. a future `anthropic-api` subprocess adapter).
+   * The current claude-cli adapter uses Max-plan OAuth stored in ~/.claude/
+   * and does NOT need the key. Omitting it from the child env closes the
+   * prompt-injection exfiltration vector (AUDIT-IFleet-b2c3d4e5).
+   */
+  includeApiKey?: boolean;
+}
+
+export function claudeChildEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  opts: ClaudeChildEnvOptions = {},
+): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
   for (const key of CLAUDE_ENV_ALLOWLIST) {
     const value = source[key];
     if (typeof value === 'string') out[key] = value;
+  }
+  if (opts.includeApiKey) {
+    const apiKey = source['ANTHROPIC_API_KEY'];
+    if (typeof apiKey === 'string') out['ANTHROPIC_API_KEY'] = apiKey;
   }
   return out;
 }

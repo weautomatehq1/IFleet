@@ -211,6 +211,8 @@ export class GitRepoManager implements RepoManager {
 // helpers
 // -----------------------------------------------------------------------------
 
+const OUTPUT_CAP_BYTES = 2 * 1024 * 1024; // 2 MB — mirrors spawn-util.ts cap
+
 async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     // Strip GIT_* vars so a parent pre-push hook's GIT_DIR/GIT_WORK_TREE
@@ -221,11 +223,23 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
     let stdout = '';
     let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8');
+      if (stdoutBytes < OUTPUT_CAP_BYTES) {
+        const remaining = OUTPUT_CAP_BYTES - stdoutBytes;
+        stdout += chunk.slice(0, remaining).toString('utf8');
+        stdoutBytes += chunk.length;
+        if (stdoutBytes >= OUTPUT_CAP_BYTES) stdout += '\n[stdout truncated]';
+      }
     });
     child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
+      if (stderrBytes < OUTPUT_CAP_BYTES) {
+        const remaining = OUTPUT_CAP_BYTES - stderrBytes;
+        stderr += chunk.slice(0, remaining).toString('utf8');
+        stderrBytes += chunk.length;
+        if (stderrBytes >= OUTPUT_CAP_BYTES) stderr += '\n[stderr truncated]';
+      }
     });
     child.on('error', reject);
     child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
