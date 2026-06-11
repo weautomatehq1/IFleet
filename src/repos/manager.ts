@@ -22,14 +22,6 @@ export interface RepoManager {
 }
 
 export interface GitRepoManagerOptions {
-  /**
-   * Reserved for a future GC sweep that walks the repos directory. Today
-   * path resolution flows through `route.workDir`, which the router sets
-   * from the same env var (`IFLEET_REPOS_DIR`). Kept optional so callers
-   * can keep passing it without breaking — the value is intentionally
-   * unread.
-   */
-  reposDir?: string;
   /** GitHub token for HTTPS auth. Pass empty string for unauthenticated tests with file:// remotes. */
   token: string;
   /** Override the remote URL builder. Used by tests to point at file:// bare repos. */

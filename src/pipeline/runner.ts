@@ -248,64 +248,68 @@ export class DefaultPipelineRunner implements PipelineRunner {
     if (input.abortSignal.aborted) return cancelled(attempts);
 
     // Audit-fix tasks: flip the finding from `fixing` → `verifying` before
-    // entering the verifier+doctor loop. Fills the historically-dead
-    // `verifying` enum slot so the audit timeline distinguishes
+    // entering the verifier+doctor loop so the audit timeline distinguishes
     // "editor finished, verifier is checking" from "still waiting for editor".
-    // TODO(https://github.com/weautomatehq1/IFleet/issues/308): reset
-    // verifying→reopened on doctor-cap failure. Until that lands, a stuck
-    // finding sits in `verifying` — same orphan, more accurate label than
-    // `fixing`.
     maybeMarkAuditFindingVerifying(input);
 
-    // Verify + doctor cycles (max 2 doctor invocations per task)
-    while (true) {
-      const verifyResult = await input.verify.run(input.worktreePath, input.routing.verify);
-      lastVerify = verifyResult;
-      if (verifyResult.ok) break;
-      if (input.abortSignal.aborted) return cancelled(attempts);
+    // Verify + doctor cycles (max 2 doctor invocations per task).
+    // try/finally resets any finding stuck in `verifying` back to `reopened`
+    // when the loop exits via an early return (failure/cancellation).
+    let verifyLoopSucceeded = false;
+    try {
+      while (true) {
+        const verifyResult = await input.verify.run(input.worktreePath, input.routing.verify);
+        lastVerify = verifyResult;
+        if (verifyResult.ok) { verifyLoopSucceeded = true; break; }
+        if (input.abortSignal.aborted) return cancelled(attempts);
 
-      const doctorAttempts = countDoctorAttempts(attempts);
-      const doctorCap = input.doctorMaxAttempts ?? DOCTOR_MAX_ATTEMPTS;
-      if (doctorAttempts >= doctorCap) {
-        return failed(attempts, 'doctor retry limit exceeded');
-      }
+        const doctorAttempts = countDoctorAttempts(attempts);
+        const doctorCap = input.doctorMaxAttempts ?? DOCTOR_MAX_ATTEMPTS;
+        if (doctorAttempts >= doctorCap) {
+          return failed(attempts, 'doctor retry limit exceeded');
+        }
 
-      const ciLog = verifyResult.failures.map((f) => `[${f.kind}]\n${f.log}`).join('\n\n');
-      const doctor = await runDoctor({
-        spec: input.routing.architect,
-        workerPool: input.workerPool,
-        brief: input.task.body,
-        plan,
-        diff,
-        ciLog,
-        abortSignal: input.abortSignal,
-        worktreePath: input.worktreePath,
-      });
-      attempts.push(doctor.attempt);
-      if (!doctor.attempt.ok) return failed(attempts, 'doctor invocation failed');
-      if (doctor.diagnosis.requiresNewBrief) {
-        return failed(attempts, 'doctor requires new brief — escalating');
-      }
-      if (input.abortSignal.aborted) return cancelled(attempts);
-
-      const editorRetry = await runEditor({
-        spec: input.routing.editor,
-        workerPool: input.workerPool,
-        git: input.git,
-        worktreePath: input.worktreePath,
-        baseBranch,
-        abortSignal: input.abortSignal,
-        mode: {
-          kind: 'fix_ci',
-          plan,
+        const ciLog = verifyResult.failures.map((f) => `[${f.kind}]\n${f.log}`).join('\n\n');
+        const doctor = await runDoctor({
+          spec: input.routing.architect,
+          workerPool: input.workerPool,
           brief: input.task.body,
-          doctorOutput: doctor.diagnosis.raw,
-        },
-      });
-      attempts.push(editorRetry.attempt);
-      if (!editorRetry.attempt.ok) return failed(attempts, 'editor retry failed');
-      diff = editorRetry.diff;
-      if (input.abortSignal.aborted) return cancelled(attempts);
+          plan,
+          diff,
+          ciLog,
+          abortSignal: input.abortSignal,
+          worktreePath: input.worktreePath,
+        });
+        attempts.push(doctor.attempt);
+        if (!doctor.attempt.ok) return failed(attempts, 'doctor invocation failed');
+        if (doctor.diagnosis.requiresNewBrief) {
+          return failed(attempts, 'doctor requires new brief — escalating');
+        }
+        if (input.abortSignal.aborted) return cancelled(attempts);
+
+        const editorRetry = await runEditor({
+          spec: input.routing.editor,
+          workerPool: input.workerPool,
+          git: input.git,
+          worktreePath: input.worktreePath,
+          baseBranch,
+          abortSignal: input.abortSignal,
+          mode: {
+            kind: 'fix_ci',
+            plan,
+            brief: input.task.body,
+            doctorOutput: doctor.diagnosis.raw,
+          },
+        });
+        attempts.push(editorRetry.attempt);
+        if (!editorRetry.attempt.ok) return failed(attempts, 'editor retry failed');
+        diff = editorRetry.diff;
+        if (input.abortSignal.aborted) return cancelled(attempts);
+      }
+    } finally {
+      if (!verifyLoopSucceeded) {
+        maybeResetAuditFindingToReopened(input);
+      }
     }
 
     // === Reviewer (with fix-pass loop) ===
@@ -518,6 +522,45 @@ function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
     (err) => {
       console.warn(
         `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    },
+  );
+}
+
+/**
+ * Reset an audit finding from `verifying` back to `reopened` when the
+ * verify+doctor loop exits via a failure or cancellation path. Mirrors the
+ * terminal-state safety of maybeMarkAuditFindingVerifying — skips findings
+ * already in a terminal state (closed/fixed/stale) via setFindingsStatus's
+ * built-in isTerminalAuditStatus guard, and uses refuseFromTerminal on the
+ * DB update for the same reason.
+ */
+function maybeResetAuditFindingToReopened(input: PipelineInput): void {
+  if (!input.repoRoot) return;
+  const findingId = extractAuditFindingId(input.task.body);
+  if (!findingId) return;
+  try {
+    const updated = setFindingsStatus(
+      resolveAuditIndexPath(input.repoRoot),
+      [findingId],
+      'reopened',
+    );
+    if (updated > 0) {
+      console.warn(`[pipeline] audit finding ${findingId} verifying → reopened (pipeline failed)`);
+    }
+  } catch (err) {
+    console.warn(
+      `[pipeline] audit-fix verifying-reset failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  void dbUpdateFindingStatus(findingId, 'reopened', { refuseFromTerminal: true }).catch(
+    (err) => {
+      console.warn(
+        `[pipeline] dbUpdateFindingStatus(reopened) failed for ${findingId}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

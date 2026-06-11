@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     console.error('channels-health: GITHUB_TOKEN not set — ls-remote will fail for private repos');
   }
 
-  const manager = new GitRepoManager({ reposDir, token });
+  const manager = new GitRepoManager({ token });
   const checker = new RepoHealthChecker(router, manager);
   const results = await checker.checkAll();
 

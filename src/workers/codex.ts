@@ -67,6 +67,15 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
             durationMs: endedAt - startedAt,
           };
         },
+        classifyExit: () => {
+          // Codex exited non-zero — clean up tmpDir before the crash propagates.
+          try {
+            rmSync(tmpDir, { recursive: true, force: true });
+          } catch {
+            // best effort
+          }
+          return undefined;
+        },
       });
 
       return {

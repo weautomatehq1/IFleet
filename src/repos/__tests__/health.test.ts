@@ -74,7 +74,6 @@ describe('RepoHealthChecker', () => {
   it('reports reachable=true for working remote and false for missing one', async () => {
     const router = FileChannelRouter.fromFile(channelsPath, { reposDir });
     const manager = new GitRepoManager({
-      reposDir,
       token: '',
       remoteUrlFor: (route) =>
         route.repo === 'test/ok' ? `file://${bareRepo}` : `file://${tmp}/nope`,
@@ -94,7 +93,6 @@ describe('RepoHealthChecker', () => {
   it('reports cloned + lastFetched once ensureClone runs', async () => {
     const router = FileChannelRouter.fromFile(channelsPath, { reposDir });
     const manager = new GitRepoManager({
-      reposDir,
       token: '',
       remoteUrlFor: () => `file://${bareRepo}`,
     });

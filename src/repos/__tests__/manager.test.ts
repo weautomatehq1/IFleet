@@ -62,7 +62,6 @@ afterEach(() => {
 
 function buildManager(): GitRepoManager {
   return new GitRepoManager({
-    reposDir,
     token: '',
     remoteUrlFor: () => `file://${bareRepo}`,
   });
@@ -162,7 +161,6 @@ describe('GitRepoManager.lsRemote', () => {
 
   it('throws for an unreachable remote', async () => {
     const mgr = new GitRepoManager({
-      reposDir,
       token: '',
       remoteUrlFor: () => `file://${tmp}/does-not-exist`,
     });
