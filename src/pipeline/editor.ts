@@ -28,6 +28,7 @@ export interface RunEditorInput {
   baseBranch: string;
   abortSignal: AbortSignal;
   mode: EditorMode;
+  taskTitle?: string;
 }
 
 export interface EditorOutput {
@@ -53,7 +54,7 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
   if (result.ok) {
     // Commit any file changes made by the editor. The editor is instructed
     // to use only Read/Edit/Write tools — git is handled here programmatically.
-    await commitEditorChanges(input.worktreePath);
+    await commitEditorChanges(input.worktreePath, input.taskTitle);
     diff = await input.git.diff(input.worktreePath, input.baseBranch);
   }
 
@@ -73,7 +74,7 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
   };
 }
 
-async function commitEditorChanges(worktreePath: string): Promise<void> {
+async function commitEditorChanges(worktreePath: string, taskTitle?: string): Promise<void> {
   try {
     await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
   } catch (err) {
@@ -86,8 +87,9 @@ async function commitEditorChanges(worktreePath: string): Promise<void> {
     .then(() => false)
     .catch(() => true);
   if (!hasChanges) return;
+  const subject = taskTitle ? `feat: ${taskTitle.slice(0, 72)}` : 'chore: editor changes';
   try {
-    await execFileAsync('git', ['commit', '-m', 'chore: editor changes'], { cwd: worktreePath });
+    await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
   } catch (err) {
     console.warn('[pipeline] editor: git commit failed:', err);
   }

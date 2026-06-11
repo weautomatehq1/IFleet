@@ -1,12 +1,11 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-07T04:45:00Z",
-  "open_findings": 7,
-  "fixed_this_run": 20,
+  "last_updated": "2026-06-10T04:16:24Z",
+  "open_findings": 4,
+  "fixed_this_run": 8,
   "by_severity": {
-    "CRITICAL": 1,
     "IMPORTANT": 3,
-    "COSMETIC": 3
+    "COSMETIC": 1
   },
   "findings": [
     {
@@ -72,10 +71,10 @@
       "fix_sketch": "Append the task ID to the key: `${issueNumber}-${task.id.slice(-6)}` so concurrent runs for the same issue never share a path. Update branchName derivation similarly.",
       "parallel_safe": true,
       "fingerprint": "AUDIT-IFleet-4e746b5b",
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-06-04T04:19:27Z",
-      "closed_at": null,
-      "closing_pr": null
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
     },
     {
       "id": "AUDIT-IFleet-9cc2abb1",
@@ -89,10 +88,10 @@
       "fix_sketch": "Add a byte cap (e.g. 2 MB) and truncated flag mirroring spawn-util.ts. Append a truncation notice to the error message when the cap is hit.",
       "parallel_safe": true,
       "fingerprint": "AUDIT-IFleet-9cc2abb1",
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-06-04T04:19:27Z",
-      "closed_at": null,
-      "closing_pr": null
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
     },
     {
       "id": "AUDIT-IFleet-10fc89f0",
@@ -123,32 +122,36 @@
       "fix_sketch": "Use a descriptive message derived from the task title or the changed file list. Simplest fix: `git commit -m \"feat: ${task.title.slice(0, 72)}\"` passed from the EditorInput.",
       "parallel_safe": true,
       "fingerprint": "AUDIT-IFleet-27fd9d7a",
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-06-04T04:19:27Z",
-      "closed_at": null,
-      "closing_pr": null
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
     },
     {
       "id": "AUDIT-IFleet-b2c3d4e5",
       "severity": "CRITICAL",
       "category": "risk",
-      "title": "ANTHROPIC_API_KEY passed to every Claude child process — exfiltration vector via prompt injection",
+      "title": "ANTHROPIC_API_KEY passed to every Claude child process \u2014 exfiltration vector via prompt injection",
       "detail": "The CLAUDE_ENV_ALLOWLIST in src/workers/claude-env.ts includes ANTHROPIC_API_KEY. Editor/reviewer/doctor roles receive unsanitized plan content from Architect's LLM output, creating a real prompt-injection exfiltration path. Risk accepted per existing comment; full fix requires refactoring claudeChildEnv() to accept an includeApiKey parameter.",
-      "file_globs": ["src/workers/claude-env.ts"],
+      "file_globs": [
+        "src/workers/claude-env.ts"
+      ],
       "fix_sketch": "Restrict ANTHROPIC_API_KEY to the anthropic-api adapter path only. Add includeApiKey?: boolean parameter to claudeChildEnv().",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-06-07T04:12:44Z",
-      "closed_at": null,
-      "closing_pr": null
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
     },
     {
       "id": "AUDIT-IFleet-e1f2a3b4",
       "severity": "IMPORTANT",
       "category": "logic",
-      "title": "Sprint tick() calls pickWorker() once per pending task in loop — redundant calls before acquire state propagates",
+      "title": "Sprint tick() calls pickWorker() once per pending task in loop \u2014 redundant calls before acquire state propagates",
       "detail": "In sprint.ts tick() loop, pickWorker() is called per iteration. After the first dispatch, subsequent calls return null quickly via the registry check, so behavior is correct but wasteful. Deferred to avoid refactor risk.",
-      "file_globs": ["src/orchestrator/sprint.ts"],
+      "file_globs": [
+        "src/orchestrator/sprint.ts"
+      ],
       "fix_sketch": "Call pickWorker() once before the loop and break early if null. Re-check after each successful dispatch.",
       "parallel_safe": false,
       "status": "open",
@@ -160,13 +163,95 @@
       "id": "AUDIT-IFleet-c1d2e3f4",
       "severity": "COSMETIC",
       "category": "cosmetic",
-      "title": "Untracked TODO for audit finding stuck in verifying state — no observable signal when doctor cap is exhausted",
+      "title": "Untracked TODO for audit finding stuck in verifying state \u2014 no observable signal when doctor cap is exhausted",
       "detail": "In pipeline/runner.ts:252-256, a TODO references issue #308 for resetting audit findings from 'verifying' to 'reopened' on doctor-cap failure. Stuck findings remain in 'verifying' indefinitely with no log event.",
-      "file_globs": ["src/pipeline/runner.ts"],
+      "file_globs": [
+        "src/pipeline/runner.ts"
+      ],
       "fix_sketch": "Emit a structured event audit_finding.stuck_in_verifying in the doctor retry exhaustion path, or implement the verifying->reopened reset.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-06-07T04:12:44Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-65456e33",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "recoverStale() reads IFLEET_MAX_ATTEMPTS without a lower-bound guard",
+      "detail": "If IFLEET_MAX_ATTEMPTS is set to 0 (or a negative value), Number() returns 0 and the WHERE clause  matches every in_flight task, immediately marking all of them failed without any retry. No validation prevents this silent foot-gun.",
+      "file_globs": [
+        "src/queue/store.ts"
+      ],
+      "fix_sketch": "Wrap the parsed value: const maxAttempts = Math.max(1, Number(process.env[\"IFLEET_MAX_ATTEMPTS\"] ?? 5));",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-10T04:11:29Z",
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
+    },
+    {
+      "id": "AUDIT-IFleet-1c197600",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "scheduleMorningDrain() callback can reschedule itself after stop() clears the timer",
+      "detail": "If stop() fires while the setTimeout callback is already executing, clearTimeout() is a no-op for the already-firing callback. The callback then calls this.scheduleMorningDrain() unconditionally, installing a new timer that is never cleared, keeping the process alive indefinitely.",
+      "file_globs": [
+        "src/orchestrator/index.ts"
+      ],
+      "fix_sketch": "Add  as the first line of the scheduleMorningDrain() callback, before the drain call and the recursive reschedule.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-10T04:11:29Z",
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
+    },
+    {
+      "id": "AUDIT-IFleet-f3308f3d",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "planPhases() always schedules install even when no package.json exists in the worktree",
+      "detail": "readPackageJson() silently returns { scripts:{} } when package.json is absent, but planPhases() unconditionally sets install to { skip: false }. For repos without package.json the Docker container will run pnpm install, fail, and the verifier reports an install failure rather than skipping cleanly.",
+      "file_globs": [
+        "src/agents/verifier/sandbox.ts"
+      ],
+      "fix_sketch": "Return a hasPackageJson flag from readPackageJson(); in planPhases() check that flag and set install to { skip: true, skipReason: \"no package.json\" } when false.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-10T04:11:29Z",
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
+    },
+    {
+      "id": "AUDIT-IFleet-219fd0db",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Shutdown error catch blocks use console.warn instead of console.error",
+      "detail": "In daemon.ts the shutdown signal handler catches errors from orchestrator.stop(), client.destroy(), cp.stop(), and store.close() but logs them with console.warn. Convention (and grep/logfmt tooling) expects errors in catch blocks to use console.error so they surface distinctly in log dashboards.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Change console.warn to console.error inside catch blocks that handle actual errors (lines ~124, ~272, ~278, ~284, ~290, ~296). Keep informational console.warn for startup/status lines.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-10T04:11:29Z",
+      "closed_at": "2026-06-10T04:16:24Z",
+      "closing_pr": "audit/nightly-2026-06-10"
+    },
+    {
+      "id": "AUDIT-IFleet-dd6fa850",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "MemoryNonceLedger sweep interval not guaranteed to clear in ControlPlane.stop()",
+      "detail": "MemoryNonceLedger.destroy() clears the 60s sweep interval, but ControlPlane.stop() only calls server.close() \u2014 there is no explicit call to nonceLedger.destroy() for the in-process ledger created when no external ledger is provided. The interval is unref'd so it won't block Node exit in tests, but in a long-lived process this can cause confusing behavior.",
+      "file_globs": [
+        "src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "In createControlPlane(), capture the nonceLedger reference and call nonceLedger.destroy() inside the stop() function after server.close() resolves.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-10T04:11:29Z",
       "closed_at": null,
       "closing_pr": null
     }

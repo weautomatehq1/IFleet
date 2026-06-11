@@ -416,6 +416,7 @@ export class Orchestrator {
   private scheduleMorningDrain(): void {
     const ms = msUntilHour(7);
     this.morningDrainTimer = setTimeout(() => {
+      if (!this.started) return;
       void this.drainDiscordOutbox();
       this.scheduleMorningDrain();
     }, ms);

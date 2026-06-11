@@ -219,6 +219,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         baseBranch,
         abortSignal: input.abortSignal,
         mode: { kind: 'initial', plan, brief: input.task.body },
+        taskTitle: input.task.title,
       });
       attempts.push(editor.attempt);
       console.warn(`[pipeline] editor done ok=${editor.attempt.ok} diffLen=${editor.diff.length} outputSnip=${JSON.stringify(editor.attempt.output.slice(0, 300))}`);
@@ -301,6 +302,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
           brief: input.task.body,
           doctorOutput: doctor.diagnosis.raw,
         },
+        taskTitle: input.task.title,
       });
       attempts.push(editorRetry.attempt);
       if (!editorRetry.attempt.ok) return failed(attempts, 'editor retry failed');
@@ -370,6 +372,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
           brief: input.task.body,
           concerns: reviewer.verdict.concerns,
         },
+        taskTitle: input.task.title,
       });
       attempts.push(editorFix.attempt);
       if (!editorFix.attempt.ok) return failed(attempts, 'editor fix-pass failed');

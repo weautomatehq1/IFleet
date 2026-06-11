@@ -242,7 +242,9 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const worktreesDir = join(resolved.repoRoot, '.omc', 'worktrees');
 
     const worker = pool.nextWorker();
-    const worktreeKey = task.issueNumber > 0 ? String(task.issueNumber) : task.id;
+    // Append the last 6 chars of task.id so concurrent retries for the same
+    // issue never share a worktree path (AUDIT-IFleet-957ddf9e).
+    const worktreeKey = task.issueNumber > 0 ? `${task.issueNumber}-${task.id.slice(-6)}` : task.id;
     const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
     const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot);
 
