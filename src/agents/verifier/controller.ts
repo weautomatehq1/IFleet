@@ -217,7 +217,7 @@ function mergeInvariantFailures(
     finishedAt: now,
     durationMs: now - sandboxResult.startedAt,
   };
-  if (sandboxResult.status === 'passed' && invariantFailures.length > 0) {
+  if ((sandboxResult.status === 'passed' || sandboxResult.status === 'partial') && invariantFailures.length > 0) {
     merged.status = 'failed';
   }
   return merged;

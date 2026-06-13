@@ -442,7 +442,7 @@ async function fetchPRs() {
     el.innerHTML = prs.map(pr => {
       const isDraft = pr.draft;
       const labels = pr.labels.map(l =>
-        `<span class="px-1 py-0 rounded text-gray-500 border border-gray-700 text-xs">${l.name}</span>`
+        `<span class="px-1 py-0 rounded text-gray-500 border border-gray-700 text-xs">${esc(l.name)}</span>`
       ).join(' ');
       return `
         <div class="flex gap-2 p-2 rounded-lg bg-gray-800/40 border border-gray-800 hover:border-gray-700 transition-colors text-xs">
@@ -450,10 +450,10 @@ async function fetchPRs() {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               ${isDraft ? '<span class="text-gray-500 border border-gray-700 px-1 rounded text-xs">DRAFT</span>' : '<span class="text-emerald-600 border border-emerald-900 px-1 rounded text-xs">READY</span>'}
-              <a href="${pr.html_url}" target="_blank" class="text-gray-200 hover:text-white truncate">${pr.title}</a>
+              <a href="${esc(pr.html_url)}" target="_blank" class="text-gray-200 hover:text-white truncate">${esc(pr.title)}</a>
             </div>
             <div class="text-gray-600 mt-0.5 flex gap-1 flex-wrap">${labels}</div>
-            <div class="text-gray-700 mt-0.5">${pr.head.ref} → ${pr.base.ref} · ${timeAgo(pr.updated_at)}</div>
+            <div class="text-gray-700 mt-0.5">${esc(pr.head.ref)} → ${esc(pr.base.ref)} · ${timeAgo(pr.updated_at)}</div>
           </div>
         </div>
       `;
@@ -468,12 +468,12 @@ async function fetchCommits() {
     const commits = await ghFetch(`/repos/${REPO}/commits?per_page=8`);
     const el = document.getElementById('commits-list');
     el.innerHTML = commits.map(c => {
-      const msg = c.commit.message.split('\n')[0];
-      const sha = c.sha.slice(0, 7);
+      const msg = esc(c.commit.message.split('\n')[0]);
+      const sha = esc(c.sha.slice(0, 7));
       const when = timeAgo(c.commit.author.date);
       return `
         <div class="flex gap-2 text-xs items-baseline">
-          <a href="${c.html_url}" target="_blank" class="text-gray-600 hover:text-gray-400 flex-shrink-0 font-mono">${sha}</a>
+          <a href="${esc(c.html_url)}" target="_blank" class="text-gray-600 hover:text-gray-400 flex-shrink-0 font-mono">${sha}</a>
           <span class="text-gray-400 truncate flex-1">${msg}</span>
           <span class="text-gray-700 flex-shrink-0">${when}</span>
         </div>
