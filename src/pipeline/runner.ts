@@ -268,11 +268,9 @@ export class DefaultPipelineRunner implements PipelineRunner {
       const doctorAttempts = countDoctorAttempts(attempts);
       const doctorCap = input.doctorMaxAttempts ?? DOCTOR_MAX_ATTEMPTS;
       if (doctorAttempts >= doctorCap) {
-        if (input.auditFindingId) {
-          console.warn(
-            `[runner] audit_finding.stuck_in_verifying findingId=${input.auditFindingId} taskId=${input.task.id} doctorAttempts=${doctorAttempts} cap=${doctorCap}`,
-          );
-        }
+        console.warn(
+          `[runner] doctor_retry_limit_exceeded taskId=${input.task.id} doctorAttempts=${doctorAttempts} cap=${doctorCap}`,
+        );
         return failed(attempts, 'doctor retry limit exceeded');
       }
 
