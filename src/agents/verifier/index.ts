@@ -16,12 +16,14 @@
  *   the failures as feedback. On `verifier.passed`, hand off to the PR-opener.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { OrchestratorEvent, SprintId, TaskId } from '../../orchestrator/types.js';
 import { StubSandboxRunner, type SandboxRunner } from './sandbox.js';
-import type {
-  VerifierEventKind,
-  VerifierRunInput,
-  VerifierRunResult,
+import {
+  newVerifierRunId,
+  type VerifierEventKind,
+  type VerifierRunInput,
+  type VerifierRunResult,
 } from './types.js';
 
 export interface VerifierAgentOptions {
@@ -71,6 +73,12 @@ export class VerifierAgent {
       attempt,
     };
 
+    const runId = newVerifierRunId(randomUUID());
+    this.emitEvent('verifier.started', opts.sprintId, opts.taskId, {
+      runId,
+      attempt,
+    });
+
     let result: VerifierRunResult;
     try {
       result = await this.sandbox.run(input);
@@ -82,11 +90,6 @@ export class VerifierAgent {
       });
       throw err;
     }
-
-    this.emitEvent('verifier.started', opts.sprintId, opts.taskId, {
-      runId: result.runId,
-      attempt,
-    });
 
     const finalKind: VerifierEventKind =
       result.status === 'passed'

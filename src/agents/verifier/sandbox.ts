@@ -10,7 +10,8 @@
  * Phases run as separate `docker run` invocations against the worktree mount
  * so phase-level output is captured cleanly and a SIGKILL on one phase doesn't
  * poison the next. Container limits per ADR-0002: 4GB RAM, 10-min wall clock
- * per phase, no host network by default.
+ * per phase. The install phase uses --network bridge (npm/pnpm registry access);
+ * all other phases (build, typecheck, lint, test) use --network none.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -169,6 +170,14 @@ export class DockerSandboxRunner implements SandboxRunner {
     repoUrl: string,
     sha: string,
   ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    const SAFE_REPO_URL_RE = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+(\.git)?$/;
+    if (!SAFE_REPO_URL_RE.test(repoUrl)) {
+      return { ok: false, error: `cloneFromSha: unsafe repoUrl rejected: ${repoUrl}` };
+    }
+    const SAFE_SHA_RE = /^[0-9a-f]{7,40}$/i;
+    if (!SAFE_SHA_RE.test(sha)) {
+      return { ok: false, error: `cloneFromSha: unsafe sha rejected: ${sha}` };
+    }
     let tempDir: string;
     try {
       tempDir = mkdtempSync(join(tmpdir(), 'ifleet-verifier-clone-'));
@@ -177,7 +186,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     }
     const cloneRes = await this.runCommand(
       'git',
-      ['clone', '--quiet', repoUrl, tempDir],
+      ['clone', '--quiet', '--', repoUrl, tempDir],
       { timeoutMs: this.timeoutMs },
     );
     if (cloneRes.exitCode !== 0) {
@@ -189,7 +198,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     }
     const checkoutRes = await this.runCommand(
       'git',
-      ['-C', tempDir, 'checkout', '--quiet', sha],
+      ['-C', tempDir, 'checkout', '--quiet', '--', sha],
       { timeoutMs: 60_000 },
     );
     if (checkoutRes.exitCode !== 0) {
@@ -350,7 +359,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     const startedAt = this.now();
     const argv = buildPhaseArgv(kind);
     const command = useFallback ? this.pnpmBin : this.dockerBin;
-    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath);
+    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath, kind === 'install');
     const result = await this.runCommand(command, args, {
       ...(useFallback ? { cwd: worktreePath } : {}),
       timeoutMs: this.timeoutMs,
@@ -518,6 +527,7 @@ function buildDockerArgs(
   memoryMb: number,
   innerArgv: string[],
   envFilePath?: string,
+  needsNetwork?: boolean,
 ): string[] {
   const args = [
     'run',
@@ -525,7 +535,7 @@ function buildDockerArgs(
     '--memory',
     `${memoryMb}m`,
     '--network',
-    'bridge',
+    needsNetwork ? 'bridge' : 'none',
     '--user',
     'root',
   ];

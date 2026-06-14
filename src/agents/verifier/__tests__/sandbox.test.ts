@@ -89,9 +89,9 @@ describe('DockerSandboxRunner', () => {
     const result = await runner.run({
       taskId: 't' as TaskId,
       sprintId: 's' as SprintId,
-      repoUrl: 'https://x',
+      repoUrl: 'https://github.com/weautomatehq1/nonexistent',
       branch: 'b',
-      sha: 'sha',
+      sha: 'abc1234',
       attempt: 1,
     });
     expect(result.status).toBe('error');

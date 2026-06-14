@@ -269,33 +269,36 @@ export class SprintManager {
       .map((id) => this.store.loadTask(id))
       .filter((t): t is TaskRecord => Boolean(t));
 
-    for (const task of tasks) {
-      if (task.state.kind !== 'pending') continue;
-      if (this.capabilities) {
-        const caps = this.capabilities;
-        const missing = (task.requiredCapabilities ?? []).filter(
-          (cap) => !isCapabilityAvailable(cap, caps),
-        );
-        if (missing.length > 0) {
-          const ts = this.now();
-          this.store.saveTask({
-            ...task,
-            state: { kind: 'failed', at: ts, error: `missing capabilities: ${missing.join(', ')}` },
-            updatedAt: ts,
-          });
-          this.emit({
-            ts,
-            sprintId: task.sprintId,
-            taskId: task.id,
-            kind: 'task.capability_blocked',
-            payload: { missing },
-          });
-          continue;
+    let workerId = this.pickWorker();
+    if (workerId) {
+      for (const task of tasks) {
+        if (task.state.kind !== 'pending') continue;
+        if (this.capabilities) {
+          const caps = this.capabilities;
+          const missing = (task.requiredCapabilities ?? []).filter(
+            (cap) => !isCapabilityAvailable(cap, caps),
+          );
+          if (missing.length > 0) {
+            const ts = this.now();
+            this.store.saveTask({
+              ...task,
+              state: { kind: 'failed', at: ts, error: `missing capabilities: ${missing.join(', ')}` },
+              updatedAt: ts,
+            });
+            this.emit({
+              ts,
+              sprintId: task.sprintId,
+              taskId: task.id,
+              kind: 'task.capability_blocked',
+              payload: { missing },
+            });
+            continue;
+          }
         }
+        await this.dispatch(task, workerId);
+        workerId = this.pickWorker();
+        if (!workerId) break;
       }
-      const workerId = this.pickWorker();
-      if (!workerId) break;
-      await this.dispatch(task, workerId);
     }
 
     const freshTasks = sprint.tasks
