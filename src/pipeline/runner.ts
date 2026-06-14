@@ -268,6 +268,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
       const doctorAttempts = countDoctorAttempts(attempts);
       const doctorCap = input.doctorMaxAttempts ?? DOCTOR_MAX_ATTEMPTS;
       if (doctorAttempts >= doctorCap) {
+        maybeReopenAuditFinding(input);
         return failed(attempts, 'doctor retry limit exceeded');
       }
 
@@ -521,6 +522,37 @@ function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
     (err) => {
       console.warn(
         `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    },
+  );
+}
+
+function maybeReopenAuditFinding(input: PipelineInput): void {
+  if (!input.repoRoot) return;
+  const findingId = extractAuditFindingId(input.task.body);
+  if (!findingId) return;
+  try {
+    const updated = setFindingsStatus(
+      resolveAuditIndexPath(input.repoRoot),
+      [findingId],
+      'reopened',
+    );
+    if (updated > 0) {
+      console.warn(`[pipeline] audit finding ${findingId} → reopened (doctor cap exhausted)`);
+    }
+  } catch (err) {
+    console.warn(
+      `[pipeline] audit-fix reopen failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  void dbUpdateFindingStatus(findingId, 'reopened', { refuseFromTerminal: true }).catch(
+    (err) => {
+      console.warn(
+        `[pipeline] dbUpdateFindingStatus(reopened) failed for ${findingId}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

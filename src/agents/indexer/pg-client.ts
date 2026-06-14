@@ -16,6 +16,16 @@ import { Pool, type PoolClient, type PoolConfig } from 'pg';
 
 let cachedPool: Pool | undefined;
 
+function loadCaCert(certPath: string): string {
+  try {
+    return readFileSync(certPath, 'utf8');
+  } catch (err) {
+    throw new KgPostgresUnavailableError(
+      `SUPABASE_CA_CERT_PATH is set but the file could not be read: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 export class KgPostgresUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -48,7 +58,7 @@ export function getKgPool(overrideUrl?: string): Pool {
     // — acceptable only for Supabase's managed TLS; rotate to pinned cert when possible.
     ssl: url.includes('supabase.co')
       ? process.env['SUPABASE_CA_CERT_PATH']
-        ? { ca: readFileSync(process.env['SUPABASE_CA_CERT_PATH'], 'utf8'), rejectUnauthorized: true }
+        ? { ca: loadCaCert(process.env['SUPABASE_CA_CERT_PATH']), rejectUnauthorized: true }
         : { rejectUnauthorized: false }
       : undefined,
   };

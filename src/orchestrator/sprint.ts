@@ -269,6 +269,9 @@ export class SprintManager {
       .map((id) => this.store.loadTask(id))
       .filter((t): t is TaskRecord => Boolean(t));
 
+    // Pre-check: if no worker is available, skip all dispatch iterations instead
+    // of calling pickWorker() once per pending task.
+    let nextWorkerId = this.pickWorker();
     for (const task of tasks) {
       if (task.state.kind !== 'pending') continue;
       if (this.capabilities) {
@@ -293,9 +296,9 @@ export class SprintManager {
           continue;
         }
       }
-      const workerId = this.pickWorker();
-      if (!workerId) break;
-      await this.dispatch(task, workerId);
+      if (!nextWorkerId) break;
+      await this.dispatch(task, nextWorkerId);
+      nextWorkerId = this.pickWorker();
     }
 
     const freshTasks = sprint.tasks
