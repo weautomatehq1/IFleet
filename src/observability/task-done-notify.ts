@@ -36,13 +36,21 @@ export function buildSummaryArgs(prompt: string): string[] {
   ];
 }
 
+const SUMMARY_MAX_BYTES = 64 * 1024;
+
 function runClaude(claudePath: string, prompt: string): Promise<string> {
   return new Promise((resolve) => {
     let out = '';
+    let outBytes = 0;
     const proc = spawn(claudePath, buildSummaryArgs(prompt), {
       env: claudeChildEnv(),
     });
-    proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    proc.stdout.on('data', (d: Buffer) => {
+      if (outBytes >= SUMMARY_MAX_BYTES) return;
+      const chunk = d.toString();
+      outBytes += Buffer.byteLength(chunk);
+      out += chunk;
+    });
     proc.stderr.on('data', () => {});
     proc.on('close', () => resolve(out.trim()));
     proc.on('error', () => resolve(''));

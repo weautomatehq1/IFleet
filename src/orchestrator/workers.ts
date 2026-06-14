@@ -81,8 +81,11 @@ export class WorkerRegistry {
       validateMaxPlanConcurrency(enabled);
       this.workers = enabled;
     } catch (err) {
-      console.warn(`[WorkerRegistry] failed to load config from ${this.configPath}: ${String(err)} — booting with zero workers`);
+      console.error(`[WorkerRegistry] CRITICAL: failed to load config from ${this.configPath}: ${String(err)} — booting with zero workers. No tasks can be dispatched until this is resolved.`);
       this.workers = [];
+    }
+    if (this.workers.length === 0) {
+      console.error('[WorkerRegistry] WARNING: zero enabled workers loaded — no tasks can be dispatched. Check config/workers.json and ensure at least one worker has "enabled": true.');
     }
   }
 

@@ -1,14 +1,14 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runStreaming, type SpawnLike } from './spawn-runner.ts';
+import { runStreaming, type SpawnLike } from './spawn-runner.js';
 import {
   categorizeRateLimitError,
   type SpawnHandle,
   type SpawnOpts,
   type WorkerAdapter,
   type WorkerEvent,
-} from './types.ts';
+} from './types.js';
 
 export interface CodexAdapterOptions {
   binary?: string;

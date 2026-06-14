@@ -305,7 +305,12 @@ async function handleAuditFix(
       } else {
         failed.push(finding.id);
       }
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[audit-fix] postCommand failed for finding ${finding.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       failed.push(finding.id);
     }
   }

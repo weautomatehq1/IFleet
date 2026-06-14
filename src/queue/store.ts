@@ -342,8 +342,12 @@ export class TaskStore {
     // Both UPDATEs run in a single transaction so a concurrent pickNext() cannot
     // observe the intermediate state where a task is pending but has attempts >= maxAttempts.
     const runRecovery = this.db.transaction(() => {
-      // Tasks that have hit the attempt cap are marked failed to prevent infinite
-      // retry loops on permanently-failing tasks (AUDIT-IFleet-942cd45c).
+      // Tasks at or past the attempt cap are marked failed. The condition uses
+      // `attempts + 1 >= @maxAttempts` (i.e. `attempts >= @maxAttempts - 1`)
+      // rather than `attempts >= @maxAttempts` to close an off-by-one gap:
+      // without this, a task stale at `attempts = maxAttempts - 1` would match
+      // neither the fail branch (too low) nor the reset branch (too high) and
+      // stay in_flight forever. AUDIT-IFleet-7a3f9c12.
       const failedResult = this.db
         .prepare(
           `UPDATE tasks
@@ -353,7 +357,7 @@ export class TaskStore {
             WHERE state = 'in_flight'
               AND picked_at IS NOT NULL
               AND picked_at < @cutoff
-              AND attempts >= @maxAttempts`,
+              AND attempts + 1 >= @maxAttempts`,
         )
         .run({ now, cutoff, maxAttempts });
       // Remaining stale tasks (below cap) are reset to pending with incremented attempts.

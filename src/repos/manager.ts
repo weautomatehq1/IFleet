@@ -165,7 +165,7 @@ export class GitRepoManager implements RepoManager {
 
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.perRepoLock.get(key) ?? Promise.resolve();
-    const next = prev.then(fn, fn);
+    const next = prev.catch(() => undefined).then(fn);
     const settled = next.catch(() => undefined);
     this.perRepoLock.set(key, settled);
     // After this lock settles, drop the entry from the map IF nothing newer

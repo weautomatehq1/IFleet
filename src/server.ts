@@ -130,8 +130,11 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       // Approvals are resolved in the daemon process (ApprovalGate). The
       // public control-plane only records the verdict in stateMeta — the
       // daemon's in-process control-plane is what actually unblocks the
-      // architect.
-      store.updateState(taskId, task.state ?? 'in_flight', {
+      // architect. Guard against undefined state (possible if the row was
+      // inserted before the state column was added) to avoid silently
+      // overwriting a terminal task's state with 'in_flight'.
+      if (!task.state) return;
+      store.updateState(taskId, task.state, {
         ...(task.stateMeta ?? {}),
         approvedAt: Date.now(),
       });
