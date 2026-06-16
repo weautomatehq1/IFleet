@@ -29,6 +29,8 @@ const DRY_RUN_ENV = 'PROPOSER_DRY_RUN';
 const AUTO_APPROVE_THRESHOLD_ENV = 'IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD';
 const CONTROL_PLANE_URL_ENV = 'CONTROL_PLANE_URL';
 const HMAC_SECRET_ENV = 'IFLEET_HMAC_SECRET';
+const PROPOSALS_CHANNEL_ID_ENV = 'IFLEET_PROPOSALS_CHANNEL_ID';
+const PROPOSALS_APPROVER_IDS_ENV = 'IFLEET_PROPOSALS_APPROVER_IDS';
 
 const DEFAULTS = {
   budget: 3,
@@ -70,6 +72,26 @@ function buildConfig(repoId: string): ProposerConfig {
   if (rawThreshold !== undefined && rawThreshold.length > 0) {
     const parsed = Number(rawThreshold);
     if (Number.isFinite(parsed)) cfg.proposalsAutoApproveThreshold = parsed;
+  }
+  // Synthesize the Discord-source stamp the orchestrator handler requires on
+  // every sprint_goal. Without both env vars the auto path silently falls
+  // back to HITL inside splitAndDispatch — see auto-approve.ts.
+  const proposalsChannel = process.env[PROPOSALS_CHANNEL_ID_ENV];
+  const approverIds = (process.env[PROPOSALS_APPROVER_IDS_ENV] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (proposalsChannel && approverIds.length > 0) {
+    const threshold = cfg.proposalsAutoApproveThreshold ?? Number.POSITIVE_INFINITY;
+    cfg.proposalsAutoApproveSource = {
+      channelId: proposalsChannel,
+      // The audit trail of "auto vs human" lives in goal_proposals.decided_by
+      // (`auto-bandit-<threshold>`); the userId here just satisfies the
+      // server-side ingest contract. Pick the first approver so any Discord
+      // mention is at least a real human, not a broken `<@bot:...>` token.
+      userId: approverIds[0]!,
+      userLabel: `auto-bandit-${threshold}`,
+    };
   }
   return cfg;
 }

@@ -126,8 +126,20 @@ export async function splitAndDispatch(
   const warn = deps.warn ?? ((l) => console.warn(l));
   const threshold = resolveAutoApproveThreshold(cfg);
   const live = top.filter((c) => !c.dropped);
-  const auto = live.filter((c) => c.composite_score >= threshold);
-  const hitl = live.filter((c) => c.composite_score < threshold);
+  let auto = live.filter((c) => c.composite_score >= threshold);
+  let hitl = live.filter((c) => c.composite_score < threshold);
+
+  // The orchestrator handler at src/orchestrator/handlers/control-plane.ts
+  // throws on sprint_goal without channelId/userId/userLabel. Without a
+  // configured `proposalsAutoApproveSource` we cannot satisfy that contract,
+  // so fall through to HITL rather than letting postCommand hit a 500.
+  if (auto.length > 0 && !cfg.proposalsAutoApproveSource) {
+    warn(
+      `[auto-approve] cfg.proposalsAutoApproveSource unset — falling ${auto.length} auto candidate(s) back to HITL`,
+    );
+    hitl = [...hitl, ...auto];
+    auto = [];
+  }
 
   warn(
     `[auto-approve] threshold=${threshold} auto=${auto.length} hitl=${hitl.length} dropped=${top.length - live.length}`,
@@ -218,11 +230,26 @@ export async function autoApproveProposals(
       continue;
     }
 
+    // splitAndDispatch already short-circuits to HITL when this source is
+    // missing, so reaching this point guarantees it's present. Asserting
+    // makes that explicit for callers that bypass splitAndDispatch (tests).
+    if (!cfg.proposalsAutoApproveSource) {
+      warn(
+        `[auto-approve] cfg.proposalsAutoApproveSource unset — skipping ${proposalId}; task NOT enqueued`,
+      );
+      continue;
+    }
     const command: ControlCommand = {
       type: 'sprint_goal',
       goal: candidate.title,
       repo: cfg.repoId,
       idempotencyKey: `proposal:${proposalId}`,
+      source: {
+        kind: 'discord',
+        channelId: cfg.proposalsAutoApproveSource.channelId,
+        userId: cfg.proposalsAutoApproveSource.userId,
+        userLabel: cfg.proposalsAutoApproveSource.userLabel,
+      },
     };
 
     let ack;

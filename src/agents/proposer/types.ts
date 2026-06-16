@@ -174,11 +174,25 @@ export interface ProposerConfig {
    * enqueued via the control plane directly (skipping the Discord HITL click).
    * `composite_score >= threshold` → auto path; below → Discord HITL.
    *
-   * Default is 1.0 = HITL-only (no behavioural change vs M5.2-T1). The cron
-   * entry parses `IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD` and threads the
-   * value through here so tests can override per-run.
+   * Default is `Number.POSITIVE_INFINITY` = HITL-only (no behavioural change
+   * vs M5.2-T1). The cron entry parses `IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD`
+   * and threads the value through here so tests can override per-run.
    */
   proposalsAutoApproveThreshold?: number;
+  /**
+   * Synthetic Discord-source fields stamped on auto-approved `sprint_goal`
+   * commands so the orchestrator handler (which requires
+   * channelId/userId/userLabel — see src/orchestrator/handlers/control-plane.ts)
+   * accepts them. When unset the auto path is unavailable and matching
+   * candidates fall through to HITL with a warn — the proposer cron is the
+   * source of truth and reads `IFLEET_PROPOSALS_CHANNEL_ID` +
+   * `IFLEET_PROPOSALS_APPROVER_IDS` to populate this.
+   */
+  proposalsAutoApproveSource?: {
+    channelId: string;
+    userId: string;
+    userLabel: string;
+  };
 }
 
 /**

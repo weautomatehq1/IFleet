@@ -35,6 +35,15 @@ function baseCfg(overrides: Partial<ProposerConfig> = {}): ProposerConfig {
     pastProposalsWindowDays: 30,
     embeddingModel: 'text-embedding-3-small',
     dedupThreshold: 0.85,
+    // Default test source so the auto path passes its orchestrator-handler
+    // gate (channelId/userId/userLabel must all be non-empty). Tests that
+    // exercise the "source missing → fall back to HITL" branch override this
+    // explicitly with `{ proposalsAutoApproveSource: undefined }`.
+    proposalsAutoApproveSource: {
+      channelId: '1234567890',
+      userId: '111111111',
+      userLabel: 'auto-bandit-test',
+    },
     ...overrides,
   };
 }
@@ -211,6 +220,45 @@ describe('splitAndDispatch — threshold filtering', () => {
     expect(count).toBe(4);
   });
 
+  it('falls auto candidates back to HITL when cfg.proposalsAutoApproveSource is unset', async () => {
+    // The orchestrator handler rejects sprint_goal without channelId/userId/
+    // userLabel, so an unconfigured source must not let auto-approve attempt
+    // a postCommand it knows will 500.
+    const top: DedupedCandidate[] = [
+      candidate('would-auto', 0.95),
+      candidate('would-hitl', 0.5),
+    ];
+    const hitlSeen: DedupedCandidate[][] = [];
+    const cp = controlPlaneSpy();
+    const autoSpy = vi.fn(async () => 0);
+    const warnLines: string[] = [];
+
+    const deps: SplitAndDispatchDeps = {
+      controlPlane: cp,
+      postProposalsForApproval: async (cands) => {
+        hitlSeen.push(cands);
+        return cands.length;
+      },
+      autoApproveProposals: autoSpy,
+      warn: (line) => warnLines.push(line),
+    };
+
+    const cfg = baseCfg({
+      proposalsAutoApproveThreshold: 0.85,
+      proposalsAutoApproveSource: undefined,
+    });
+    const count = await splitAndDispatch(top, cfg, deps);
+
+    expect(autoSpy).not.toHaveBeenCalled();
+    expect(cp.posted).toHaveLength(0);
+    // Both candidates land in HITL (the original `would-hitl` plus the
+    // fallen-back `would-auto`).
+    expect(hitlSeen).toHaveLength(1);
+    expect(hitlSeen[0]?.map((c) => c.title).sort()).toEqual(['would-auto', 'would-hitl']);
+    expect(count).toBe(2);
+    expect(warnLines.some((l) => l.includes('proposalsAutoApproveSource unset'))).toBe(true);
+  });
+
   it('threshold 0.85 routes above/equal to auto, below to Discord', async () => {
     const top: DedupedCandidate[] = [
       candidate('above-1', 0.9),
@@ -253,6 +301,15 @@ describe('splitAndDispatch — threshold filtering', () => {
       if (cmd.type !== 'sprint_goal') throw new Error('unreachable');
       expect(cmd.repo).toBe(cfg.repoId);
       expect(cmd.idempotencyKey).toBe(`proposal:prop-${i + 1}`);
+      // Server-side orchestrator handler rejects sprint_goal without
+      // channelId/userId/userLabel — auto path MUST stamp the synthetic
+      // Discord-source from cfg.proposalsAutoApproveSource on every command.
+      expect(cmd.source).toEqual({
+        kind: 'discord',
+        channelId: cfg.proposalsAutoApproveSource!.channelId,
+        userId: cfg.proposalsAutoApproveSource!.userId,
+        userLabel: cfg.proposalsAutoApproveSource!.userLabel,
+      });
     }
     expect(store.linked).toEqual([
       { proposalId: 'prop-1', taskId: 'task-1' },
