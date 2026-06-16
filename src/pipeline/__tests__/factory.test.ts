@@ -57,6 +57,29 @@ describe('AUDIT-IFleet-e8b8cbc4: classifyTask propagates mode from QueuedTask', 
   });
 });
 
+describe('M6-T3: factory persists RoutingDecision and records shadow pick', () => {
+  // Source-level guard mirrors AUDIT-IFleet-d3e66e4a's pattern. A future
+  // refactor that drops the persist+shadow step on the floor would still
+  // typecheck — this assertion catches it at the call site.
+  it('factory.ts calls setRoutingDecision + recordShadowDecision after classifyTask', () => {
+    const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
+    expect(src).toMatch(/opts\.taskStore\.setRoutingDecision\(task\.id, routing\)/);
+    expect(src).toMatch(/recordShadowDecision\(/);
+    expect(src).toMatch(/buildShadowObservations\(/);
+    expect(src).toMatch(/knownArms:\s*KNOWN_MODEL_IDS/);
+  });
+
+  it('the wiring is wrapped in try/catch so shadow failures never break live routing', () => {
+    const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
+    // Match the try-block that contains the setRoutingDecision call followed
+    // by the catch — the order is load-bearing for the fail-open contract.
+    const block = src.match(
+      /try\s*\{[\s\S]*?setRoutingDecision[\s\S]*?recordShadowDecision[\s\S]*?\}\s*catch[\s\S]*?console\.warn/,
+    );
+    expect(block, 'try/catch around shadow wiring not found in factory.ts').not.toBeNull();
+  });
+});
+
 describe('AUDIT-IFleet-d3e66e4a: factory integration passes mode through to classifyTask', () => {
   // The above classifier test would still pass if factory.ts dropped mode on the
   // floor before invoking classifyTask. Lock the actual call site at the source
