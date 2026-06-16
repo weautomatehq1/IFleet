@@ -10,6 +10,7 @@ import type { Client } from 'discord.js';
 import { Octokit } from '@octokit/rest';
 import { VerifierController } from '../agents/verifier/controller.js';
 import { loadReposConfig } from '../config/repos.js';
+import { registerProposerDiscordClient } from '../agents/proposer/approval-gate.js';
 import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
 import { DiscordOutAdapter } from '../observability/discord-output.js';
@@ -238,6 +239,7 @@ async function main(): Promise<void> {
   // -------- Boot Discord client --------
   await client.login(discordToken);
   console.warn('[daemon] discord client logged in');
+  registerProposerDiscordClient(client);
 
   // -------- Tick loop: drain pending → submitSprint --------
   let running = true;
