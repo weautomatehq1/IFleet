@@ -250,6 +250,28 @@ export class TaskStore {
     if (!cols.some((c) => c.name === 'fingerprint')) {
       this.db.exec(`ALTER TABLE pr_decisions ADD COLUMN fingerprint TEXT`);
     }
+    // M6-T2: routing_shadow_log — bandit's would-be model pick is
+    // captured here per task without overriding the live routing.
+    // Snapshot columns are JSON blobs so the analytics dashboard can
+    // reconstruct the posteriors at decision time. Foreign key to
+    // tasks(id) keeps the log clean on task deletes.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS routing_shadow_log (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        decided_at INTEGER NOT NULL,
+        actual_model TEXT NOT NULL,
+        shadow_model TEXT NOT NULL,
+        alpha_snapshot TEXT NOT NULL,
+        beta_snapshot TEXT NOT NULL,
+        sample_snapshot TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_routing_shadow_task ON routing_shadow_log(task_id);
+      CREATE INDEX IF NOT EXISTS idx_routing_shadow_decided
+        ON routing_shadow_log(decided_at);
+    `);
   }
 
   insert(task: QueuedTask): InsertResult {
