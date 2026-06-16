@@ -121,8 +121,12 @@ function buildButtonRow(proposalId: string): ActionRowBuilder<ButtonBuilder> {
  * Failure semantics:
  *   - Channel id unset → log + return 0 (feature gate).
  *   - Channel fetch returns null → log + return 0 (channel missing).
- *   - Per-candidate post failure → log + skip that candidate, continue.
- *   - DB insert failure → bubble up (don't post a message we can't decide on).
+ *   - Per-candidate post failure → log + skip that candidate; no row inserted.
+ *     Ordering is send-then-insert so a failed Discord post can't leave an
+ *     orphan row that has no message to be approved/rejected against.
+ *   - DB insert failure (after successful send) → bubble up; the Discord
+ *     message is already live and a subsequent button click will surface the
+ *     missing row as a recordProposalDecision error rather than rotting.
  *
  * Dry-run: `cfg.dryRun === true` skips both DB writes and Discord posts;
  * returns 0. Used by smoke tests + initial deploys before #ifleet-proposals
@@ -163,6 +167,17 @@ export async function postProposalsForApproval(
   let posted = 0;
   for (const candidate of live) {
     const proposalId = generateId();
+    try {
+      await channel.send({
+        content: formatMessage(candidate),
+        components: [buildButtonRow(proposalId)],
+      });
+    } catch (err) {
+      warn(
+        `[proposals] post failed for ${proposalId}: ${err instanceof Error ? err.message : String(err)} — row NOT inserted`,
+      );
+      continue;
+    }
     await insertProposal({
       id: proposalId,
       repo_id: cfg.repoId,
@@ -173,17 +188,7 @@ export async function postProposalsForApproval(
       estimated_difficulty: candidate.estimated_difficulty,
       embedding: null,
     });
-    try {
-      await channel.send({
-        content: formatMessage(candidate),
-        components: [buildButtonRow(proposalId)],
-      });
-      posted += 1;
-    } catch (err) {
-      warn(
-        `[proposals] post failed for ${proposalId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    posted += 1;
   }
   return posted;
 }

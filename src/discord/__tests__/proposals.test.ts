@@ -160,4 +160,25 @@ describe('postProposalsForApproval', () => {
     expect(posted).toBe(0);
     expect(insertedRows).toHaveLength(0);
   });
+
+  it('skips DB insert when channel.send rejects (no orphan rows)', async () => {
+    const channel: FakeChannel = {
+      send: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('discord 503'))
+        .mockResolvedValueOnce({ id: 'msg-2' }),
+    };
+    const deps = makeDeps(channel, ['fail-id', 'ok-id']);
+    const candidates = [
+      makeCandidate({ title: 'Failing one' }),
+      makeCandidate({ title: 'Succeeding one' }),
+    ];
+
+    const posted = await postProposalsForApproval(candidates, cfg, deps);
+
+    expect(posted).toBe(1);
+    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(insertedRows).toHaveLength(1);
+    expect(insertedRows[0]?.id).toBe('ok-id');
+  });
 });
