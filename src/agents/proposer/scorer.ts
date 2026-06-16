@@ -16,16 +16,16 @@
 // `resulting_pr_outcome` is the long-term closure point; until then we emit
 // to stderr with a stable JSON shape callers can grep.
 
-import { createEmbeddingClient, type EmbeddingClient } from '../indexer/embed.ts';
+import { createEmbeddingClient, type EmbeddingClient } from '../indexer/embed.js';
 import {
   cosineSimilarity,
   type DedupedCandidateWithEmbedding,
-} from './dedupe.ts';
+} from './dedupe.js';
 import type {
   DedupedCandidate,
   ProposerConfig,
   ProposerContext,
-} from './types.ts';
+} from './types.js';
 
 const W_VALUE = 0.4;
 const W_INV_DIFFICULTY = 0.3;

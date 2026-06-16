@@ -8,13 +8,13 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { runProposer } from '../index.ts';
+import { runProposer } from '../index.js';
 import type {
   Candidate,
   DedupedCandidate,
   ProposerConfig,
   ProposerContext,
-} from '../types.ts';
+} from '../types.js';
 
 const baseCfg: ProposerConfig = {
   repoId: 'weautomatehq1/IFleet',

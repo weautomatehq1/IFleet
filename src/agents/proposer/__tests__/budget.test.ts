@@ -3,8 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { enforceBudget } from '../budget.ts';
-import type { DedupedCandidate, ProposerConfig } from '../types.ts';
+import { enforceBudget } from '../budget.js';
+import type { DedupedCandidate, ProposerConfig } from '../types.js';
 
 function cfg(budget: number, hardMax: number): ProposerConfig {
   return {

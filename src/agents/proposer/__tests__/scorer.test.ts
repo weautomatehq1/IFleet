@@ -4,13 +4,13 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { scoreCandidates } from '../scorer.ts';
-import type { EmbeddingClient } from '../../indexer/embed.ts';
+import { scoreCandidates } from '../scorer.js';
+import type { EmbeddingClient } from '../../indexer/embed.js';
 import type {
   DedupedCandidate,
   ProposerConfig,
   ProposerContext,
-} from '../types.ts';
+} from '../types.js';
 
 const cfg: ProposerConfig = {
   repoId: 'weautomatehq1/IFleet',
