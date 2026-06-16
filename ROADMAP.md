@@ -22,9 +22,10 @@ Before any month-1 code: **commit to "single shared trace, specialist roles insi
 | **M1 ✅ Done (2026-05-20, PRs #130 #135)** | Closed-loop verifier (Docker sandbox + retry loop + Discord). Standing-team daily standup (parallel) | >80% of IFleet PRs pass external CI on first try; daily Discord post live |
 | **M2 ✅ Done (2026-05-20, PR #132)** | Plan-Reviewer agent (NOT diff-reviewer — that exists). Renames existing reviewer→diff-reviewer | 20% of plans get reviewer feedback; bugs caught pre-verifier |
 | **M3 ✅ Done (2026-05-20, PR #134)** | Cross-repo knowledge graph (tree-sitter + Postgres + pgvector). Architect `query_code_graph` tool | Architect `cost_usd` per task on eval-set replays -30-50% vs M1 baseline |
-| **M4** | Behavioral fingerprinting + PR rejection learning (shared `pr_decisions` + `verifier_runs` tables) | 50% of merged PRs have fingerprint diff; reviewer preference cards for top 3 reviewers |
+| **M4 ✅ Substrate landed (2026-06-15, PR #324 + earlier M4-T1/T2/T5 commits)** | Behavioral fingerprinting + PR rejection learning (shared `pr_decisions` + `verifier_runs` tables) + reviewer preference cards. KPI gate still open until prod has ≥10 M4-era fingerprinted rows (see #324 body — VPS restart required to pick up the migrated schema). | 50% of merged PRs have fingerprint diff; reviewer preference cards for top 3 reviewers |
 | **M4.5 ✅ Scoped ship (2026-06-03)** | Phase C routing migration on scorer + routing.json rule paths: removed Phase B Opus cap from `src/classifier/index.ts`; updated test suite to canonical-aligned assertions; landed [ADR-0004](docs/adr/0004-canonical-routing-alignment.md) superseding PR #41 Phase B rationale; rewrote MODEL-ROUTING.md body. `mode:*` and explicit `category:*`/`severity:*` label paths tracked as M4.6/M4.7/M4.8 in ADR-0004 §Known-Limitations | Classifier output for security/auth/payments/migration via title/body keyword hit OR routing.json rule routes architect to Opus per canonical-pattern §3.2 override #1 |
-| **M5** | Goal-driven mode (Proposer + budget gate + #ifleet-proposals channel) | ≥1 approved+merged proposal/week, 0 noise complaints |
+| **M5 ✅ Substrate landed (2026-06-15, PRs #323 #325 #326)** | Goal-driven mode substrate — proposer skeleton + shared types contract (#323), candidate-gen/dedupe/scorer/budget (#325), goal_proposals schema + Discord HITL gate (#326). Cron entry `ifleet-proposer` gated on `PROPOSER_ENABLED=1`. Approve → `/ship` enqueue is M5.2 follow-up. Deploy gate: (a) `pnpm graph:migrate` on VPS, (b) `#ifleet-proposals` channel created and `IFLEET_PROPOSALS_CHANNEL_ID` + `IFLEET_PROPOSALS_APPROVER_IDS` set, (c) `pm2 restart all --update-env`. | ≥1 approved+merged proposal/week, 0 noise complaints |
+| **M5.2** | Wire Approve button → `/ship` enqueue (currently button writes decision directly to `goal_proposals` only). Once landed, an approved proposal becomes a normal sprint goal end-to-end. | Approved proposal opens a PR within 1 sprint cycle without manual `/ship` |
 | **M6** | Cross-repo coherence (drift detector) + economic routing (Thompson sampling bandit) | Drift PRs >70% merge rate; cost per task -25% |
 
 ## Deferred (gated on eval set + safety constraints)
@@ -36,7 +37,7 @@ Before any month-1 code: **commit to "single shared trace, specialist roles insi
 ```
 M0 (eval set + ADR-0001 + scaffold + SECURITY.md)
   ↓
-M1 (verifier) ──┬─→ M2 (plan-reviewer) ─→ M3 (KG) ─→ M4 (fingerprint + PR-learn) ─→ M4.5 → M5 (Proposer) ─→ M6 (coherence + routing)
+M1 (verifier) ──┬─→ M2 (plan-reviewer) ─→ M3 (KG) ─→ M4 (fingerprint + PR-learn) ─→ M4.5 → M5 (Proposer) ─→ M5.2 (Approve→ship) ─→ M6 (coherence + routing)
                 └─→ M1.parallel (standing-team rituals — no deps)
                                                     ↓
                                             M4+ (self-improve, gated)
