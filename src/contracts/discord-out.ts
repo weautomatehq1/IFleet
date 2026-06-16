@@ -55,6 +55,13 @@ export const DISCORD_CUSTOM_ID_VERBS = [
   'verify_retry',
   'verify_force_pr',
   'verify_cancel',
+  // M5 Goal Proposer HITL buttons (docs/elevation/upgrades/06-goal-driven.md).
+  // The `taskId` portion of the customId is the `goal_proposals.id` UUID,
+  // not a queue task id — they route through `recordProposalDecision` in
+  // `src/orchestrator/approval-gate.ts`, not the control-plane bridge.
+  'proposal_approve',
+  'proposal_reject',
+  'proposal_defer',
 ] as const;
 
 export type DiscordCustomIdVerb = (typeof DISCORD_CUSTOM_ID_VERBS)[number];

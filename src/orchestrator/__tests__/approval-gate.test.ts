@@ -1,6 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { ControlPlaneApprovalGate } from '../approval-gate.js';
+import {
+  ControlPlaneApprovalGate,
+  recordProposalDecision,
+} from '../approval-gate.js';
 
 describe('ControlPlaneApprovalGate', () => {
   it('resolves true when resolve(approve) fires', async () => {
@@ -74,5 +77,81 @@ describe('ControlPlaneApprovalGate', () => {
     gate.drain();
     assert.equal(await p1, false);
     assert.equal(await p2, false);
+  });
+});
+
+describe('recordProposalDecision (kind: proposal)', () => {
+  type QueryCall = { sql: string; params: unknown[] };
+
+  function makePool(rowCount: number): { pool: unknown; calls: QueryCall[] } {
+    const calls: QueryCall[] = [];
+    const pool = {
+      async query(sql: string, params: unknown[]) {
+        calls.push({ sql, params });
+        return { rowCount, rows: rowCount === 1 ? [{ id: String(params[0]) }] : [] };
+      },
+    };
+    return { pool, calls };
+  }
+
+  it('writes approved decision and reports updated:true', async () => {
+    const { pool, calls } = makePool(1);
+    const result = await recordProposalDecision({
+      kind: 'proposal',
+      proposalId: 'prop-1',
+      decision: 'approved',
+      decidedBy: 'user-123',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pool: pool as any,
+    });
+    assert.equal(result.updated, true);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]!.sql, /UPDATE goal_proposals/);
+    assert.equal(calls[0]!.params[0], 'prop-1');
+    assert.equal(calls[0]!.params[1], 'approved');
+    assert.equal(calls[0]!.params[2], 'user-123');
+    // decidedAt is a fresh ISO timestamp; just assert it parses.
+    assert.equal(Number.isFinite(Date.parse(String(calls[0]!.params[3]))), true);
+  });
+
+  it('writes rejected decision', async () => {
+    const { pool, calls } = makePool(1);
+    const result = await recordProposalDecision({
+      kind: 'proposal',
+      proposalId: 'prop-2',
+      decision: 'rejected',
+      decidedBy: 'user-456',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pool: pool as any,
+    });
+    assert.equal(result.updated, true);
+    assert.equal(calls[0]!.params[1], 'rejected');
+  });
+
+  it('writes deferred decision', async () => {
+    const { pool, calls } = makePool(1);
+    const result = await recordProposalDecision({
+      kind: 'proposal',
+      proposalId: 'prop-3',
+      decision: 'deferred',
+      decidedBy: 'user-789',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pool: pool as any,
+    });
+    assert.equal(result.updated, true);
+    assert.equal(calls[0]!.params[1], 'deferred');
+  });
+
+  it('returns updated:false when proposalId does not match any row', async () => {
+    const { pool } = makePool(0);
+    const result = await recordProposalDecision({
+      kind: 'proposal',
+      proposalId: 'missing',
+      decision: 'approved',
+      decidedBy: 'user-x',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pool: pool as any,
+    });
+    assert.equal(result.updated, false);
   });
 });
