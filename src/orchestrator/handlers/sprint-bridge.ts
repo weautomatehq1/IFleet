@@ -12,6 +12,38 @@ import { encodeBridgeBrief } from '../pipeline-bridge.js';
 import { isFleetPaused } from '../fleet-control.js';
 import type { TaskContextRegistry } from './pr-decisions.js';
 import { recordPrDecisionMerged, recordPrDecisionRejected } from './pr-decisions.js';
+import {
+  extractProposalIdFromIdempotencyKey,
+  setResultingPrOutcome,
+} from '../goal-proposals-store.js';
+
+/**
+ * M5.2-T2: when a sprint-spawned task originated from an approved
+ * proposal, push the resulting PR url + outcome back onto the
+ * `goal_proposals` row so the Voyager iterative-prompting loop on the
+ * next nightly run has training data ("we tried this; reviewer merged
+ * it / closed it without merging").
+ *
+ * Fire-and-forget by design — the only signal we have that a task came
+ * from a proposal is its idempotency key (`proposal:<id>`, set by
+ * `enqueueApprovedProposal` in interaction-create.ts). Any DB write
+ * failure here logs and returns; the PR decision was already recorded
+ * via `recordPrDecision*` regardless.
+ */
+function recordPrOutcomeOnProposal(
+  task: QueuedTask,
+  prUrl: string,
+  outcome: 'merged' | 'rejected' | 'closed_unmerged',
+): void {
+  const proposalId = extractProposalIdFromIdempotencyKey(task.idempotencyKey);
+  if (!proposalId) return;
+  void setResultingPrOutcome(proposalId, prUrl, outcome).catch((err) => {
+    console.warn(
+      `[daemon] setResultingPrOutcome(${proposalId}, ${outcome}) failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -180,6 +212,7 @@ export function wireSprintCompletion(
           // inserted (per M4-T5 contract).
           const ctx = verifierCtx?.get(task.id);
           void recordPrDecisionMerged(store, task, prNumber, ctx);
+          recordPrOutcomeOnProposal(task, lastPrUrl, 'merged');
         }
       }
       verifierCtx?.delete(task.id);
@@ -237,6 +270,12 @@ export function wireSprintCompletion(
           // closed without merging => verdict='rejected'. Same async
           // fingerprint compute as the merged path; null on any failure.
           void recordPrDecisionRejected(store, task, prNumber, ctxSnapshot);
+          // M5.2-T2: outcome distinct from verdict — pr_decisions tracks
+          // architect-side learning (rejected), proposal tracks
+          // human-visible outcome (closed_unmerged) so the Voyager loop
+          // doesn't conflate "verifier closed PR before reviewer saw it"
+          // with "reviewer rejected the merged proposal."
+          recordPrOutcomeOnProposal(task, lastPrUrl, 'closed_unmerged');
         }
       }
 

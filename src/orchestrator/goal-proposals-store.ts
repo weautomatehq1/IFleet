@@ -166,6 +166,50 @@ export async function setResultingTaskId(
 }
 
 /**
+ * Write the resulting PR URL and outcome back onto the proposal row that
+ * spawned this task. Idempotent.
+ *
+ * `outcome` is one of the canonical CHECK values:
+ *   - `merged` — PR landed on the base branch.
+ *   - `rejected` — reviewer explicitly rejected (reserved for a future
+ *     signal, not currently emitted by the merge/close path).
+ *   - `closed_unmerged` — PR was closed without a merge (sprint failed
+ *     after PR-open, or operator /cancel).
+ *
+ * Returns `{ updated: true }` when the proposal id matches a row;
+ * `{ updated: false }` when no row exists.
+ */
+export async function setResultingPrOutcome(
+  proposalId: string,
+  prUrl: string,
+  outcome: 'merged' | 'rejected' | 'closed_unmerged',
+  pool: Pool = getKgPool(),
+): Promise<{ updated: boolean }> {
+  const result = await pool.query(
+    `UPDATE goal_proposals
+        SET resulting_pr_url = $2,
+            resulting_pr_outcome = $3
+      WHERE id = $1`,
+    [proposalId, prUrl, outcome],
+  );
+  return { updated: result.rowCount === 1 };
+}
+
+/**
+ * Extract the proposal id from an idempotency key of the form
+ * `proposal:<id>` (the shape M5.2-T1's Approve→/ship handler uses).
+ * Returns null for any other key shape so non-proposal tasks aren't
+ * misclassified.
+ */
+export function extractProposalIdFromIdempotencyKey(
+  idempotencyKey: string | null | undefined,
+): string | null {
+  if (!idempotencyKey) return null;
+  const m = /^proposal:([A-Za-z0-9_-]+)$/.exec(idempotencyKey);
+  return m ? (m[1] ?? null) : null;
+}
+
+/**
  * Read proposals for `repoId`, newest first, capped at `limit`. The
  * context-loader (T3) treats this as fail-open: a thrown read becomes `[]`
  * with a single warn line. We honour that contract by catching at the
