@@ -148,14 +148,21 @@ describe('runProposer orchestration', () => {
     ).rejects.toThrow('boom');
   });
 
-  it('falls back to real stub modules when no override is supplied — first stub throws', async () => {
-    // Hitting candidate-gen.ts default export is the cheapest way to verify the
-    // wiring uses the stubs by default. Context loader is fail-open so it
-    // succeeds with empty defaults even when the repoRoot is a fake path.
-    await expect(
-      runProposer(baseCfg.repoId, baseCfg, {
-        contextDeps: { warn: () => {} },
-      }),
-    ).rejects.toThrow(/Lane T4 not landed yet/);
+  it('falls back to real modules when no override is supplied — candidate-gen needs ANTHROPIC_API_KEY', async () => {
+    // T4 has landed; candidate-gen now calls Anthropic via fetch, defaulting
+    // its LlmCompleter to AnthropicCompleter. With ANTHROPIC_API_KEY unset,
+    // the completer constructor throws — proving the default wiring still
+    // resolves to the real T4 module (and not, e.g., a leftover stub).
+    const previousKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      await expect(
+        runProposer(baseCfg.repoId, baseCfg, {
+          contextDeps: { warn: () => {} },
+        }),
+      ).rejects.toThrow(/ANTHROPIC_API_KEY is not set/);
+    } finally {
+      if (previousKey !== undefined) process.env.ANTHROPIC_API_KEY = previousKey;
+    }
   });
 });

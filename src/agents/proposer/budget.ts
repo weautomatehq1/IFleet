@@ -1,19 +1,24 @@
-// Lane T4 owns this file.
+// M5 Proposer — budget gate (Lane T4).
 //
-// `enforceBudget` takes scored+deduped candidates, drops anything with
-// `dropped === true`, sorts by `composite_score` descending, and slices to
-// `min(cfg.budget, cfg.hardMax)`. Stubbed until T4 lands.
+// `enforceBudget` filters out `dropped` entries, sorts by composite_score
+// desc, and slices to `min(cfg.budget, cfg.hardMax, HARD_CEILING)`. The
+// HARD_CEILING is a constant safety net (10 per upgrades/06-goal-driven.md
+// §"Enforce budget") so that even a misconfigured `cfg.hardMax` cannot
+// produce a runaway nightly run.
 
-import type {
-  DedupedCandidate,
-  ProposerConfig,
-} from './types.ts';
+import type { DedupedCandidate, ProposerConfig } from './types.ts';
+
+/** Spec ceiling — never exceed this regardless of cfg.budget / cfg.hardMax. */
+const HARD_CEILING = 10;
 
 export async function enforceBudget(
-  _scored: DedupedCandidate[],
-  _cfg: ProposerConfig,
+  candidates: DedupedCandidate[],
+  cfg: ProposerConfig,
 ): Promise<DedupedCandidate[]> {
-  throw new Error(
-    'Lane T4 not landed yet — budget stub. See splits/20260604-0910-m5-proposer-substrate/MASTER.md',
-  );
+  const kept = candidates.filter((c) => !c.dropped);
+  kept.sort((a, b) => b.composite_score - a.composite_score);
+  const budget = Math.max(0, Math.floor(cfg.budget));
+  const hardMax = Math.max(0, Math.floor(cfg.hardMax));
+  const cap = Math.min(budget, hardMax, HARD_CEILING);
+  return kept.slice(0, cap);
 }
