@@ -4,6 +4,10 @@ import Database from 'better-sqlite3';
 type DB = Database.Database;
 
 import { readShadowDecisions, recordShadowDecision } from '../shadow.js';
+import { TaskStore } from '../../../queue/store.js';
+import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 function seededRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -29,6 +33,7 @@ function makeDb(): DB {
       alpha_snapshot TEXT NOT NULL,
       beta_snapshot TEXT NOT NULL,
       sample_snapshot TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'architect',
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
   `);
@@ -56,9 +61,11 @@ describe('recordShadowDecision', () => {
       ],
       knownArms: ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
       rng: seededRng(7),
+      role: 'architect',
     });
     expect(rec).not.toBeNull();
     expect(rec!.shadowModel).toMatch(/claude-/);
+    expect(rec!.role).toBe('architect');
     expect(rec!.posteriors.find((p) => p.arm === 'claude-opus-4-7')).toEqual({
       arm: 'claude-opus-4-7',
       alpha: 3,
@@ -82,6 +89,7 @@ describe('recordShadowDecision', () => {
       observations: [{ arm: 'claude-opus-4-7', reward: 1 }],
       knownArms: ['claude-opus-4-7', 'claude-haiku-4-5-20251001'],
       rng: seededRng(11),
+      role: 'architect',
     });
     expect(rec).not.toBeNull();
     expect(rec!.actualModel).toBe(actual);
@@ -96,6 +104,7 @@ describe('recordShadowDecision', () => {
         actualModel: 'x',
         observations: [],
         knownArms: [],
+        role: 'architect',
       }),
     ).toThrow(/≥1 knownArm/);
   });
@@ -109,6 +118,7 @@ describe('recordShadowDecision', () => {
       observations: [],
       knownArms: ['claude-sonnet-4-6'],
       rng: seededRng(1),
+      role: 'architect',
     });
     db.prepare('DELETE FROM tasks WHERE id = ?').run('task-1');
     expect(readShadowDecisions(db).filter((r) => r.taskId === 'task-1')).toHaveLength(0);
@@ -137,6 +147,7 @@ describe('recordShadowDecision', () => {
         observations: [],
         knownArms: ['claude-sonnet-4-6'],
         rng: seededRng(1),
+        role: 'architect',
       });
       expect(result).toBeNull();
       expect(warns.some((w) => /recordShadowDecision failed/.test(w))).toBe(true);
@@ -157,6 +168,7 @@ describe('readShadowDecisions', () => {
       observations: [],
       knownArms: ['claude-sonnet-4-6'],
       rng: seededRng(1),
+      role: 'architect',
     });
     recordShadowDecision(db, {
       taskId: 'task-2',
@@ -166,9 +178,77 @@ describe('readShadowDecisions', () => {
       observations: [],
       knownArms: ['claude-sonnet-4-6'],
       rng: seededRng(2),
+      role: 'architect',
     });
     const rows = readShadowDecisions(db);
     expect(rows[0]!.taskId).toBe('task-2');
     expect(rows[1]!.taskId).toBe('task-1');
+  });
+});
+
+describe('M6-T3 role wiring', () => {
+  it("recordShadowDecision writes role='editor' when input.role='editor'", () => {
+    const db = makeDb();
+    const rec = recordShadowDecision(db, {
+      taskId: 'task-1',
+      repo: 'r',
+      decidedAt: 1,
+      actualModel: 'claude-sonnet-4-6',
+      observations: [{ arm: 'claude-sonnet-4-6', reward: 1 }],
+      knownArms: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+      rng: seededRng(3),
+      role: 'editor',
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.role).toBe('editor');
+    const stored = db
+      .prepare('SELECT role FROM routing_shadow_log WHERE id = ?')
+      .get(rec!.id) as { role: string };
+    expect(stored.role).toBe('editor');
+  });
+
+  it('readShadowDecisions returns role on each row', () => {
+    const db = makeDb();
+    recordShadowDecision(db, {
+      taskId: 'task-1',
+      repo: 'r',
+      decidedAt: 10,
+      actualModel: 'claude-sonnet-4-6',
+      observations: [],
+      knownArms: ['claude-sonnet-4-6'],
+      rng: seededRng(1),
+      role: 'architect',
+    });
+    recordShadowDecision(db, {
+      taskId: 'task-2',
+      repo: 'r',
+      decidedAt: 20,
+      actualModel: 'claude-sonnet-4-6',
+      observations: [],
+      knownArms: ['claude-sonnet-4-6'],
+      rng: seededRng(2),
+      role: 'reviewer',
+    });
+    const rows = readShadowDecisions(db);
+    const roles = rows.map((r) => r.role).sort();
+    expect(roles).toEqual(['architect', 'reviewer']);
+  });
+
+  it('migration is idempotent — second TaskStore construction does not throw', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shadow-mig-'));
+    const path = join(dir, 'tasks.db');
+    try {
+      const s1 = new TaskStore(path);
+      s1.close();
+      // Re-opening must not throw: the ALTER catches the duplicate-column
+      // error from the first construction.
+      const s2 = new TaskStore(path);
+      const db = s2.getDb();
+      const cols = db.pragma('table_info(routing_shadow_log)') as Array<{ name: string }>;
+      expect(cols.some((c) => c.name === 'role')).toBe(true);
+      s2.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

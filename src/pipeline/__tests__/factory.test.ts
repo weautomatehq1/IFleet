@@ -69,14 +69,24 @@ describe('M6-T3: factory persists RoutingDecision and records shadow pick', () =
     expect(src).toMatch(/knownArms:\s*KNOWN_MODEL_IDS/);
   });
 
-  it('the wiring is wrapped in try/catch so shadow failures never break live routing', () => {
+  it('factory.ts loops over all three roles (architect, editor, reviewer)', () => {
     const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
-    // Match the try-block that contains the setRoutingDecision call followed
-    // by the catch — the order is load-bearing for the fail-open contract.
+    expect(src).toMatch(/const ROLES = \['architect', 'editor', 'reviewer'\] as const/);
+    expect(src).toMatch(/for \(const role of ROLES\)/);
+    expect(src).toMatch(/role,?\s*$/m);
+  });
+
+  it('each role call is wrapped in its own try/catch so a single-role failure cannot skip the others', () => {
+    const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
+    // The for-loop body must be a try{ recordShadowDecision } catch{ console.warn }
+    // so a throw in (e.g.) the editor call still lets the reviewer call fire.
     const block = src.match(
-      /try\s*\{[\s\S]*?setRoutingDecision[\s\S]*?recordShadowDecision[\s\S]*?\}\s*catch[\s\S]*?console\.warn/,
+      /for \(const role of ROLES\)\s*\{\s*try\s*\{[\s\S]*?recordShadowDecision[\s\S]*?\}\s*catch[\s\S]*?console\.warn/,
     );
-    expect(block, 'try/catch around shadow wiring not found in factory.ts').not.toBeNull();
+    expect(
+      block,
+      'per-role try/catch around recordShadowDecision not found in factory.ts',
+    ).not.toBeNull();
   });
 });
 
