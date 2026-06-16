@@ -16,13 +16,14 @@ import { Client, GatewayIntentBits } from 'discord.js';
 
 import { registerProposerDiscordClient } from '../src/agents/proposer/approval-gate.js';
 import type { ContextLoaderDeps } from '../src/agents/proposer/context-loader.js';
-import { runProposer } from '../src/agents/proposer/index.js';
+import { runProposer, type RunProposerDeps } from '../src/agents/proposer/index.js';
 import type {
   PrDecisionSummary,
   ProposerConfig,
 } from '../src/agents/proposer/types.js';
 import { getPastProposalsByRepo } from '../src/orchestrator/goal-proposals-store.js';
 import { TaskStore, defaultTasksDbPath } from '../src/queue/store.js';
+import { HmacControlPlaneClient } from '../src/discord/hmac-client.js';
 
 const ENABLED_ENV = 'PROPOSER_ENABLED';
 const REPO_IDS_ENV = 'PROPOSER_REPO_IDS';
@@ -36,6 +37,11 @@ const DISCORD_CHANNEL_ENV = 'PROPOSER_DISCORD_CHANNEL_ID';
 const DRY_RUN_ENV = 'PROPOSER_DRY_RUN';
 const DISCORD_TOKEN_ENV = 'DISCORD_BOT_TOKEN';
 const TASKS_DB_ENV = 'IFLEET_TASKS_DB';
+const AUTO_APPROVE_THRESHOLD_ENV = 'IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD';
+const CONTROL_PLANE_URL_ENV = 'CONTROL_PLANE_URL';
+const HMAC_SECRET_ENV = 'IFLEET_HMAC_SECRET';
+const PROPOSALS_CHANNEL_ID_ENV = 'IFLEET_PROPOSALS_CHANNEL_ID';
+const PROPOSALS_APPROVER_IDS_ENV = 'IFLEET_PROPOSALS_APPROVER_IDS';
 
 const DEFAULTS = {
   budget: 3,
@@ -73,6 +79,31 @@ function buildConfig(repoId: string): ProposerConfig {
   const channel = process.env[DISCORD_CHANNEL_ENV];
   if (channel) cfg.discordChannelId = channel;
   if (envFlag(DRY_RUN_ENV)) cfg.dryRun = true;
+  const rawThreshold = process.env[AUTO_APPROVE_THRESHOLD_ENV];
+  if (rawThreshold !== undefined && rawThreshold.length > 0) {
+    const parsed = Number(rawThreshold);
+    if (Number.isFinite(parsed)) cfg.proposalsAutoApproveThreshold = parsed;
+  }
+  // Synthesize the Discord-source stamp the orchestrator handler requires on
+  // every sprint_goal. Without both env vars the auto path silently falls
+  // back to HITL inside splitAndDispatch — see auto-approve.ts.
+  const proposalsChannel = process.env[PROPOSALS_CHANNEL_ID_ENV];
+  const approverIds = (process.env[PROPOSALS_APPROVER_IDS_ENV] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (proposalsChannel && approverIds.length > 0) {
+    const threshold = cfg.proposalsAutoApproveThreshold ?? Number.POSITIVE_INFINITY;
+    cfg.proposalsAutoApproveSource = {
+      channelId: proposalsChannel,
+      // The audit trail of "auto vs human" lives in goal_proposals.decided_by
+      // (`auto-bandit-<threshold>`); the userId here just satisfies the
+      // server-side ingest contract. Pick the first approver so any Discord
+      // mention is at least a real human, not a broken `<@bot:...>` token.
+      userId: approverIds[0]!,
+      userLabel: `auto-bandit-${threshold}`,
+    };
+  }
   return cfg;
 }
 
@@ -130,6 +161,24 @@ export function buildContextDeps(store: PrDecisionsReader): ContextLoaderDeps {
   };
 }
 
+/**
+ * Build the cross-cutting deps for `runProposer`. Returns `{}` when
+ * CONTROL_PLANE_URL / IFLEET_HMAC_SECRET are unset — the auto path then
+ * falls back to HITL inside `splitAndDispatch` so a smoke run can fire
+ * without the daemon.
+ */
+export function buildRunProposerDeps(): RunProposerDeps {
+  const url = process.env[CONTROL_PLANE_URL_ENV];
+  const secret = process.env[HMAC_SECRET_ENV];
+  if (!url || !secret) {
+    console.warn(
+      `[proposer-run] ${CONTROL_PLANE_URL_ENV} or ${HMAC_SECRET_ENV} unset — auto-approve disabled (HITL-only fallback)`,
+    );
+    return {};
+  }
+  return { controlPlane: new HmacControlPlaneClient({ url, secret }) };
+}
+
 async function main(): Promise<void> {
   if (!envFlag(ENABLED_ENV)) {
     console.warn(`[proposer-run] ${ENABLED_ENV} not set — skipping nightly run`);
@@ -152,12 +201,13 @@ async function main(): Promise<void> {
     discordClient = await bootDiscordClient(process.env[DISCORD_TOKEN_ENV]);
     const store = new TaskStore(process.env[TASKS_DB_ENV] ?? defaultTasksDbPath());
     const contextDeps = buildContextDeps(store);
+    const deps = buildRunProposerDeps();
 
     for (const repoId of repoIds) {
       const cfg = buildConfig(repoId);
       console.warn(`[proposer-run] starting repoId=${repoId}`);
       try {
-        const run = await runProposer(repoId, cfg, { contextDeps });
+        const run = await runProposer(repoId, cfg, { contextDeps, deps });
         console.warn(
           `[proposer-run] done repoId=${repoId} runId=${run.runId} candidates=${run.candidates.length} posted=${run.posted}`,
         );
