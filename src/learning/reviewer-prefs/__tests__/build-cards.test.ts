@@ -13,6 +13,7 @@ import { TaskStore } from '../../../queue/store.js';
 import {
   buildReviewerCards,
   defaultPrefsDir,
+  FINGERPRINT_PREFIX_LEN,
   reviewerCardPath,
   summariseReviewerDecisions,
   writeReviewerCard,
@@ -129,6 +130,21 @@ describe('summariseReviewerDecisions', () => {
       { windowDays: 30, reviewedAt: FIXED_ISO },
     );
     expect(cards[0]?.stats.deferred).toBe(1);
+  });
+
+  it('excludes abandoned fingerprints from reject_patterns', () => {
+    const cards = summariseReviewerDecisions(
+      [
+        makeDecision({ id: '1', prNumber: 1, fingerprint: 'a'.repeat(64), verdict: 'abandoned' }),
+        makeDecision({ id: '2', prNumber: 2, fingerprint: 'b'.repeat(64), verdict: 'rejected' }),
+      ],
+      { windowDays: 30, reviewedAt: FIXED_ISO },
+    );
+    const card = cards[0]!;
+    expect(card.stats.deferred).toBe(1);
+    expect(card.stats.rejected).toBe(1);
+    expect(card.reject_patterns).toHaveLength(1);
+    expect(card.reject_patterns[0]?.fingerprint_prefix).toBe('b'.repeat(FINGERPRINT_PREFIX_LEN));
   });
 });
 

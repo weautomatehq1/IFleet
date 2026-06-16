@@ -97,6 +97,7 @@ function buildCardForReviewer(
     else deferred += 1;
 
     if (!r.fingerprint) continue;
+    if (r.verdict !== 'merged' && r.verdict !== 'rejected') continue;
     const prefix = r.fingerprint.slice(0, FINGERPRINT_PREFIX_LEN);
     const bucket = r.verdict === 'merged' ? acceptBuckets : rejectBuckets;
     const existing = bucket.get(prefix);
