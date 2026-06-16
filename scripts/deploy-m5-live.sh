@@ -79,13 +79,19 @@ step_start() {
 }
 
 run_ssh() {
-  local label="$1"; shift
+  # Take the remote command as ONE string. SSH joins argv with spaces before
+  # sending to the remote shell, which means `ssh host bash -c "cmd1 && cmd2"`
+  # arrives on the remote as `bash -c cmd1 && cmd2` — bash -c then only runs
+  # `cmd1` and the `&& cmd2` runs in the login shell at $HOME instead of the
+  # intended working directory. Passing a single argument bypasses the
+  # bash -c indirection entirely: ssh already invokes a shell on the remote.
+  local label="$1" cmd="$2"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "[dry-run] ssh $VPS_HOST $*"
+    echo "[dry-run] ssh $VPS_HOST $cmd"
     return 0
   fi
   # shellcheck disable=SC2029
-  ssh "$VPS_HOST" "$@" || {
+  ssh "$VPS_HOST" "$cmd" || {
     echo "❌ deploy failed at step $STEP: $label" >&2
     exit 1
   }
@@ -94,10 +100,13 @@ run_ssh() {
 set_env_var() {
   local key="$1" val="$2"
   # Idempotent upsert in /etc/environment: update if key exists, append if not.
+  # The validation step rejects shell-metachar values up front, so single-
+  # quoting `${val}` here is just belt-and-braces. `sed`'s `s|...|...|`
+  # separator avoids any need to escape `/` in the value.
   local cmd="grep -q '^${key}=' /etc/environment \
-    && sed -i \"s|^${key}=.*|${key}=${val}|\" /etc/environment \
-    || echo \"${key}=${val}\" >> /etc/environment"
-  run_ssh "set $key in /etc/environment" bash -c "$cmd"
+    && sed -i \"s|^${key}=.*|${key}='${val}'|\" /etc/environment \
+    || echo \"${key}='${val}'\" >> /etc/environment"
+  run_ssh "set $key in /etc/environment" "$cmd"
 }
 
 # ── Dry-run header ────────────────────────────────────────────────────────────
@@ -108,11 +117,11 @@ fi
 
 # ── Step 1: git pull ──────────────────────────────────────────────────────────
 step_start "git pull --ff-only on VPS"
-run_ssh "git pull" bash -c "cd /opt/ifleet && git pull --ff-only origin main"
+run_ssh "git pull" "cd /opt/ifleet && git pull --ff-only origin main"
 
 # ── Step 2: pnpm install ──────────────────────────────────────────────────────
 step_start "pnpm install --frozen-lockfile on VPS"
-run_ssh "pnpm install" bash -c "cd /opt/ifleet && pnpm install --frozen-lockfile"
+run_ssh "pnpm install" "cd /opt/ifleet && pnpm install --frozen-lockfile"
 
 # ── Step 3: apply KG migration 0004 ──────────────────────────────────────────
 step_start "pnpm graph:migrate (apply 0004-goal-proposals.sql)"
@@ -143,16 +152,16 @@ step_start "pm2 restart IFleet apps only (never arca) — apps: $IFLEET_PM2_APPS
 # `pm2 restart` accepts space-separated names. Missing apps fail loudly; that's
 # the right behaviour — drift between this list and ecosystem.config.cjs must
 # surface, not silently widen scope.
-run_ssh "pm2 restart" bash -c "pm2 restart $IFLEET_PM2_APPS --update-env"
+run_ssh "pm2 restart" "pm2 restart $IFLEET_PM2_APPS --update-env"
 
 # ── Step 6: confirm cron registered ──────────────────────────────────────────
 step_start "verify ifleet-proposer cron entry"
 echo "PM2 ifleet-proposer describe (cron field):"
-run_ssh "pm2 describe" bash -c "pm2 describe ifleet-proposer | grep -i cron"
+run_ssh "pm2 describe" "pm2 describe ifleet-proposer | grep -i cron"
 
 # ── Step 7: tail recent logs ──────────────────────────────────────────────────
 step_start "pm2 logs ifleet-proposer --lines 50 --nostream"
-run_ssh "pm2 logs" bash -c "pm2 logs ifleet-proposer --lines 50 --nostream"
+run_ssh "pm2 logs" "pm2 logs ifleet-proposer --lines 50 --nostream"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
