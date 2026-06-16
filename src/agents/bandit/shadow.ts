@@ -13,8 +13,10 @@
 // Fail-open: any error here is logged and swallowed. Shadow data going
 // missing is a learning regression, not a correctness regression.
 
-import type { Database } from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+
+type DB = Database.Database;
 
 import { posteriorsFromObservations, sampleArm } from './thompson.js';
 import type { ArmPosterior } from './thompson.js';
@@ -70,7 +72,7 @@ export interface ShadowDecisionRecord {
  * on; do not let it bubble.
  */
 export function recordShadowDecision(
-  db: Database,
+  db: DB,
   input: ShadowDecisionInput,
 ): ShadowDecisionRecord | null {
   if (input.knownArms.length === 0) {
@@ -132,7 +134,7 @@ export function recordShadowDecision(
  * first, capped at `limit`. Snapshots come back as parsed JSON.
  */
 export function readShadowDecisions(
-  db: Database,
+  db: DB,
   limit = 200,
 ): Array<{
   id: string;

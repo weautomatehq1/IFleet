@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import type { Database as DB } from 'better-sqlite3';
+
+type DB = Database.Database;
 
 import { readShadowDecisions, recordShadowDecision } from '../shadow.js';
 
