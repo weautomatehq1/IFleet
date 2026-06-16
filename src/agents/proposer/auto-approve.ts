@@ -16,8 +16,10 @@
 // Threshold resolution (highest priority first):
 //   1. `cfg.proposalsAutoApproveThreshold` — set by the cron / tests.
 //   2. env var `IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD`.
-//   3. Default `1.0` — every candidate falls into `hitl`, no behavioural
-//      change vs M5.2-T1.
+//   3. Default `Number.POSITIVE_INFINITY` — every candidate falls into
+//      `hitl`, no behavioural change vs M5.2-T1. The sentinel is strictly
+//      above the scorer's `[0,1]` ceiling so the `>= threshold` filter
+//      cannot match even an exact-1.0 max-out candidate.
 //
 // Failure semantics for the auto path:
 //   - DB insert failure → log + skip that candidate; do NOT block the others.
@@ -43,7 +45,11 @@ import type {
 import type { DedupedCandidate, ProposerConfig } from './types.ts';
 
 const AUTO_APPROVE_THRESHOLD_ENV = 'IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD';
-const DEFAULT_THRESHOLD = 1.0;
+// Sentinel strictly above the scorer's max — the `>= threshold` filter in
+// splitAndDispatch then cannot match anything. Setting this to `1.0` would
+// allow a candidate that scored exactly `1.0` (worst-case maxout per the
+// scorer's `0.4 + 0.3 + 0.3` ceiling) to slip past HITL on the default.
+const DEFAULT_THRESHOLD = Number.POSITIVE_INFINITY;
 
 /**
  * Resolve the effective auto-approve threshold. Exported for tests +

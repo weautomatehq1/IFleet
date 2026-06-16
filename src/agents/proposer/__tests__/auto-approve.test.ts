@@ -151,15 +151,15 @@ describe('resolveAutoApproveThreshold', () => {
     }
   });
 
-  it('returns 1.0 default when neither cfg nor env set', () => {
+  it('returns +Infinity default when neither cfg nor env set (HITL-only sentinel)', () => {
     delete process.env[AUTO_APPROVE_THRESHOLD_ENV];
-    expect(resolveAutoApproveThreshold(baseCfg())).toBe(1.0);
+    expect(resolveAutoApproveThreshold(baseCfg())).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('ignores non-numeric env values and falls back to default', () => {
     process.env[AUTO_APPROVE_THRESHOLD_ENV] = 'not-a-number';
     try {
-      expect(resolveAutoApproveThreshold(baseCfg())).toBe(1.0);
+      expect(resolveAutoApproveThreshold(baseCfg())).toBe(Number.POSITIVE_INFINITY);
     } finally {
       delete process.env[AUTO_APPROVE_THRESHOLD_ENV];
     }
@@ -178,11 +178,15 @@ describe('formatAutoBanditDecidedBy', () => {
 });
 
 describe('splitAndDispatch — threshold filtering', () => {
-  it('threshold 1.0 (default) routes every candidate to Discord, none to auto', async () => {
+  it('default threshold (+Infinity) routes every candidate to Discord — even an exact-1.0 maxout — none to auto', async () => {
+    // Includes 1.0 explicitly: regression guard for the worst-case scorer
+    // maxout (`0.4·1 + 0.3·1 + 0.3·1`) that the previous `>=` filter at
+    // threshold=1.0 would have auto-approved.
     const top: DedupedCandidate[] = [
       candidate('low', 0.5),
       candidate('mid', 0.8),
       candidate('high', 0.99),
+      candidate('maxout', 1.0),
     ];
     const hitlSeen: DedupedCandidate[][] = [];
     const cp = controlPlaneSpy();
@@ -204,7 +208,7 @@ describe('splitAndDispatch — threshold filtering', () => {
     expect(cp.posted).toHaveLength(0);
     expect(hitlSeen).toHaveLength(1);
     expect(hitlSeen[0]).toEqual(top);
-    expect(count).toBe(3);
+    expect(count).toBe(4);
   });
 
   it('threshold 0.85 routes above/equal to auto, below to Discord', async () => {
