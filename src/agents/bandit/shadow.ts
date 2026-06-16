@@ -60,57 +60,71 @@ export interface ShadowDecisionRecord {
 }
 
 /**
- * Sample a shadow pick and persist it. Returns the record so the
- * caller can log it / forward to an observer; the row is already
- * written to SQLite when this returns.
+ * Sample a shadow pick and persist it. Returns the record on success.
+ *
+ * Throws ONLY on programmer error (empty `knownArms` — calling with no
+ * arms is a bug in the caller, not a runtime failure). SQLite errors
+ * and sampler errors are caught and surfaced as `null` so the live
+ * routing path is never broken by a shadow-logging hiccup. The caller
+ * MAY treat null as "shadow data unavailable for this task" and move
+ * on; do not let it bubble.
  */
 export function recordShadowDecision(
   db: Database,
   input: ShadowDecisionInput,
-): ShadowDecisionRecord {
+): ShadowDecisionRecord | null {
   if (input.knownArms.length === 0) {
     throw new Error('recordShadowDecision requires ≥1 knownArm');
   }
-  const posteriors = posteriorsFromObservations(input.observations, input.knownArms);
-  const { samples, pick } = sampleArm(posteriors, input.rng);
-  const id = `shadow_${randomUUID()}`;
+  try {
+    const posteriors = posteriorsFromObservations(input.observations, input.knownArms);
+    const { samples, pick } = sampleArm(posteriors, input.rng);
+    const id = `shadow_${randomUUID()}`;
 
-  // Snapshot the per-arm α/β so the dashboard can replay decisions.
-  const alphaSnap: Record<string, number> = {};
-  const betaSnap: Record<string, number> = {};
-  for (const p of posteriors) {
-    alphaSnap[p.arm] = p.alpha;
-    betaSnap[p.arm] = p.beta;
+    // Snapshot the per-arm α/β so the dashboard can replay decisions.
+    const alphaSnap: Record<string, number> = {};
+    const betaSnap: Record<string, number> = {};
+    for (const p of posteriors) {
+      alphaSnap[p.arm] = p.alpha;
+      betaSnap[p.arm] = p.beta;
+    }
+
+    db.prepare(
+      `INSERT INTO routing_shadow_log
+         (id, task_id, repo, decided_at, actual_model,
+          shadow_model, alpha_snapshot, beta_snapshot, sample_snapshot)
+       VALUES (@id, @task_id, @repo, @decided_at, @actual_model,
+               @shadow_model, @alpha_snapshot, @beta_snapshot, @sample_snapshot)`,
+    ).run({
+      id,
+      task_id: input.taskId,
+      repo: input.repo,
+      decided_at: input.decidedAt,
+      actual_model: input.actualModel,
+      shadow_model: pick,
+      alpha_snapshot: JSON.stringify(alphaSnap),
+      beta_snapshot: JSON.stringify(betaSnap),
+      sample_snapshot: JSON.stringify(samples),
+    });
+
+    return {
+      id,
+      taskId: input.taskId,
+      repo: input.repo,
+      decidedAt: input.decidedAt,
+      actualModel: input.actualModel,
+      shadowModel: pick,
+      posteriors,
+      samples,
+    };
+  } catch (err) {
+    console.warn(
+      `[bandit/shadow] recordShadowDecision failed for task ${input.taskId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return null;
   }
-
-  db.prepare(
-    `INSERT INTO routing_shadow_log
-       (id, task_id, repo, decided_at, actual_model,
-        shadow_model, alpha_snapshot, beta_snapshot, sample_snapshot)
-     VALUES (@id, @task_id, @repo, @decided_at, @actual_model,
-             @shadow_model, @alpha_snapshot, @beta_snapshot, @sample_snapshot)`,
-  ).run({
-    id,
-    task_id: input.taskId,
-    repo: input.repo,
-    decided_at: input.decidedAt,
-    actual_model: input.actualModel,
-    shadow_model: pick,
-    alpha_snapshot: JSON.stringify(alphaSnap),
-    beta_snapshot: JSON.stringify(betaSnap),
-    sample_snapshot: JSON.stringify(samples),
-  });
-
-  return {
-    id,
-    taskId: input.taskId,
-    repo: input.repo,
-    decidedAt: input.decidedAt,
-    actualModel: input.actualModel,
-    shadowModel: pick,
-    posteriors,
-    samples,
-  };
 }
 
 /**

@@ -56,8 +56,9 @@ describe('recordShadowDecision', () => {
       knownArms: ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
       rng: seededRng(7),
     });
-    expect(rec.shadowModel).toMatch(/claude-/);
-    expect(rec.posteriors.find((p) => p.arm === 'claude-opus-4-7')).toEqual({
+    expect(rec).not.toBeNull();
+    expect(rec!.shadowModel).toMatch(/claude-/);
+    expect(rec!.posteriors.find((p) => p.arm === 'claude-opus-4-7')).toEqual({
       arm: 'claude-opus-4-7',
       alpha: 3,
       beta: 1,
@@ -66,7 +67,7 @@ describe('recordShadowDecision', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.taskId).toBe('task-1');
     expect(rows[0]!.actualModel).toBe('claude-sonnet-4-6');
-    expect(rows[0]!.shadowModel).toBe(rec.shadowModel);
+    expect(rows[0]!.shadowModel).toBe(rec!.shadowModel);
     expect(rows[0]!.alphaSnapshot['claude-opus-4-7']).toBe(3);
   });
 
@@ -81,7 +82,8 @@ describe('recordShadowDecision', () => {
       knownArms: ['claude-opus-4-7', 'claude-haiku-4-5-20251001'],
       rng: seededRng(11),
     });
-    expect(rec.actualModel).toBe(actual);
+    expect(rec).not.toBeNull();
+    expect(rec!.actualModel).toBe(actual);
   });
 
   it('throws on knownArms=[] — no fallback to a default arm set', () => {
@@ -109,6 +111,37 @@ describe('recordShadowDecision', () => {
     });
     db.prepare('DELETE FROM tasks WHERE id = ?').run('task-1');
     expect(readShadowDecisions(db).filter((r) => r.taskId === 'task-1')).toHaveLength(0);
+  });
+
+  it('returns null + warns when the SQLite write fails (fail-open, does not throw)', () => {
+    // Stand-in DB whose .prepare throws — simulates a missing table or a
+    // disk-full state at the moment the bandit goes to write. The
+    // routing path must NOT see this error bubble up.
+    const brokenDb = {
+      prepare: () => {
+        throw new Error('no such table: routing_shadow_log');
+      },
+    } as unknown as DB;
+    const originalWarn = console.warn;
+    const warns: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warns.push(args.map((a) => String(a)).join(' '));
+    };
+    try {
+      const result = recordShadowDecision(brokenDb, {
+        taskId: 'task-x',
+        repo: 'r',
+        decidedAt: 1,
+        actualModel: 'claude-sonnet-4-6',
+        observations: [],
+        knownArms: ['claude-sonnet-4-6'],
+        rng: seededRng(1),
+      });
+      expect(result).toBeNull();
+      expect(warns.some((w) => /recordShadowDecision failed/.test(w))).toBe(true);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
 
