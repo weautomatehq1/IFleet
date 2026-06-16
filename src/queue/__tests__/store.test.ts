@@ -401,6 +401,31 @@ describe('TaskStore', () => {
     }
   });
 
+  it("routing_shadow_log has the role column post-construction with DEFAULT 'architect' (M6-T3 follow-up)", () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const db = store.getDb();
+      const cols = db.pragma('table_info(routing_shadow_log)') as Array<{
+        name: string;
+        dflt_value: string | null;
+        notnull: number;
+      }>;
+      const role = cols.find((c) => c.name === 'role');
+      assert.ok(role, 'role column missing on routing_shadow_log');
+      assert.equal(role!.notnull, 1, 'role column should be NOT NULL');
+      // DEFAULT comes back quoted from pragma — accept either form.
+      assert.match(
+        String(role!.dflt_value ?? ''),
+        /^'?architect'?$/,
+        "role column DEFAULT should be 'architect'",
+      );
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it('list filters by source and channelId', () => {
     const { path, cleanup } = tmpDb();
     try {

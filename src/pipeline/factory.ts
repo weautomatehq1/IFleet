@@ -267,23 +267,27 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     // is allowed to break live routing. `routing.architect.model` remains the
     // model that runs the task; the shadow_log only records the would-be pick.
     if (opts.taskStore) {
-      try {
-        opts.taskStore.setRoutingDecision(task.id, routing);
-        const db = opts.taskStore.getDb();
-        recordShadowDecision(db, {
-          taskId: task.id,
-          repo: task.repo,
-          decidedAt: Date.now(),
-          actualModel: routing.architect.model,
-          observations: buildShadowObservations(db, task.repo, 'architect'),
-          knownArms: KNOWN_MODEL_IDS,
-        });
-      } catch (err) {
-        console.warn(
-          `[shadow] recordShadowDecision wiring failed for task ${task.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+      const db = opts.taskStore.getDb();
+      opts.taskStore.setRoutingDecision(task.id, routing);
+      const ROLES = ['architect', 'editor', 'reviewer'] as const;
+      for (const role of ROLES) {
+        try {
+          recordShadowDecision(db, {
+            taskId: task.id,
+            repo: task.repo,
+            decidedAt: Date.now(),
+            actualModel: routing[role].model,
+            observations: buildShadowObservations(db, task.repo, role),
+            knownArms: KNOWN_MODEL_IDS,
+            role,
+          });
+        } catch (err) {
+          console.warn(
+            `[shadow] recordShadowDecision wiring failed for ${role} on task ${task.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
       }
     }
     const abortController = new AbortController();

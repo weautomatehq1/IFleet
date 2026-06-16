@@ -200,9 +200,18 @@ describe('makeProductionFactory — M6-T3 shadow wiring', () => {
         expect(persisted.routingDecision?.architect.model).toMatch(/^claude-/);
 
         const shadowRows = readShadowDecisions(store.getDb());
-        expect(shadowRows).toHaveLength(1);
-        expect(shadowRows[0]!.taskId).toBe(task.id);
-        expect(shadowRows[0]!.actualModel).toBe(persisted.routingDecision!.architect.model);
+        // M6-T3: factory fans out one shadow row per role (architect,
+        // editor, reviewer) — triples the signal volume for the live-bandit
+        // gate.
+        expect(shadowRows).toHaveLength(3);
+        const byRole = Object.fromEntries(shadowRows.map((r) => [r.role, r]));
+        expect(Object.keys(byRole).sort()).toEqual(['architect', 'editor', 'reviewer']);
+        for (const r of shadowRows) {
+          expect(r.taskId).toBe(task.id);
+        }
+        expect(byRole.architect!.actualModel).toBe(persisted.routingDecision!.architect.model);
+        expect(byRole.editor!.actualModel).toBe(persisted.routingDecision!.editor.model);
+        expect(byRole.reviewer!.actualModel).toBe(persisted.routingDecision!.reviewer.model);
       } finally {
         await bootstrap.teardown?.(new Error('test teardown'));
       }

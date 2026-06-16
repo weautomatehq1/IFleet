@@ -279,12 +279,22 @@ export class TaskStore {
         alpha_snapshot TEXT NOT NULL,
         beta_snapshot TEXT NOT NULL,
         sample_snapshot TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'architect',
         FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_routing_shadow_task ON routing_shadow_log(task_id);
       CREATE INDEX IF NOT EXISTS idx_routing_shadow_decided
         ON routing_shadow_log(decided_at);
     `);
+    // M6-T3 follow-up: backfill the role column on DBs created before this
+    // migration. Pre-this-PR rows came from the architect-only wiring (PR
+    // #362), so DEFAULT 'architect' is the correct backfill.
+    try {
+      this.db.exec(`ALTER TABLE routing_shadow_log ADD COLUMN role TEXT NOT NULL DEFAULT 'architect'`);
+    } catch (err) {
+      if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_routing_shadow_role ON routing_shadow_log(role)`);
   }
 
   insert(task: QueuedTask): InsertResult {

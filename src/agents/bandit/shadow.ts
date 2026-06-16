@@ -21,6 +21,8 @@ type DB = Database.Database;
 import { posteriorsFromObservations, sampleArm } from './thompson.js';
 import type { ArmPosterior } from './thompson.js';
 
+export type ShadowRole = 'architect' | 'editor' | 'reviewer';
+
 export interface ShadowDecisionInput {
   /** The task id this routing decision is for. */
   taskId: string;
@@ -30,6 +32,13 @@ export interface ShadowDecisionInput {
   decidedAt: number;
   /** The model the live routing picked. */
   actualModel: string;
+  /**
+   * Which role's Beta posterior this sample came from. Each task now
+   * fans out three shadow rows (architect, editor, reviewer) so we can
+   * compare per-role learning curves; the observation reader filters
+   * `pr_decisions` by the matching role when building observations.
+   */
+  role: ShadowRole;
   /**
    * History of past outcomes per model arm. The caller typically reads
    * this from `pr_decisions`:
@@ -57,6 +66,7 @@ export interface ShadowDecisionRecord {
   decidedAt: number;
   actualModel: string;
   shadowModel: string;
+  role: ShadowRole;
   posteriors: ArmPosterior[];
   samples: Record<string, number>;
 }
@@ -94,9 +104,9 @@ export function recordShadowDecision(
     db.prepare(
       `INSERT INTO routing_shadow_log
          (id, task_id, repo, decided_at, actual_model,
-          shadow_model, alpha_snapshot, beta_snapshot, sample_snapshot)
+          shadow_model, alpha_snapshot, beta_snapshot, sample_snapshot, role)
        VALUES (@id, @task_id, @repo, @decided_at, @actual_model,
-               @shadow_model, @alpha_snapshot, @beta_snapshot, @sample_snapshot)`,
+               @shadow_model, @alpha_snapshot, @beta_snapshot, @sample_snapshot, @role)`,
     ).run({
       id,
       task_id: input.taskId,
@@ -107,6 +117,7 @@ export function recordShadowDecision(
       alpha_snapshot: JSON.stringify(alphaSnap),
       beta_snapshot: JSON.stringify(betaSnap),
       sample_snapshot: JSON.stringify(samples),
+      role: input.role,
     });
 
     return {
@@ -116,6 +127,7 @@ export function recordShadowDecision(
       decidedAt: input.decidedAt,
       actualModel: input.actualModel,
       shadowModel: pick,
+      role: input.role,
       posteriors,
       samples,
     };
@@ -143,6 +155,7 @@ export function readShadowDecisions(
   decidedAt: number;
   actualModel: string;
   shadowModel: string;
+  role: ShadowRole;
   alphaSnapshot: Record<string, number>;
   betaSnapshot: Record<string, number>;
   sampleSnapshot: Record<string, number>;
@@ -150,7 +163,7 @@ export function readShadowDecisions(
   const rows = db
     .prepare(
       `SELECT id, task_id, repo, decided_at, actual_model,
-              shadow_model, alpha_snapshot, beta_snapshot, sample_snapshot
+              shadow_model, alpha_snapshot, beta_snapshot, sample_snapshot, role
          FROM routing_shadow_log
         ORDER BY decided_at DESC
         LIMIT ?`,
@@ -165,6 +178,7 @@ export function readShadowDecisions(
     alpha_snapshot: string;
     beta_snapshot: string;
     sample_snapshot: string;
+    role: string;
   }>;
   return rows.map((r) => ({
     id: r.id,
@@ -173,6 +187,7 @@ export function readShadowDecisions(
     decidedAt: r.decided_at,
     actualModel: r.actual_model,
     shadowModel: r.shadow_model,
+    role: r.role as ShadowRole,
     alphaSnapshot: JSON.parse(r.alpha_snapshot) as Record<string, number>,
     betaSnapshot: JSON.parse(r.beta_snapshot) as Record<string, number>,
     sampleSnapshot: JSON.parse(r.sample_snapshot) as Record<string, number>,
