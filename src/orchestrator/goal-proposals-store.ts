@@ -113,6 +113,58 @@ export async function recordProposalDecision(
   return { updated: result.rowCount === 1 };
 }
 
+export interface ProposalForShip {
+  id: string;
+  repo_id: string;
+  title: string;
+  rationale: string;
+}
+
+/**
+ * Read the fields the Approve→/ship wiring needs from one proposal. Returns
+ * `null` when the id has no matching row — Discord's button handler treats
+ * that the same as "proposal already pruned" without throwing.
+ */
+export async function getProposalForShip(
+  proposalId: string,
+  pool: Pool = getKgPool(),
+): Promise<ProposalForShip | null> {
+  const result = await pool.query<{
+    id: string;
+    repo_id: string;
+    title: string;
+    rationale: string;
+  }>(
+    `SELECT id, repo_id, title, rationale
+       FROM goal_proposals
+      WHERE id = $1
+      LIMIT 1`,
+    [proposalId],
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * Persist the task id returned by the control plane after a sprint_goal
+ * enqueue. Idempotent: same id can be written twice without error.
+ * Returns `{ updated: true }` when the row exists, `{ updated: false }`
+ * when no row matches (e.g. proposal pruned between approve and the
+ * ControlPlane round-trip).
+ */
+export async function setResultingTaskId(
+  proposalId: string,
+  taskId: string,
+  pool: Pool = getKgPool(),
+): Promise<{ updated: boolean }> {
+  const result = await pool.query(
+    `UPDATE goal_proposals
+        SET resulting_task_id = $2
+      WHERE id = $1`,
+    [proposalId, taskId],
+  );
+  return { updated: result.rowCount === 1 };
+}
+
 /**
  * Read proposals for `repoId`, newest first, capped at `limit`. The
  * context-loader (T3) treats this as fail-open: a thrown read becomes `[]`
