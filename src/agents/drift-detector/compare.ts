@@ -128,25 +128,36 @@ function classifySymbol(
       if (!reposWithSymbol.has(peer)) missingPeers.push(peer);
     }
     if (missingPeers.length > 0 && reposWithSymbol.size > 0) {
+      const presentGroup = {
+        signature: 'present',
+        repos: dedupSort(Array.from(reposWithSymbol)),
+        paths: dedupSort(obsList.map((o) => o.path)),
+      };
+      const absentGroup = {
+        signature: 'absent',
+        repos: dedupSort(missingPeers),
+        paths: [] as string[],
+      };
+      // Sort by repo count desc — majority wins. When 1 repo has the
+      // symbol and N peers don't, "absent" is the majority and the
+      // outlier is the lone repo that ADDED a symbol the others don't
+      // recognize. When N repos have the symbol and 1 peer doesn't,
+      // "present" is the majority and the outlier is the laggard.
+      const ordered =
+        absentGroup.repos.length > presentGroup.repos.length
+          ? [absentGroup, presentGroup]
+          : [presentGroup, absentGroup];
+      const majority = ordered[0]!;
+      const minority = ordered[1]!;
       out.push({
         symbolKey,
         name,
         kind,
         driftKind: 'rename_or_deletion' as DriftKind,
-        groups: [
-          {
-            signature: 'present',
-            repos: dedupSort(Array.from(reposWithSymbol)),
-            paths: dedupSort(obsList.map((o) => o.path)),
-          },
-          {
-            signature: 'absent',
-            repos: dedupSort(missingPeers),
-            paths: [],
-          },
-        ],
-        outlierRepos: dedupSort(missingPeers),
+        groups: ordered,
+        outlierRepos: minority.repos,
       });
+      void majority; // referenced via ordered[0] above; pinned for clarity.
     }
   }
 

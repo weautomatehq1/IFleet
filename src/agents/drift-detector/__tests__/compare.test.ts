@@ -69,7 +69,7 @@ describe('compareDrift — signature_skew', () => {
 });
 
 describe('compareDrift — rename_or_deletion', () => {
-  it('flags absence of a symbol in some peer repos', () => {
+  it('flags absence of a symbol in some peer repos and puts the majority present-group first', () => {
     const out = compareDrift(
       [
         obs('repoA', 'helperX', 'function helperX(): void'),
@@ -82,6 +82,29 @@ describe('compareDrift — rename_or_deletion', () => {
     expect(renamed!.outlierRepos).toEqual(['repoC']);
     expect(renamed!.groups[0]!.signature).toBe('present');
     expect(renamed!.groups[1]!.signature).toBe('absent');
+  });
+
+  it('puts the absent group first (majority) when the symbol is in only one peer', () => {
+    const out = compareDrift(
+      [obs('repoA', 'helperX', 'function helperX(): void')],
+      { peerRepos: ['repoA', 'repoB', 'repoC'] },
+    );
+    // minObservations defaults to 2, so a 1-shot symbol normally skips
+    // the comparator. We pass minObservations: 1 to exercise the
+    // majority-wins branch where ABSENT is the majority.
+    const out2 = compareDrift(
+      [obs('repoA', 'helperX', 'function helperX(): void')],
+      { peerRepos: ['repoA', 'repoB', 'repoC'], minObservations: 1 },
+    );
+    expect(out).toEqual([]); // baseline — default minObservations skips
+    const renamed = out2.find((c) => c.driftKind === 'rename_or_deletion');
+    expect(renamed).toBeDefined();
+    // 2 repos missing > 1 repo present → "absent" wins majority.
+    expect(renamed!.groups[0]!.signature).toBe('absent');
+    expect(renamed!.groups[0]!.repos).toEqual(['repoB', 'repoC']);
+    expect(renamed!.groups[1]!.signature).toBe('present');
+    // Outlier is the minority — the one repo that added/kept the symbol.
+    expect(renamed!.outlierRepos).toEqual(['repoA']);
   });
 
   it('does NOT fire when peerRepos is empty', () => {
