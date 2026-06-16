@@ -145,4 +145,29 @@ describe('compareDrift — determinism', () => {
     );
     expect(out.filter((c) => c.driftKind === 'signature_skew')).toHaveLength(0);
   });
+
+  it('orders candidates with the same symbolKey by driftKind, regardless of input order', () => {
+    // createUser drift across A+B with distinct signatures + absent in peer C
+    // → emits BOTH signature_skew AND rename_or_deletion under the same key.
+    const reverse = compareDrift(
+      [
+        obs('repoB', 'createUser', 'function createUser(x: B): User'),
+        obs('repoA', 'createUser', 'function createUser(x: A): User'),
+      ],
+      { peerRepos: ['repoA', 'repoB', 'repoC'] },
+    );
+    const forward = compareDrift(
+      [
+        obs('repoA', 'createUser', 'function createUser(x: A): User'),
+        obs('repoB', 'createUser', 'function createUser(x: B): User'),
+      ],
+      { peerRepos: ['repoA', 'repoB', 'repoC'] },
+    );
+    expect(reverse.map((c) => c.driftKind)).toEqual(forward.map((c) => c.driftKind));
+    // driftKind sort is alphabetic: rename_or_deletion < signature_skew.
+    expect(reverse.map((c) => c.driftKind)).toEqual([
+      'rename_or_deletion',
+      'signature_skew',
+    ]);
+  });
 });

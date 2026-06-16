@@ -72,7 +72,16 @@ export function compareDrift(
     candidates.push(...driftCandidates);
   }
 
-  candidates.sort((a, b) => a.symbolKey.localeCompare(b.symbolKey));
+  // Sort by symbolKey, then by driftKind. The secondary sort matters when
+  // one symbol emits both `signature_skew` and `rename_or_deletion`: a
+  // bare `symbolKey` sort returns equal under both candidates, and even
+  // though Array.sort is stable in modern JS, leaving the tie implicit
+  // couples the output to the order classifySymbol() happens to push.
+  candidates.sort((a, b) => {
+    const k = a.symbolKey.localeCompare(b.symbolKey);
+    if (k !== 0) return k;
+    return a.driftKind.localeCompare(b.driftKind);
+  });
   return candidates;
 }
 
