@@ -204,15 +204,58 @@ function buildUserPrompt(ctx: ProposerContext): string {
   }
   parts.push('');
   parts.push('## Past proposals (30d) — DO NOT REPEAT');
-  if (ctx.pastProposals.length === 0) {
+  const cappedProposals = ctx.pastProposals.slice(0, 30);
+  const mergedProps = cappedProposals.filter((pp) => pp.resultingPrOutcome === 'merged');
+  const closedUnmergedProps = cappedProposals.filter((pp) => pp.resultingPrOutcome === 'closed_unmerged');
+  const rejectedHitlProps = cappedProposals.filter(
+    (pp) =>
+      pp.resultingPrOutcome !== 'merged' &&
+      pp.resultingPrOutcome !== 'closed_unmerged' &&
+      pp.decision === 'rejected',
+  );
+  const inFlightProps = cappedProposals.filter(
+    (pp) =>
+      pp.resultingPrOutcome !== 'merged' &&
+      pp.resultingPrOutcome !== 'closed_unmerged' &&
+      pp.decision !== 'rejected',
+  );
+
+  parts.push(
+    '### MERGED — These shipped to main — lean toward similar patterns when you propose.',
+  );
+  if (mergedProps.length === 0) {
     parts.push('(none)');
   } else {
-    for (const pp of ctx.pastProposals.slice(0, 30)) {
-      parts.push(
-        `- "${pp.title}" decision=${pp.decision ?? 'pending'} outcome=${
-          pp.resultingPrOutcome ?? 'pending'
-        }`,
-      );
+    for (const pp of mergedProps) {
+      parts.push(`- "${pp.title}"`);
+    }
+  }
+  parts.push(
+    '### CLOSED_UNMERGED — These were attempted but rejected at review — treat similar titles as ANTI-SIGNAL, not just dedupe. Do not re-propose.',
+  );
+  if (closedUnmergedProps.length === 0) {
+    parts.push('(none)');
+  } else {
+    for (const pp of closedUnmergedProps) {
+      parts.push(`- "${pp.title}"`);
+    }
+  }
+  parts.push(
+    '### REJECTED_AT_HITL — Human reviewer rejected these before a PR existed. Do not re-propose.',
+  );
+  if (rejectedHitlProps.length === 0) {
+    parts.push('(none)');
+  } else {
+    for (const pp of rejectedHitlProps) {
+      parts.push(`- "${pp.title}"`);
+    }
+  }
+  parts.push("### IN_FLIGHT — Dedupe against these — they're already in flight.");
+  if (inFlightProps.length === 0) {
+    parts.push('(none)');
+  } else {
+    for (const pp of inFlightProps) {
+      parts.push(`- "${pp.title}"`);
     }
   }
   parts.push('');

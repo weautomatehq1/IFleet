@@ -166,3 +166,94 @@ describe('generateCandidates', () => {
     expect(result).toHaveLength(20);
   });
 });
+
+describe('buildUserPrompt — past-proposal buckets', () => {
+  function promptCapturingLlm() {
+    let captured = '';
+    const llm: LlmCompleter = {
+      complete: vi.fn().mockImplementation(async (opts) => {
+        captured = opts.userPrompt;
+        return '[]';
+      }),
+    };
+    return { llm, getPrompt: () => captured };
+  }
+
+  it('all four buckets populated — each header and title present', async () => {
+    const { llm, getPrompt } = promptCapturingLlm();
+    await generateCandidates(
+      baseCtx({
+        pastProposals: [
+          { id: 'p1', proposedAt: 1, source: 'sprint_gap', title: 'Shipped feat', decision: 'approved', resultingPrOutcome: 'merged' },
+          { id: 'p2', proposedAt: 2, source: 'sprint_gap', title: 'Rejected PR', decision: 'approved', resultingPrOutcome: 'closed_unmerged' },
+          { id: 'p3', proposedAt: 3, source: 'sprint_gap', title: 'Human vetoed', decision: 'rejected', resultingPrOutcome: null },
+          { id: 'p4', proposedAt: 4, source: 'sprint_gap', title: 'WIP task', decision: 'approved', resultingPrOutcome: null },
+        ],
+      }),
+      cfg,
+      { llm },
+    );
+    const prompt = getPrompt();
+    expect(prompt).toContain('### MERGED');
+    expect(prompt).toContain('"Shipped feat"');
+    expect(prompt).toContain('### CLOSED_UNMERGED');
+    expect(prompt).toContain('"Rejected PR"');
+    expect(prompt).toContain('### REJECTED_AT_HITL');
+    expect(prompt).toContain('"Human vetoed"');
+    expect(prompt).toContain("### IN_FLIGHT");
+    expect(prompt).toContain('"WIP task"');
+  });
+
+  it('single bucket populated — other three emit (none)', async () => {
+    const { llm, getPrompt } = promptCapturingLlm();
+    await generateCandidates(
+      baseCtx({
+        pastProposals: [
+          { id: 'p1', proposedAt: 1, source: 'sprint_gap', title: 'Solo merged', decision: 'approved', resultingPrOutcome: 'merged' },
+        ],
+      }),
+      cfg,
+      { llm },
+    );
+    const prompt = getPrompt();
+    expect(prompt).toContain('"Solo merged"');
+    // The three empty buckets must all appear with (none)
+    const closedBlock = prompt.slice(prompt.indexOf('### CLOSED_UNMERGED'));
+    expect(closedBlock).toMatch(/### CLOSED_UNMERGED[^\n]*\n\(none\)/);
+    const hitlBlock = prompt.slice(prompt.indexOf('### REJECTED_AT_HITL'));
+    expect(hitlBlock).toMatch(/### REJECTED_AT_HITL[^\n]*\n\(none\)/);
+    const inflightBlock = prompt.slice(prompt.indexOf('### IN_FLIGHT'));
+    expect(inflightBlock).toMatch(/### IN_FLIGHT[^\n]*\n\(none\)/);
+  });
+
+  it('all-empty — all four headers present with (none)', async () => {
+    const { llm, getPrompt } = promptCapturingLlm();
+    await generateCandidates(baseCtx({ pastProposals: [] }), cfg, { llm });
+    const prompt = getPrompt();
+    for (const header of ['### MERGED', '### CLOSED_UNMERGED', '### REJECTED_AT_HITL', '### IN_FLIGHT']) {
+      expect(prompt).toContain(header);
+    }
+    // Each header is immediately followed by (none)
+    expect(prompt.match(/\(none\)/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('30-cap applied before bucketing — items 31+ are ignored', async () => {
+    const { llm, getPrompt } = promptCapturingLlm();
+    const proposals = Array.from({ length: 35 }, (_, i) => ({
+      id: `p${i}`,
+      proposedAt: i,
+      source: 'sprint_gap' as const,
+      // items 0-29 → in-flight; items 30-34 → merged (should be excluded by cap)
+      title: i < 30 ? `InFlight-${i}` : `ShouldBeDropped-${i}`,
+      decision: null,
+      resultingPrOutcome: i < 30 ? null : ('merged' as const),
+    }));
+    await generateCandidates(baseCtx({ pastProposals: proposals }), cfg, { llm });
+    const prompt = getPrompt();
+    // Items 30-34 have resultingPrOutcome=merged, but they're beyond the cap
+    expect(prompt).not.toContain('ShouldBeDropped');
+    // MERGED bucket should be empty
+    const mergedBlock = prompt.slice(prompt.indexOf('### MERGED'));
+    expect(mergedBlock).toMatch(/### MERGED[^\n]*\n\(none\)/);
+  });
+});
