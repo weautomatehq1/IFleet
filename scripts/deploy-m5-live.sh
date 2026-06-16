@@ -121,9 +121,16 @@ set_env_var "IFLEET_PROPOSALS_CHANNEL_ID" "$PROPOSALS_CHANNEL_ID"
 set_env_var "IFLEET_PROPOSALS_APPROVER_IDS" "$APPROVER_IDS"
 set_env_var "PROPOSER_ENABLED" "1"
 
-# ── Step 5: pm2 restart all --update-env ─────────────────────────────────────
-step_start "pm2 restart all --update-env"
-run_ssh "pm2 restart" bash -c "pm2 restart all --update-env"
+# ── Step 5: pm2 restart (IFleet apps only — never touch arca) ────────────────
+# Enumerate explicitly. `pm2 restart all` is forbidden: the VPS co-hosts arca
+# (a friend's project) and `all` would restart its PM2 entry. Add new IFleet
+# apps to this list as ecosystem.config.cjs grows; never widen back to `all`.
+IFLEET_PM2_APPS="ifleet ifleet-mcp ifleet-standup ifleet-canary ifleet-retro ifleet-audit-nightly ifleet-proposer ifleet-audit-morning"
+step_start "pm2 restart IFleet apps only (never arca) — apps: $IFLEET_PM2_APPS"
+# `pm2 restart` accepts space-separated names. Missing apps fail loudly; that's
+# the right behaviour — drift between this list and ecosystem.config.cjs must
+# surface, not silently widen scope.
+run_ssh "pm2 restart" bash -c "pm2 restart $IFLEET_PM2_APPS --update-env"
 
 # ── Step 6: confirm cron registered ──────────────────────────────────────────
 step_start "verify ifleet-proposer cron entry"
