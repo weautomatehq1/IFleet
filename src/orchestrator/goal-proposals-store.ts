@@ -296,9 +296,21 @@ export async function countPendingProposals(pool?: Pool): Promise<number> {
         WHERE decision IS NULL`,
     );
     const raw = result.rows[0]?.count;
-    if (typeof raw !== 'string') return 0;
+    if (typeof raw !== 'string') {
+      console.warn(
+        `[proposals-store] countPendingProposals: unexpected row shape ` +
+          `(no count column) — returning 0`,
+      );
+      return 0;
+    }
     const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
+    if (!Number.isFinite(n) || n < 0) {
+      console.warn(
+        `[proposals-store] countPendingProposals: unparseable count "${raw}" — returning 0`,
+      );
+      return 0;
+    }
+    return n;
   } catch (err) {
     if (err instanceof KgPostgresUnavailableError) {
       console.warn(`[proposals-store] countPendingProposals: ${err.message}`);
