@@ -370,19 +370,58 @@ async function handleButton(
     return;
   }
 
+  // M5 — proposal buttons persist a decision directly to goal_proposals;
+  // they do NOT round-trip through the control plane (no in-flight task
+  // to resume). Approve → /ship enqueue is M5.2 follow-up.
+  //
+  // Routing rationale: #ifleet-proposals is created post-deploy and lives
+  // outside channels.json (its id flows in via IFLEET_PROPOSALS_CHANNEL_ID).
+  // Doing the standard `router.resolve(channelId)` deny check here would
+  // reject every proposal button, so we gate on (a) the channel id matches
+  // the env var and (b) the clicker is in IFLEET_PROPOSALS_APPROVER_IDS
+  // (comma-separated Discord user ids). If the approver env is unset, fall
+  // back to the union of allowedUserIds across all router routes so a
+  // first-time deploy can still operate before adding the new env var.
+  if (
+    parsed.verb === 'proposal_approve' ||
+    parsed.verb === 'proposal_reject' ||
+    parsed.verb === 'proposal_defer'
+  ) {
+    const proposalsChannelId = process.env['IFLEET_PROPOSALS_CHANNEL_ID'];
+    if (!proposalsChannelId || interaction.channelId !== proposalsChannelId) {
+      await interaction.editReply(`You are not authorised for this action.`);
+      return;
+    }
+    const rawAllow = process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
+    const explicitAllow = rawAllow
+      ? rawAllow.split(',').map((s) => s.trim()).filter(Boolean)
+      : null;
+    const fallbackAllow = explicitAllow
+      ? null
+      : Array.from(new Set(deps.router.list().flatMap((r) => r.allowedUserIds)));
+    const allow = explicitAllow ?? fallbackAllow ?? [];
+    if (!allow.includes(interaction.user.id)) {
+      await interaction.editReply(`You are not authorised for this action.`);
+      return;
+    }
+  }
+
   // Deny on missing route. The previous form short-circuited when `route` was
   // null (DM or unmapped channel), so any guild member could approve/reject/
   // cancel any task by guessing its taskId. Treat unmapped channels as
   // hostile and require an explicit allowlist hit.
-  const route = deps.router.resolve(interaction.channelId);
-  if (!route || !route.allowedUserIds.includes(interaction.user.id)) {
-    await interaction.editReply(`You are not authorised for this action.`);
-    return;
+  const isProposalVerb =
+    parsed.verb === 'proposal_approve' ||
+    parsed.verb === 'proposal_reject' ||
+    parsed.verb === 'proposal_defer';
+  if (!isProposalVerb) {
+    const route = deps.router.resolve(interaction.channelId);
+    if (!route || !route.allowedUserIds.includes(interaction.user.id)) {
+      await interaction.editReply(`You are not authorised for this action.`);
+      return;
+    }
   }
 
-  // M5 — proposal buttons persist a decision directly to goal_proposals;
-  // they do NOT round-trip through the control plane (no in-flight task
-  // to resume). Approve → /ship enqueue is M5.2 follow-up.
   if (
     parsed.verb === 'proposal_approve' ||
     parsed.verb === 'proposal_reject' ||

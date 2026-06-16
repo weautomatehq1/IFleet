@@ -461,3 +461,95 @@ describe('AUDIT-IFleet-f1164e07: /status reply carries real task fields', () => 
     expect(interaction.editReply).toHaveBeenCalledWith('✔ Status requested.');
   });
 });
+
+vi.mock('../../orchestrator/approval-gate.js', () => ({
+  recordProposalDecision: vi.fn(async () => ({ updated: true })),
+}));
+
+describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
+  const PROPOSALS = '9999000099990000';
+  const APPROVER = '111';
+
+  function makeProposalRouter(): ChannelRouter {
+    return {
+      resolve: (channelId: string) =>
+        channelId === '1503769258981589012'
+          ? {
+              channelId,
+              repo: 'weautomatehq1/IFleet',
+              defaultBranch: 'main',
+              defaultModel: 'opus',
+              allowedUserIds: [APPROVER],
+              codeowners: [],
+              workDir: '/tmp/r',
+            }
+          : null,
+      list: () => [
+        {
+          channelId: '1503769258981589012',
+          repo: 'weautomatehq1/IFleet',
+          defaultBranch: 'main',
+          defaultModel: 'opus',
+          allowedUserIds: [APPROVER],
+          codeowners: [],
+          workDir: '/tmp/r',
+        },
+      ],
+    };
+  }
+
+  function makeButton(channelId: string, customId: string, userId = APPROVER): any {
+    return {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId,
+      channelId,
+      user: { id: userId, username: 'seb' },
+      deferReply: vi.fn(async () => undefined),
+      reply: vi.fn(),
+      editReply: vi.fn(),
+    };
+  }
+
+  function makeCp(): ControlPlaneClient & { posted: ControlCommand[] } {
+    const posted: ControlCommand[] = [];
+    return { posted, postCommand: async (c) => { posted.push(c); return { accepted: true }; } };
+  }
+
+  const restoreEnv = () => {
+    delete process.env['IFLEET_PROPOSALS_CHANNEL_ID'];
+    delete process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
+  };
+
+  it('denies proposal button when IFLEET_PROPOSALS_CHANNEL_ID is unset', async () => {
+    restoreEnv();
+    const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
+    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/not authorised/i));
+  });
+
+  it('denies proposal button when click happens outside the proposals channel', async () => {
+    process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    const interaction = makeButton('1503769258981589012', 'proposal_approve:p-1');
+    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/not authorised/i));
+    restoreEnv();
+  });
+
+  it('accepts proposal button when channel id and approver id match (env fallback)', async () => {
+    process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
+    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/✔ Approved/));
+    restoreEnv();
+  });
+
+  it('denies proposal button when explicit approver list rejects clicker', async () => {
+    process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    process.env['IFLEET_PROPOSALS_APPROVER_IDS'] = '222,333';
+    const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
+    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/not authorised/i));
+    restoreEnv();
+  });
+});
