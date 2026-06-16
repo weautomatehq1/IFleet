@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 
 import {
   extractProposalIdFromIdempotencyKey,
+  recordProposalDecision,
   setResultingPrOutcome,
   setResultingTaskId,
 } from '../goal-proposals-store.js';
@@ -15,6 +16,19 @@ function makePool(opts: { rowCount?: number; throws?: boolean } = {}) {
       calls.push({ text, params });
       if (opts.throws) throw new Error('boom');
       return { rowCount: opts.rowCount ?? 1, rows: [] as unknown[] };
+    },
+  } as unknown as Pool;
+  return { pool, calls };
+}
+
+function makeMultiPool(responses: Array<{ rowCount: number; rows?: unknown[] }>) {
+  let idx = 0;
+  const calls: Array<{ text: string; params: unknown[] }> = [];
+  const pool = {
+    query: async (text: string, params: unknown[]) => {
+      calls.push({ text, params });
+      const r = responses[idx++] ?? { rowCount: 0, rows: [] };
+      return { rowCount: r.rowCount, rows: r.rows ?? [] };
     },
   } as unknown as Pool;
   return { pool, calls };
@@ -90,4 +104,47 @@ test('setResultingPrOutcome: reports updated=false when proposal row missing', a
   const { pool } = makePool({ rowCount: 0 });
   const result = await setResultingPrOutcome('missing', 'https://x/y/pull/1', 'merged', pool);
   assert.equal(result.updated, false);
+});
+
+test('first-write-wins: second decision on a decided row returns updated:false and existing_decision', async () => {
+  const { pool, calls } = makeMultiPool([
+    { rowCount: 0 },                                        // UPDATE: blocked (already decided)
+    { rowCount: 1, rows: [{ decision: 'approved' }] },      // SELECT: found the row
+  ]);
+  const result = await recordProposalDecision(
+    { proposalId: 'p-10', decision: 'rejected', decidedBy: 'u-2' },
+    pool,
+  );
+  assert.equal(result.updated, false);
+  assert.equal(result.existing_decision, 'approved');
+  assert.equal(calls.length, 2);
+  assert.match(calls[0]!.text, /AND decision IS NULL/);
+});
+
+test('Approve does NOT reset resulting_task_id when row is already approved (rowCount 0)', async () => {
+  const { pool, calls } = makeMultiPool([
+    { rowCount: 0 },                                        // UPDATE: blocked by guard
+    { rowCount: 1, rows: [{ decision: 'approved' }] },      // SELECT: row exists
+  ]);
+  const result = await recordProposalDecision(
+    { proposalId: 'p-11', decision: 'approved', decidedBy: 'u-1' },
+    pool,
+  );
+  assert.equal(result.updated, false);
+  assert.equal(result.existing_decision, 'approved');
+  // No third query — resulting_task_id is not touched when the guard blocks
+  assert.equal(calls.length, 2);
+});
+
+test('Reject on an already-Approved row returns updated:false + existing_decision:approved', async () => {
+  const { pool } = makeMultiPool([
+    { rowCount: 0 },
+    { rowCount: 1, rows: [{ decision: 'approved' }] },
+  ]);
+  const result = await recordProposalDecision(
+    { proposalId: 'p-12', decision: 'rejected', decidedBy: 'u-3' },
+    pool,
+  );
+  assert.equal(result.updated, false);
+  assert.equal(result.existing_decision, 'approved');
 });
