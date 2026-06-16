@@ -15,13 +15,13 @@ import {
   splitAndDispatch,
   type AutoApproveDeps,
   type SplitAndDispatchDeps,
-} from '../auto-approve.ts';
+} from '../auto-approve.js';
 import type {
   ControlCommand,
   ControlPlaneAck,
   ControlPlaneClient,
-} from '../../../contracts/control-plane-client.ts';
-import type { DedupedCandidate, ProposerConfig } from '../types.ts';
+} from '../../../contracts/control-plane-client.js';
+import type { DedupedCandidate, ProposerConfig } from '../types.js';
 
 const AUTO_APPROVE_THRESHOLD_ENV = 'IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD';
 

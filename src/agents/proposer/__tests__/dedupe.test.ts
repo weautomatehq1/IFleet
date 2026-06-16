@@ -4,13 +4,13 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { cosineSimilarity, dedupeCandidates } from '../dedupe.ts';
-import type { EmbeddingClient } from '../../indexer/embed.ts';
+import { cosineSimilarity, dedupeCandidates } from '../dedupe.js';
+import type { EmbeddingClient } from '../../indexer/embed.js';
 import type {
   Candidate,
   ProposerConfig,
   ProposerContext,
-} from '../types.ts';
+} from '../types.js';
 
 const cfg: ProposerConfig = {
   repoId: 'weautomatehq1/IFleet',

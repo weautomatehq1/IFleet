@@ -36,13 +36,13 @@ import { randomUUID } from 'node:crypto';
 import {
   insertProposal,
   setResultingTaskId,
-} from '../../orchestrator/goal-proposals-store.ts';
-import { recordProposalDecision } from '../../orchestrator/approval-gate.ts';
+} from '../../orchestrator/goal-proposals-store.js';
+import { recordProposalDecision } from '../../orchestrator/approval-gate.js';
 import type {
   ControlCommand,
   ControlPlaneClient,
-} from '../../contracts/control-plane-client.ts';
-import type { DedupedCandidate, ProposerConfig } from './types.ts';
+} from '../../contracts/control-plane-client.js';
+import type { DedupedCandidate, ProposerConfig } from './types.js';
 
 const AUTO_APPROVE_THRESHOLD_ENV = 'IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD';
 // Sentinel strictly above the scorer's max — the `>= threshold` filter in

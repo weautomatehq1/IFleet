@@ -11,13 +11,13 @@
 // runtime-only field (`__embedding`) so the scorer can compute SPRINT-md
 // alignment without re-billing the embedding API.
 
-import { createEmbeddingClient, type EmbeddingClient } from '../indexer/embed.ts';
+import { createEmbeddingClient, type EmbeddingClient } from '../indexer/embed.js';
 import type {
   Candidate,
   DedupedCandidate,
   ProposerConfig,
   ProposerContext,
-} from './types.ts';
+} from './types.js';
 
 /**
  * Runtime-attached embedding cache. Not part of the public {@link DedupedCandidate}

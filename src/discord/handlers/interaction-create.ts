@@ -445,9 +445,15 @@ async function handleButton(
         decidedBy: interaction.user.id,
       });
       if (!result.updated) {
-        await interaction.editReply(
-          `⚠ No proposal with id \`${parsed.taskId}\` — it may have been pruned.`,
-        );
+        if (result.existing_decision != null) {
+          await interaction.editReply(
+            `⚠ Proposal \`${parsed.taskId}\` already decided (${result.existing_decision}).`,
+          );
+        } else {
+          await interaction.editReply(
+            `⚠ No proposal with id \`${parsed.taskId}\` — it may have been pruned.`,
+          );
+        }
         return;
       }
       const verbLabel =

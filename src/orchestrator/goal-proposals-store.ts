@@ -17,13 +17,13 @@
 
 import type { Pool } from 'pg';
 
-import { getKgPool, KgPostgresUnavailableError } from '../agents/indexer/pg-client.ts';
+import { getKgPool, KgPostgresUnavailableError } from '../agents/indexer/pg-client.js';
 import type {
   GoalProposalRecord,
   PastProposalSummary,
   ProposalDecision,
   ProposalSource,
-} from '../agents/proposer/types.ts';
+} from '../agents/proposer/types.js';
 
 /**
  * Encode a JS `number[]` embedding as the literal pgvector format
@@ -83,8 +83,14 @@ export interface RecordDecisionInput {
 }
 
 export interface RecordDecisionResult {
-  /** True when a row matched proposalId; false when no row was updated. */
+  /** True when a row matched proposalId and had no prior decision. */
   updated: boolean;
+  /**
+   * Only present when `updated` is false and the row exists.
+   * `null` means the row exists but somehow has no decision (race condition).
+   * Absent entirely (`undefined`) means no row was found.
+   */
+  existing_decision?: ProposalDecision | null;
 }
 
 /**
@@ -107,10 +113,19 @@ export async function recordProposalDecision(
             decided_at = $4,
             resulting_task_id = CASE WHEN $2 = 'approved' THEN NULL ELSE resulting_task_id END
       WHERE id = $1
+        AND decision IS NULL
       RETURNING id`,
     [input.proposalId, input.decision, input.decidedBy, decidedAt],
   );
-  return { updated: result.rowCount === 1 };
+  if (result.rowCount === 1) return { updated: true };
+
+  // Row didn't update — either it doesn't exist, or it's already decided.
+  const existing = await pool.query<{ decision: ProposalDecision | null }>(
+    `SELECT decision FROM goal_proposals WHERE id = $1`,
+    [input.proposalId],
+  );
+  if (existing.rows.length === 0) return { updated: false };
+  return { updated: false, existing_decision: existing.rows[0]!.decision };
 }
 
 export interface ProposalForShip {

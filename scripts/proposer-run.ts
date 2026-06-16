@@ -12,8 +12,17 @@
 
 import { resolve } from 'node:path';
 
+import { Client, GatewayIntentBits } from 'discord.js';
+
+import { registerProposerDiscordClient } from '../src/agents/proposer/approval-gate.js';
+import type { ContextLoaderDeps } from '../src/agents/proposer/context-loader.js';
 import { runProposer, type RunProposerDeps } from '../src/agents/proposer/index.js';
-import type { ProposerConfig } from '../src/agents/proposer/types.js';
+import type {
+  PrDecisionSummary,
+  ProposerConfig,
+} from '../src/agents/proposer/types.js';
+import { getPastProposalsByRepo } from '../src/orchestrator/goal-proposals-store.js';
+import { TaskStore, defaultTasksDbPath } from '../src/queue/store.js';
 import { HmacControlPlaneClient } from '../src/discord/hmac-client.js';
 
 const ENABLED_ENV = 'PROPOSER_ENABLED';
@@ -26,6 +35,8 @@ const DEDUP_THRESHOLD_ENV = 'PROPOSER_DEDUP_THRESHOLD';
 const EMBEDDING_MODEL_ENV = 'PROPOSER_EMBEDDING_MODEL';
 const DISCORD_CHANNEL_ENV = 'PROPOSER_DISCORD_CHANNEL_ID';
 const DRY_RUN_ENV = 'PROPOSER_DRY_RUN';
+const DISCORD_TOKEN_ENV = 'DISCORD_BOT_TOKEN';
+const TASKS_DB_ENV = 'IFLEET_TASKS_DB';
 const AUTO_APPROVE_THRESHOLD_ENV = 'IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD';
 const CONTROL_PLANE_URL_ENV = 'CONTROL_PLANE_URL';
 const HMAC_SECRET_ENV = 'IFLEET_HMAC_SECRET';
@@ -97,12 +108,66 @@ function buildConfig(repoId: string): ProposerConfig {
 }
 
 /**
+ * Boot a discord.js Client for the proposer cron process and register it on
+ * the approval-gate seam. AUDIT-IFleet-2057d021: the proposer runs as the
+ * `ifleet-proposer` PM2 app, a SEPARATE node process from the long-running
+ * `ifleet` daemon. The daemon's `registerProposerDiscordClient(client)` call
+ * never crosses into this process, so the cron must do its own login or every
+ * nightly run posts zero proposals.
+ *
+ * Returns null when DISCORD_BOT_TOKEN is unset — the approval-gate will then
+ * take the "no Discord client" branch and the run becomes a dry log. Useful in
+ * smoke tests and during the M5 feature-flag rollout.
+ */
+export async function bootDiscordClient(
+  token: string | undefined,
+): Promise<Client | null> {
+  if (!token) {
+    console.warn(
+      `[proposer-run] ${DISCORD_TOKEN_ENV} unset — Discord posting will be skipped`,
+    );
+    return null;
+  }
+  const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  });
+  await client.login(token);
+  registerProposerDiscordClient(client);
+  return client;
+}
+
+/**
+ * Subset of TaskStore the proposer cron needs — narrow so tests can pass a
+ * plain object instead of constructing a SQLite db.
+ */
+export interface PrDecisionsReader {
+  getPrDecisionsByRepo(repo: string, limit: number): PrDecisionSummary[];
+}
+
+/**
+ * Wire the real read paths the context-loader documents (see
+ * src/agents/proposer/context-loader.ts:46-69). AUDIT-IFleet-322a2854: the
+ * cron was calling `runProposer(repoId, cfg)` with no third argument, leaving
+ * both readers undefined and silently disabling the DO-NOT-REPEAT past-title
+ * guard, history-aware dedupe, and the Voyager "see what we tried" loop
+ * (M5.2-T2, PR #352). Production must hand the loader these two readers.
+ */
+export function buildContextDeps(store: PrDecisionsReader): ContextLoaderDeps {
+  return {
+    prDecisionsByRepo: (repoId, limit) =>
+      store.getPrDecisionsByRepo(repoId, limit),
+    pastProposalsByRepo: (repoId, limit) =>
+      getPastProposalsByRepo(repoId, limit),
+  };
+}
+
+/**
  * Build the cross-cutting deps for `runProposer`. Returns `{}` when
- * CONTROL_PLANE_URL / IFLEET_HMAC_SECRET are unset — the orchestrator
- * gracefully falls back to HITL-only in that case so a smoke run can fire
+ * CONTROL_PLANE_URL / IFLEET_HMAC_SECRET are unset — the auto path then
+ * falls back to HITL inside `splitAndDispatch` so a smoke run can fire
  * without the daemon.
  */
-function buildDeps(): RunProposerDeps {
+export function buildRunProposerDeps(): RunProposerDeps {
   const url = process.env[CONTROL_PLANE_URL_ENV];
   const secret = process.env[HMAC_SECRET_ENV];
   if (!url || !secret) {
@@ -130,22 +195,40 @@ async function main(): Promise<void> {
     return;
   }
 
-  const deps = buildDeps();
-
+  let discordClient: Client | null = null;
   let exitCode = 0;
-  for (const repoId of repoIds) {
-    const cfg = buildConfig(repoId);
-    console.warn(`[proposer-run] starting repoId=${repoId}`);
-    try {
-      const run = await runProposer(repoId, cfg, { deps });
-      console.warn(
-        `[proposer-run] done repoId=${repoId} runId=${run.runId} candidates=${run.candidates.length} posted=${run.posted}`,
-      );
-    } catch (err) {
-      exitCode = 1;
-      console.warn(
-        `[proposer-run] FAILED repoId=${repoId}: ${(err as Error).message}`,
-      );
+  try {
+    discordClient = await bootDiscordClient(process.env[DISCORD_TOKEN_ENV]);
+    const store = new TaskStore(process.env[TASKS_DB_ENV] ?? defaultTasksDbPath());
+    const contextDeps = buildContextDeps(store);
+    const deps = buildRunProposerDeps();
+
+    for (const repoId of repoIds) {
+      const cfg = buildConfig(repoId);
+      console.warn(`[proposer-run] starting repoId=${repoId}`);
+      try {
+        const run = await runProposer(repoId, cfg, { contextDeps, deps });
+        console.warn(
+          `[proposer-run] done repoId=${repoId} runId=${run.runId} candidates=${run.candidates.length} posted=${run.posted}`,
+        );
+      } catch (err) {
+        exitCode = 1;
+        console.warn(
+          `[proposer-run] FAILED repoId=${repoId}: ${(err as Error).message}`,
+        );
+      }
+    }
+  } finally {
+    // Discord client holds an open websocket; cron must release it so the
+    // PM2 one-shot process can exit cleanly.
+    if (discordClient) {
+      try {
+        await discordClient.destroy();
+      } catch (err) {
+        console.warn(
+          `[proposer-run] discord client destroy failed: ${(err as Error).message}`,
+        );
+      }
     }
   }
   process.exit(exitCode);
