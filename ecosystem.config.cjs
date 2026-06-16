@@ -286,6 +286,37 @@ module.exports = {
       error_file: `${logDir}/ifleet-proposer-error.log`,
     },
     {
+      // ifleet-drift-scan — M6 weekly drift detector (one-shot cron).
+      // Substrate from PR #353 finds cross-repo symbol drift and emits
+      // candidate plans; this cron makes them visible in #ifleet. Does NOT
+      // open PRs — that live-PR step is gated on the M6 ≥70% candidate-
+      // merge-rate KPI.
+      //
+      // Off by default. Manual enable:
+      //   pm2 set ifleet-drift-scan:DRIFT_SCAN_ENABLED 1 \
+      //     && pm2 restart ifleet-drift-scan
+      name: 'ifleet-drift-scan',
+      script: 'scripts/drift-scan-run.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      autorestart: false,
+      max_restarts: 10,
+      restart_delay: 4000,
+      stop_exit_codes: [2],
+      // Sunday 2am UTC — clear of standup (9am), audit nightly (4am), audit
+      // morning (11am), and the Sunday 8pm retro.
+      cron_restart: '0 2 * * 0',
+      watch: false,
+      env: {
+        ...baseEnv,
+        IFLEET_ROLE: 'drift-scan',
+        DRIFT_SCAN_ENABLED: process.env.DRIFT_SCAN_ENABLED ?? '0',
+        DRIFT_SCAN_REPOS: process.env.DRIFT_SCAN_REPOS ?? '',
+      },
+      out_file: `${logDir}/ifleet-drift-scan-out.log`,
+      error_file: `${logDir}/ifleet-drift-scan-error.log`,
+    },
+    {
       // ifleet-audit-morning — 11am UTC (7am ET) daily audit morning report.
       // Morning report mode: summary and incident digest.
       // One-shot cron (autorestart: false).
