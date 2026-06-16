@@ -53,6 +53,19 @@ if [[ -n "$PROPOSALS_CHANNEL_ID" ]] && ! [[ "$PROPOSALS_CHANNEL_ID" =~ ^[0-9]{5,
   ERRORS+=("--proposals-channel-id must be a Discord snowflake (5-32 digits)")
 fi
 
+# --approver-ids flows through `set_env_var` into a remote `bash -c` (sed + echo
+# both interpolate it). A strict format check is the defence: comma-separated
+# Discord snowflakes only, no whitespace, no shell metachars.
+if [[ -n "$APPROVER_IDS" ]] && ! [[ "$APPROVER_IDS" =~ ^[0-9]{5,32}(,[0-9]{5,32})*$ ]]; then
+  ERRORS+=("--approver-ids must be a comma-separated list of Discord snowflakes (5-32 digits each, no spaces)")
+fi
+
+# --kg-db-url also flows through SSH; reject any character that could break out
+# of the single-quoted IFLEET_KG_DATABASE_URL='$KG_DB_URL' interpolation.
+if [[ -n "$KG_DB_URL" ]] && [[ "$KG_DB_URL" == *\'* ]]; then
+  ERRORS+=("--kg-db-url must not contain single quotes (would break SSH-side single-quoting)")
+fi
+
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
   printf "Validation error: %s\n" "${ERRORS[@]}" >&2
   exit 1
