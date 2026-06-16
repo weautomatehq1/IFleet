@@ -348,7 +348,13 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
       if (overrideWouldDemote && categoryOverrideTriggered) {
         // M4.6: skip the architect override; the category/critical override
         // takes precedence over the mode demotion. Editor/verify below still
-        // apply so the rest of the mode contract is honored.
+        // apply so the rest of the mode contract is honored. Log at warn so
+        // the suppression is observable in operator logs — silent skipping
+        // hid the precedence decision from anyone debugging routing.
+        console.warn(
+          `[classifier] mode '${explicitMode}' would downshift architect from Opus, ` +
+            `but high-keyword path requires Opus floor (canonical-pattern §3.2 override #1) — suppressed`,
+        );
       } else {
         architectModel = override.architect;
       }
