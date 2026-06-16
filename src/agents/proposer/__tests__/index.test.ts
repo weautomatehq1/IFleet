@@ -106,8 +106,8 @@ describe('runProposer orchestration', () => {
           expect(cfg).toBe(baseCfg);
           return top;
         },
-        async postProposalsForApproval(cands, cfg) {
-          calls.push('postProposalsForApproval');
+        async dispatchProposals(cands, cfg) {
+          calls.push('dispatchProposals');
           expect(cands).toBe(top);
           expect(cfg).toBe(baseCfg);
           return 1;
@@ -121,7 +121,7 @@ describe('runProposer orchestration', () => {
       'dedupeCandidates',
       'scoreCandidates',
       'enforceBudget',
-      'postProposalsForApproval',
+      'dispatchProposals',
     ]);
     expect(run.repoId).toBe(baseCfg.repoId);
     expect(run.posted).toBe(1);

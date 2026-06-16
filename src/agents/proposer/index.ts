@@ -18,6 +18,8 @@ import { dedupeCandidates as dedupeCandidatesImpl } from './dedupe.ts';
 import { scoreCandidates as scoreCandidatesImpl } from './scorer.ts';
 import { enforceBudget as enforceBudgetImpl } from './budget.ts';
 import { postProposalsForApproval as postProposalsForApprovalImpl } from './approval-gate.ts';
+import { splitAndDispatch as splitAndDispatchImpl } from './auto-approve.ts';
+import type { ControlPlaneClient } from '../../contracts/control-plane-client.ts';
 import type {
   Candidate,
   DedupedCandidate,
@@ -59,6 +61,26 @@ export interface ProposerStages {
     top: DedupedCandidate[],
     cfg: ProposerConfig,
   ) => Promise<number>;
+  /**
+   * Final dispatch — splits `top` into auto-approve vs Discord-HITL by
+   * `composite_score >= cfg.proposalsAutoApproveThreshold` and dispatches each
+   * subset. Default impl is `splitAndDispatch` (see auto-approve.ts), wired
+   * with the orchestrator's ControlPlaneClient + the HITL stage above.
+   */
+  dispatchProposals?: (
+    top: DedupedCandidate[],
+    cfg: ProposerConfig,
+  ) => Promise<number>;
+}
+
+export interface RunProposerDeps {
+  /**
+   * HMAC client to the control plane. Required when the auto-approve path
+   * fires (i.e. when any candidate's composite_score crosses the threshold).
+   * The cron entry (`scripts/proposer-run.ts`) wires an `HmacControlPlaneClient`;
+   * tests inject a spy.
+   */
+  controlPlane?: ControlPlaneClient;
 }
 
 export interface RunProposerOptions {
@@ -66,6 +88,8 @@ export interface RunProposerOptions {
   stages?: ProposerStages;
   /** Read-side deps for the context loader. */
   contextDeps?: ContextLoaderDeps;
+  /** Cross-cutting deps shared across stages (e.g. ControlPlaneClient). */
+  deps?: RunProposerDeps;
 }
 
 /**
@@ -92,13 +116,16 @@ export async function runProposer(
   const enforceBudget = stages.enforceBudget ?? enforceBudgetImpl;
   const postProposalsForApproval =
     stages.postProposalsForApproval ?? postProposalsForApprovalImpl;
+  const dispatchProposals =
+    stages.dispatchProposals ??
+    defaultDispatchProposals(postProposalsForApproval, opts.deps);
 
   const ctx = await loadContext(repoId, cfg);
   const candidates = await generateCandidates(ctx, cfg);
   const deduped = await dedupeCandidates(candidates, ctx, cfg);
   const scored = await scoreCandidates(deduped, ctx, cfg);
   const top = await enforceBudget(scored, cfg);
-  const posted = await postProposalsForApproval(top, cfg);
+  const posted = await dispatchProposals(top, cfg);
 
   const finishedAt = new Date().toISOString();
   return {
@@ -115,4 +142,29 @@ function defaultLoadContext(
   contextDeps: ContextLoaderDeps | undefined,
 ): (repoId: string, cfg: ProposerConfig) => Promise<ProposerContext> {
   return (repoId, cfg) => loadProposerContext(repoId, cfg, contextDeps);
+}
+
+function defaultDispatchProposals(
+  postProposalsForApproval: (
+    top: DedupedCandidate[],
+    cfg: ProposerConfig,
+  ) => Promise<number>,
+  deps: RunProposerDeps | undefined,
+): (top: DedupedCandidate[], cfg: ProposerConfig) => Promise<number> {
+  return async (top, cfg) => {
+    const controlPlane = deps?.controlPlane;
+    if (!controlPlane) {
+      // No control plane wired (cron started before the daemon, or operator
+      // ran a smoke test) — fall back to the legacy HITL-only path. The
+      // auto-approve filter never fires; every candidate goes to Discord.
+      console.warn(
+        '[proposer] no ControlPlaneClient injected — auto-approve disabled for this run',
+      );
+      return postProposalsForApproval(top, cfg);
+    }
+    return splitAndDispatchImpl(top, cfg, {
+      controlPlane,
+      postProposalsForApproval,
+    });
+  };
 }

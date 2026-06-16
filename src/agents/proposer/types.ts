@@ -169,6 +169,16 @@ export interface ProposerConfig {
   discordChannelId?: string;
   /** When true, log decisions but never post to Discord. Used by smoke tests. */
   dryRun?: boolean;
+  /**
+   * Composite-score threshold above which a candidate auto-approves and is
+   * enqueued via the control plane directly (skipping the Discord HITL click).
+   * `composite_score >= threshold` → auto path; below → Discord HITL.
+   *
+   * Default is 1.0 = HITL-only (no behavioural change vs M5.2-T1). The cron
+   * entry parses `IFLEET_PROPOSALS_AUTO_APPROVE_THRESHOLD` and threads the
+   * value through here so tests can override per-run.
+   */
+  proposalsAutoApproveThreshold?: number;
 }
 
 /**
