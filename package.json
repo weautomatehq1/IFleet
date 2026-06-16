@@ -28,6 +28,7 @@
     "graph:index": "node --import tsx scripts/index-repo.ts",
     "validate-claims": "node --import tsx scripts/validate-claims.ts",
     "audit:sync": "node --import tsx scripts/sync-audit-findings.ts",
+    "reviewer-cards:build": "node --import tsx scripts/build-reviewer-cards.ts",
     "dead-code": "ts-prune --ignore '(index\\.ts|__tests__|fixtures)'",
     "fleet:pause": "ssh root@${VPS_HOST:?Set VPS_HOST in your shell, e.g. export VPS_HOST=1.2.3.4} 'touch ${IFLEET_REPO_ROOT:-/opt/ifleet}/.omc/PAUSED && echo \"fleet paused\"'",
     "fleet:resume": "ssh root@${VPS_HOST:?Set VPS_HOST in your shell, e.g. export VPS_HOST=1.2.3.4} 'rm -f ${IFLEET_REPO_ROOT:-/opt/ifleet}/.omc/PAUSED && echo \"fleet resumed\"'",
