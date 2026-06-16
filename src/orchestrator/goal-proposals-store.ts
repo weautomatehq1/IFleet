@@ -277,15 +277,20 @@ export async function getPastProposalsByRepo(
  * standup to surface "N proposals queued in #ifleet-proposals" so the
  * approver doesn't forget the queue exists.
  *
- * Fail-open: KG unavailable, query error, or row shape surprise all
- * yield 0 (logged). The standup must not crash on a cold dev box where
- * the KG migration hasn't run.
+ * Fail-open: KG unavailable (env var unset OR pool init throws), query
+ * error, or row shape surprise all yield 0 (logged). The standup must
+ * not crash on a cold dev box where the KG migration hasn't run.
+ *
+ * NOTE on pool resolution: `getKgPool()` throws `KgPostgresUnavailableError`
+ * synchronously when `IFLEET_KG_DATABASE_URL` is unset. The pool must
+ * therefore be resolved INSIDE the try/catch, not as a default-parameter
+ * expression — otherwise the error fires before the catch can handle it.
+ * (Caught by codex review on PR #366.)
  */
-export async function countPendingProposals(
-  pool: Pool = getKgPool(),
-): Promise<number> {
+export async function countPendingProposals(pool?: Pool): Promise<number> {
   try {
-    const result = await pool.query<{ count: string }>(
+    const p = pool ?? getKgPool();
+    const result = await p.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
          FROM goal_proposals
         WHERE decision IS NULL`,

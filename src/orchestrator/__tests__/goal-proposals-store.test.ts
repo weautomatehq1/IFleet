@@ -172,3 +172,17 @@ test('countPendingProposals: returns 0 when row count shape is unexpected', asyn
   const { pool } = makeMultiPool([{ rowCount: 0, rows: [] }]);
   assert.equal(await countPendingProposals(pool), 0);
 });
+
+test('countPendingProposals: returns 0 when pool resolution throws inside try (KG env unset)', async () => {
+  // Simulate the default-pool path on a cold dev box: passing a pool whose
+  // query method throws KgPostgresUnavailableError matches the same failure
+  // mode as `getKgPool()` throwing on unset env. The catch must convert
+  // it to 0 instead of bubbling.
+  const throwingPool = {
+    query: async () => {
+      const { KgPostgresUnavailableError } = await import('../../agents/indexer/pg-client.js');
+      throw new KgPostgresUnavailableError('IFLEET_KG_DATABASE_URL is not set');
+    },
+  } as unknown as Pool;
+  assert.equal(await countPendingProposals(throwingPool), 0);
+});
