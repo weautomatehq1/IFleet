@@ -3,6 +3,7 @@
 
 import type { RoutingHints } from '../queue/types.js';
 import type { SprintMode } from '../orchestrator/types.js';
+import type { RoutingDecision } from '../pipeline/types.js';
 
 export type { SprintMode };
 
@@ -44,6 +45,12 @@ export interface QueuedTask {
    * `null` / undefined → use the standard prompt with no mode-specific routing.
    */
   mode?: SprintMode | null;
+  /**
+   * Per-task routing decision captured at dispatch time (M6 shadow-eval
+   * substrate). NULL on rows persisted before the M6 migration — readers
+   * MUST treat absence as "no routing recorded" rather than a default.
+   */
+  routingDecision?: RoutingDecision | null;
 }
 
 export function isDiscordSource(s: TaskSource): s is Extract<TaskSource, { kind: 'discord' }> {

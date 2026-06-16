@@ -143,6 +143,7 @@ async function main(): Promise<void> {
     repoResolver,
     octokit,
     initialWorkers,
+    taskStore: store,
   });
 
   // Verifier needs taskId → {repoUrl, branch, sha, worktreePath}. The pipeline

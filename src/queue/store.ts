@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { QueuedTask, TaskState } from '../contracts/task.js';
 import { DiscordOutbox } from '../observability/discord-outbox.js';
+import type { RoutingDecision } from '../pipeline/types.js';
 
 export function defaultStateDir(): string {
   return process.env['IFLEET_STATE_DIR'] ?? join(process.cwd(), 'state');
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at INTEGER NOT NULL,
   picked_at INTEGER,
   completed_at INTEGER,
-  priority TEXT NOT NULL DEFAULT 'normal'
+  priority TEXT NOT NULL DEFAULT 'normal',
+  routing_decision TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo);
@@ -102,6 +104,7 @@ interface TaskRow {
   completed_at: number | null;
   priority: string;
   attempts: number;
+  routing_decision: string | null;
 }
 
 export interface ListFilter {
@@ -193,6 +196,16 @@ export class TaskStore {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!/duplicate column name: attempts/i.test(message)) throw err;
+    }
+    // M6-T3: routing_decision column persists the live RoutingDecision (JSON
+    // blob) per task so the Thompson observations reader can join
+    // pr_decisions.verdict against the model that ran the task. Nullable —
+    // pre-M6 rows stay NULL and are filtered out at read time.
+    try {
+      this.db.exec(`ALTER TABLE tasks ADD COLUMN routing_decision TEXT`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/duplicate column name: routing_decision/i.test(message)) throw err;
     }
     // pr_decisions table was added later; SCHEMA creates it on fresh DBs, this
     // migration covers existing DBs that pre-date the table.
@@ -646,6 +659,29 @@ export class TaskStore {
     return new DiscordOutbox(this.db);
   }
 
+  /**
+   * Persist the live RoutingDecision for `taskId`. Single UPDATE — overwrites
+   * any prior value. The shadow-mode wiring in `src/pipeline/factory.ts`
+   * calls this immediately after `classifyTask(...)` so the Thompson
+   * observations reader has a stable `(arm, reward)` history to join against
+   * once `pr_decisions` populates downstream.
+   */
+  setRoutingDecision(taskId: string, decision: RoutingDecision): void {
+    this.db
+      .prepare(`UPDATE tasks SET routing_decision = @decision WHERE id = @id`)
+      .run({ id: taskId, decision: JSON.stringify(decision) });
+  }
+
+  /**
+   * Raw DB handle. Exposed for the shadow recorder + observations reader,
+   * which both run better-sqlite3 SQL directly rather than through TaskStore
+   * helpers. Do NOT call this from places where a TaskStore method exists —
+   * the public API stays the supported surface.
+   */
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   close(): void {
     this.db.close();
   }
@@ -736,5 +772,8 @@ function rowToTask(row: TaskRow): QueuedTask {
     stateMeta: row.state_meta
       ? (safeJsonParse(row.state_meta, undefined, `task ${row.id} state_meta`) as Record<string, unknown> | undefined)
       : undefined,
+    routingDecision: row.routing_decision
+      ? (safeJsonParse(row.routing_decision, null, `task ${row.id} routing_decision`) as RoutingDecision | null)
+      : null,
   };
 }

@@ -17,6 +17,7 @@
 // PipelineInput it builds (cases 2-3). The worktree-setup itself is covered
 // by existing pipeline tests.
 
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +27,8 @@ import { encodeBridgeBrief } from '../../orchestrator/pipeline-bridge.js';
 import type { QueuedTask as UnifiedQueuedTask } from '../../contracts/task.js';
 import type { TaskId, WorkerConfig } from '../../orchestrator/types.js';
 import type { Octokit } from '@octokit/rest';
+import { TaskStore } from '../../queue/store.js';
+import { readShadowDecisions } from '../../agents/bandit/shadow.js';
 
 const taskId = (raw: string) => raw as unknown as TaskId;
 
@@ -131,6 +134,129 @@ describe('makeProductionFactory — cross-repo dispatch refusal (AUDIT-IFleet-61
     await expect(factory(taskId('task-1'), brief, {})).rejects.toThrow(
       /not in the resolver allowlist.*Known repos: \(none\)/,
     );
+  });
+});
+
+describe('makeProductionFactory — M6-T3 shadow wiring', () => {
+  function initGitRepo(): string {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'm6-fakerepo-'));
+    execFileSync('git', ['init', '-q', '-b', 'main', repoRoot]);
+    execFileSync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
+    execFileSync('git', ['-C', repoRoot, 'config', 'user.name', 'test']);
+    execFileSync('git', ['-C', repoRoot, 'commit', '--allow-empty', '-q', '-m', 'init']);
+    return repoRoot;
+  }
+
+  it('persists routing_decision and appends a routing_shadow_log row', async () => {
+    const repoRoot = initGitRepo();
+    const dbDir = mkdtempSync(join(tmpdir(), 'm6-db-'));
+    const store = new TaskStore(join(dbDir, 'tasks.db'));
+    try {
+      // Seed a task so the FK on routing_shadow_log holds and so
+      // setRoutingDecision has a row to update.
+      const task: UnifiedQueuedTask = {
+        id: 'm6-task-1',
+        brief: 'test task',
+        repo: 'weautomatehq1/IFleet',
+        title: 'test',
+        source: {
+          kind: 'github',
+          repo: 'weautomatehq1/IFleet',
+          issueNumber: 0,
+          issueNodeId: 'I_1',
+          url: 'https://github.com/weautomatehq1/IFleet/issues/0',
+        },
+        routingHints: { autonomy: 'auto', priority: 'normal', verify: [] },
+        createdAt: Date.now(),
+        idempotencyKey: 'm6-task-1-key',
+      };
+      store.insert(task);
+
+      const resolver = makeResolver([
+        {
+          repoId: 'weautomatehq1/IFleet',
+          owner: 'weautomatehq1',
+          name: 'IFleet',
+          repoRoot,
+          defaultBranch: 'main',
+        },
+      ]);
+
+      const { factory } = makeProductionFactory({
+        repoResolver: resolver,
+        octokit: mockOctokit,
+        initialWorkers: [fakeWorker],
+        taskStore: store,
+      });
+
+      const brief = encodeBridgeBrief(task);
+      // The factory completes setupWorktree + classifyTask + the shadow
+      // wiring then returns a bootstrap. We don't run the pipeline — we
+      // just inspect the side effects.
+      const bootstrap = await factory(taskId(task.id), brief, {});
+      try {
+        const persisted = store.getById(task.id)!;
+        expect(persisted.routingDecision).not.toBeNull();
+        expect(persisted.routingDecision?.architect.model).toMatch(/^claude-/);
+
+        const shadowRows = readShadowDecisions(store.getDb());
+        expect(shadowRows).toHaveLength(1);
+        expect(shadowRows[0]!.taskId).toBe(task.id);
+        expect(shadowRows[0]!.actualModel).toBe(persisted.routingDecision!.architect.model);
+      } finally {
+        await bootstrap.teardown?.(new Error('test teardown'));
+      }
+    } finally {
+      store.close();
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(dbDir, { recursive: true, force: true });
+    }
+  });
+
+  it('omitting taskStore is back-compat — factory still produces a bootstrap', async () => {
+    const repoRoot = initGitRepo();
+    try {
+      const task: UnifiedQueuedTask = {
+        id: 'm6-task-noStore',
+        brief: 'test',
+        repo: 'weautomatehq1/IFleet',
+        title: 'test',
+        source: {
+          kind: 'github',
+          repo: 'weautomatehq1/IFleet',
+          issueNumber: 0,
+          issueNodeId: 'I_2',
+          url: 'https://github.com/weautomatehq1/IFleet/issues/0',
+        },
+        routingHints: { autonomy: 'auto', priority: 'normal', verify: [] },
+        createdAt: Date.now(),
+        idempotencyKey: 'm6-task-noStore-key',
+      };
+      const resolver = makeResolver([
+        {
+          repoId: 'weautomatehq1/IFleet',
+          owner: 'weautomatehq1',
+          name: 'IFleet',
+          repoRoot,
+          defaultBranch: 'main',
+        },
+      ]);
+      const { factory } = makeProductionFactory({
+        repoResolver: resolver,
+        octokit: mockOctokit,
+        initialWorkers: [fakeWorker],
+        // taskStore deliberately omitted
+      });
+      const brief = encodeBridgeBrief(task);
+      const bootstrap = await factory(taskId(task.id), brief, {});
+      try {
+        expect(bootstrap.input.routing.architect.model).toMatch(/^claude-/);
+      } finally {
+        await bootstrap.teardown?.(new Error('test teardown'));
+      }
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });
 

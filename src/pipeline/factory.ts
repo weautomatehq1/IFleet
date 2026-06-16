@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Octokit } from '@octokit/rest';
+import { buildShadowObservations } from '../agents/bandit/observations.js';
+import { KNOWN_MODEL_IDS } from '../agents/bandit/known-arms.js';
+import { recordShadowDecision } from '../agents/bandit/shadow.js';
 import { classifyTask } from '../classifier/index.js';
 import {
   decodeBridgeBrief,
@@ -11,6 +14,7 @@ import {
 } from '../orchestrator/pipeline-bridge.js';
 import type { WorkerConfig } from '../orchestrator/types.js';
 import { createIssueCommenter } from '../queue/issue-commenter.js';
+import type { TaskStore } from '../queue/store.js';
 import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
 import { createAccountPool, type AccountPool } from '../workers/account-pool.js';
@@ -195,6 +199,14 @@ export interface ProductionFactoryOpts {
   /** Fallback approver when a resolved repo doesn't carry its own. */
   approver?: string;
   initialWorkers: ReadonlyArray<WorkerConfig>;
+  /**
+   * TaskStore for persisting the RoutingDecision per task (M6 shadow-eval
+   * substrate). When omitted, the factory skips the persistence + shadow-log
+   * step entirely so existing test fixtures keep compiling without threading
+   * a sqlite handle through. Live daemon wiring MUST pass this — the bandit
+   * cannot learn without observations.
+   */
+  taskStore?: TaskStore;
 }
 
 export interface ProductionFactory {
@@ -250,6 +262,30 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 
     const workerPool = buildWorkerPool(worker, pool);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
+    // M6-T3: persist the live routing decision + log the bandit's shadow pick.
+    // Strictly fail-open — neither the persistence write nor the shadow log
+    // is allowed to break live routing. `routing.architect.model` remains the
+    // model that runs the task; the shadow_log only records the would-be pick.
+    if (opts.taskStore) {
+      try {
+        opts.taskStore.setRoutingDecision(task.id, routing);
+        const db = opts.taskStore.getDb();
+        recordShadowDecision(db, {
+          taskId: task.id,
+          repo: task.repo,
+          decidedAt: Date.now(),
+          actualModel: routing.architect.model,
+          observations: buildShadowObservations(db, task.repo, 'architect'),
+          knownArms: KNOWN_MODEL_IDS,
+        });
+      } catch (err) {
+        console.warn(
+          `[shadow] recordShadowDecision wiring failed for task ${task.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
     const abortController = new AbortController();
 
     const issues: IssueCommenter = createIssueCommenter(opts.octokit, resolved.owner, resolved.name);

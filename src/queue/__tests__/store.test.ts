@@ -358,6 +358,49 @@ describe('TaskStore', () => {
     }
   });
 
+  it('setRoutingDecision persists JSON; rowToTask round-trips it (M6-T3)', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask({ idempotencyKey: 'm6-route-1' });
+      store.insert(task);
+
+      // Untouched row reads back with routingDecision === null.
+      assert.equal(store.getById(task.id)!.routingDecision, null);
+
+      const decision = {
+        architect: { provider: 'claude' as const, model: 'claude-opus-4-7', workerId: 'w1' },
+        editor: { provider: 'claude' as const, model: 'claude-sonnet-4-6', workerId: 'w2' },
+        reviewer: { provider: 'claude' as const, model: 'claude-sonnet-4-6', workerId: 'w3' },
+        verify: ['typecheck' as const],
+      };
+      store.setRoutingDecision(task.id, decision);
+
+      const round = store.getById(task.id)!;
+      assert.deepEqual(round.routingDecision, decision);
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('getDb returns the live handle the shadow recorder writes through (M6-T3)', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const db = store.getDb();
+      // Sanity: the schema migration ran and routing_shadow_log is present —
+      // shadow.ts will INSERT into this table via the same handle.
+      const row = db
+        .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='routing_shadow_log'`)
+        .get() as { name: string } | undefined;
+      assert.ok(row, 'routing_shadow_log table should exist on the handle');
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it('list filters by source and channelId', () => {
     const { path, cleanup } = tmpDb();
     try {
