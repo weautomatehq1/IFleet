@@ -12,19 +12,19 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { loadProposerContext, type ContextLoaderDeps } from './context-loader.ts';
-import { generateCandidates as generateCandidatesImpl } from './candidate-gen.ts';
-import { dedupeCandidates as dedupeCandidatesImpl } from './dedupe.ts';
-import { scoreCandidates as scoreCandidatesImpl } from './scorer.ts';
-import { enforceBudget as enforceBudgetImpl } from './budget.ts';
-import { postProposalsForApproval as postProposalsForApprovalImpl } from './approval-gate.ts';
+import { loadProposerContext, type ContextLoaderDeps } from './context-loader.js';
+import { generateCandidates as generateCandidatesImpl } from './candidate-gen.js';
+import { dedupeCandidates as dedupeCandidatesImpl } from './dedupe.js';
+import { scoreCandidates as scoreCandidatesImpl } from './scorer.js';
+import { enforceBudget as enforceBudgetImpl } from './budget.js';
+import { postProposalsForApproval as postProposalsForApprovalImpl } from './approval-gate.js';
 import type {
   Candidate,
   DedupedCandidate,
   ProposerConfig,
   ProposerContext,
   ProposerRun,
-} from './types.ts';
+} from './types.js';
 
 /**
  * Stage-level seams. Production wires every field to the real T4/T5 module;

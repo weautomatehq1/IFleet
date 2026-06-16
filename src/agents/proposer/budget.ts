@@ -6,7 +6,7 @@
 // §"Enforce budget") so that even a misconfigured `cfg.hardMax` cannot
 // produce a runaway nightly run.
 
-import type { DedupedCandidate, ProposerConfig } from './types.ts';
+import type { DedupedCandidate, ProposerConfig } from './types.js';
 
 /** Spec ceiling — never exceed this regardless of cfg.budget / cfg.hardMax. */
 const HARD_CEILING = 10;

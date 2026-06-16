@@ -17,13 +17,13 @@
 
 import type { Pool } from 'pg';
 
-import { getKgPool, KgPostgresUnavailableError } from '../agents/indexer/pg-client.ts';
+import { getKgPool, KgPostgresUnavailableError } from '../agents/indexer/pg-client.js';
 import type {
   GoalProposalRecord,
   PastProposalSummary,
   ProposalDecision,
   ProposalSource,
-} from '../agents/proposer/types.ts';
+} from '../agents/proposer/types.js';
 
 /**
  * Encode a JS `number[]` embedding as the literal pgvector format

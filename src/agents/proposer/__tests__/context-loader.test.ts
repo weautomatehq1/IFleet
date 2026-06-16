@@ -9,12 +9,12 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { loadProposerContext } from '../context-loader.ts';
+import { loadProposerContext } from '../context-loader.js';
 import type {
   PastProposalSummary,
   PrDecisionSummary,
   ProposerConfig,
-} from '../types.ts';
+} from '../types.js';
 
 function makeCfg(repoRoot: string): ProposerConfig {
   return {

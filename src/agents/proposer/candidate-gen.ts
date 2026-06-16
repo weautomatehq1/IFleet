@@ -14,7 +14,7 @@ import type {
   ProposalSource,
   ProposerConfig,
   ProposerContext,
-} from './types.ts';
+} from './types.js';
 
 const HAIKU_MODEL_DEFAULT = 'claude-haiku-4-5-20251001';
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';

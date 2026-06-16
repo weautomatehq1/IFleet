@@ -2,7 +2,7 @@
 //
 // Thin delegation to `src/discord/proposals.ts` so the orchestrator
 // (src/agents/proposer/index.ts) keeps its single stable import point:
-//   import { postProposalsForApproval } from './approval-gate.ts';
+//   import { postProposalsForApproval } from './approval-gate.js';
 //
 // The real Discord posting + DB write lives in `src/discord/proposals.ts`
 // to keep file ownership clean (Discord adapters live under src/discord).
@@ -20,8 +20,8 @@ import {
   discordPostDepsFromClient,
   postProposalsForApproval as postProposalsForApprovalImpl,
   type DiscordPostDeps,
-} from '../../discord/proposals.ts';
-import type { DedupedCandidate, ProposerConfig } from './types.ts';
+} from '../../discord/proposals.js';
+import type { DedupedCandidate, ProposerConfig } from './types.js';
 
 let cachedClient: Client | null = null;
 

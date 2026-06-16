@@ -15,15 +15,15 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { readRecentLearnings, LEARNINGS_RELATIVE_PATH } from '../../pipeline/learnings.ts';
-import { loadFingerprints, type Fingerprint } from '../../pipeline/fingerprints.ts';
+import { readRecentLearnings, LEARNINGS_RELATIVE_PATH } from '../../pipeline/learnings.js';
+import { loadFingerprints, type Fingerprint } from '../../pipeline/fingerprints.js';
 import type {
   DoctorFingerprintSummary,
   PastProposalSummary,
   PrDecisionSummary,
   ProposerConfig,
   ProposerContext,
-} from './types.ts';
+} from './types.js';
 
 /** Where loadFingerprints looks; canonical doctor location. */
 const FINGERPRINTS_RELATIVE_PATH = '.omc/fingerprints.json';

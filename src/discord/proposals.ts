@@ -25,11 +25,11 @@ import {
   type TextBasedChannel,
 } from 'discord.js';
 
-import { insertProposal } from '../orchestrator/goal-proposals-store.ts';
+import { insertProposal } from '../orchestrator/goal-proposals-store.js';
 import type {
   DedupedCandidate,
   ProposerConfig,
-} from '../agents/proposer/types.ts';
+} from '../agents/proposer/types.js';
 
 /**
  * Resolve the proposals channel id. Returns `null` when the env var is

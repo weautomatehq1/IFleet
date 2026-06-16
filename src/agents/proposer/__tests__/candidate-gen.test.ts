@@ -11,11 +11,11 @@ import {
   generateCandidates,
   parseCandidatesArray,
   type LlmCompleter,
-} from '../candidate-gen.ts';
+} from '../candidate-gen.js';
 import type {
   ProposerConfig,
   ProposerContext,
-} from '../types.ts';
+} from '../types.js';
 
 const cfg: ProposerConfig = {
   repoId: 'weautomatehq1/IFleet',
