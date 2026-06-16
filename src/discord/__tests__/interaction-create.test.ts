@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscordAPIError } from 'discord.js';
 import {
   buildCommandFromButton,
@@ -466,6 +466,21 @@ vi.mock('../../orchestrator/approval-gate.js', () => ({
   recordProposalDecision: vi.fn(async () => ({ updated: true })),
 }));
 
+const proposalStoreState: {
+  getProposalForShip: ReturnType<typeof vi.fn>;
+  setResultingTaskId: ReturnType<typeof vi.fn>;
+} = {
+  getProposalForShip: vi.fn(),
+  setResultingTaskId: vi.fn(async () => ({ updated: true })),
+};
+
+vi.mock('../../orchestrator/goal-proposals-store.js', () => ({
+  getProposalForShip: (...args: unknown[]) =>
+    (proposalStoreState.getProposalForShip as (...a: unknown[]) => unknown)(...args),
+  setResultingTaskId: (...args: unknown[]) =>
+    (proposalStoreState.setResultingTaskId as (...a: unknown[]) => unknown)(...args),
+}));
+
 describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
   const PROPOSALS = '9999000099990000';
   const APPROVER = '111';
@@ -538,6 +553,13 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
 
   it('accepts proposal button when channel id and approver id match (env fallback)', async () => {
     process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    proposalStoreState.getProposalForShip = vi.fn(async () => ({
+      id: 'p-1',
+      repo_id: 'weautomatehq1/IFleet',
+      title: 'Add reopen sweep',
+      rationale: 'Reopened findings have no GC.',
+    }));
+    proposalStoreState.setResultingTaskId = vi.fn(async () => ({ updated: true }));
     const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
     await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/✔ Approved/));
@@ -551,5 +573,140 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
     await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/not authorised/i));
     restoreEnv();
+  });
+});
+
+describe('M5.2-T1: Approve → /ship enqueue', () => {
+  const PROPOSALS = '9999000099990000';
+  const APPROVER = '111';
+
+  function router(): ChannelRouter {
+    return {
+      resolve: () => null,
+      list: () => [
+        {
+          channelId: '1503769258981589012',
+          repo: 'weautomatehq1/IFleet',
+          defaultBranch: 'main',
+          defaultModel: 'opus',
+          allowedUserIds: [APPROVER],
+          codeowners: [],
+          workDir: '/tmp/r',
+        },
+      ],
+    };
+  }
+
+  function button(customId: string): any {
+    return {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId,
+      channelId: PROPOSALS,
+      user: { id: APPROVER, username: 'seb' },
+      deferReply: vi.fn(async () => undefined),
+      reply: vi.fn(),
+      editReply: vi.fn(),
+    };
+  }
+
+  function cp(opts: {
+    accepted?: boolean;
+    taskId?: string;
+    message?: string;
+    throws?: boolean;
+  } = {}): ControlPlaneClient & { posted: ControlCommand[] } {
+    const posted: ControlCommand[] = [];
+    return {
+      posted,
+      postCommand: async (c) => {
+        posted.push(c);
+        if (opts.throws) throw new Error('control plane down');
+        return {
+          accepted: opts.accepted ?? true,
+          taskId: opts.taskId ?? (opts.accepted === false ? undefined : 'task-xyz'),
+          message: opts.message,
+        };
+      },
+    };
+  }
+
+  beforeEach(() => {
+    process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    proposalStoreState.getProposalForShip = vi.fn(async () => ({
+      id: 'p-99',
+      repo_id: 'weautomatehq1/IFleet',
+      title: 'Add audit reopen sweep',
+      rationale: 'r',
+    }));
+    proposalStoreState.setResultingTaskId = vi.fn(async () => ({ updated: true }));
+  });
+
+  afterEach(() => {
+    delete process.env['IFLEET_PROPOSALS_CHANNEL_ID'];
+    delete process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
+  });
+
+  it('posts a sprint_goal ControlCommand and links the resulting task id on accept', async () => {
+    const controlPlane = cp({ taskId: 'task-7' });
+    const interaction = button('proposal_approve:p-99');
+    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+
+    expect(controlPlane.posted).toHaveLength(1);
+    const sent = controlPlane.posted[0]!;
+    expect(sent.type).toBe('sprint_goal');
+    if (sent.type === 'sprint_goal') {
+      expect(sent.goal).toBe('Add audit reopen sweep');
+      expect(sent.repo).toBe('weautomatehq1/IFleet');
+      expect(sent.idempotencyKey).toBe('proposal:p-99');
+    }
+    expect(proposalStoreState.setResultingTaskId).toHaveBeenCalledWith('p-99', 'task-7');
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(/enqueued as `task-7`/),
+    );
+  });
+
+  it('keeps the decision but reports a warning when the control plane refuses', async () => {
+    const controlPlane = cp({ accepted: false, message: 'queue full' });
+    const interaction = button('proposal_approve:p-99');
+    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+
+    expect(controlPlane.posted).toHaveLength(1);
+    expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(/control plane did not accept/),
+    );
+  });
+
+  it('keeps the decision but reports a warning when the control plane throws', async () => {
+    const controlPlane = cp({ throws: true });
+    const interaction = button('proposal_approve:p-99');
+    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+
+    expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(/control plane refused/),
+    );
+  });
+
+  it('does NOT post a sprint_goal on Reject or Defer', async () => {
+    const controlPlane = cp();
+    const interaction = button('proposal_reject:p-99');
+    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+
+    expect(controlPlane.posted).toHaveLength(0);
+    expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
+  });
+
+  it('reports proposal pruned when the row is missing at enqueue time', async () => {
+    proposalStoreState.getProposalForShip = vi.fn(async () => null);
+    const controlPlane = cp();
+    const interaction = button('proposal_approve:p-99');
+    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+
+    expect(controlPlane.posted).toHaveLength(0);
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(/proposal row was missing/),
+    );
   });
 });

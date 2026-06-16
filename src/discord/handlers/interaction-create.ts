@@ -31,6 +31,10 @@ import {
   normaliseAuditRepo,
 } from '../../audit/audit-store.js';
 import { recordProposalDecision } from '../../orchestrator/approval-gate.js';
+import {
+  getProposalForShip,
+  setResultingTaskId,
+} from '../../orchestrator/goal-proposals-store.js';
 import type { ProposalDecision } from '../../agents/proposer/types.js';
 
 export interface InteractionDeps {
@@ -448,7 +452,18 @@ async function handleButton(
       }
       const verbLabel =
         decision === 'approved' ? 'Approved' : decision === 'rejected' ? 'Rejected' : 'Deferred';
-      await interaction.editReply(`✔ ${verbLabel} proposal \`${parsed.taskId}\`.`);
+      // M5.2-T1: Approve also enqueues a sprint_goal task and links the
+      // resulting task id back onto the proposal row. Failures here do NOT
+      // unwind the decision row — the operator can re-enqueue manually via
+      // /ship if the control plane was unreachable.
+      if (decision === 'approved') {
+        const enqueueOutcome = await enqueueApprovedProposal(parsed.taskId, interaction, deps);
+        await interaction.editReply(
+          `✔ Approved proposal \`${parsed.taskId}\` — ${enqueueOutcome}`,
+        );
+      } else {
+        await interaction.editReply(`✔ ${verbLabel} proposal \`${parsed.taskId}\`.`);
+      }
     } catch (err) {
       await interaction.editReply(formatErrorReply(err));
     }
@@ -554,6 +569,60 @@ export function buildCommandFromSlash(
     default:
       return null;
   }
+}
+
+/**
+ * M5.2-T1: when a proposal is Approved in #ifleet-proposals, also enqueue a
+ * sprint_goal so the architect/queue actually picks it up. Failures here do
+ * NOT unwind the decision row — Sebastian can re-fire manually via /ship.
+ *
+ * Returns a one-line human-readable status to splice into the editReply
+ * message: "enqueued as `task-id`" on success, or a "…control plane…" /
+ * "…proposal pruned…" warning string on a known failure path.
+ */
+async function enqueueApprovedProposal(
+  proposalId: string,
+  interaction: ButtonInteraction,
+  deps: InteractionDeps,
+): Promise<string> {
+  let proposal: Awaited<ReturnType<typeof getProposalForShip>>;
+  try {
+    proposal = await getProposalForShip(proposalId);
+  } catch (err) {
+    return `but could not load proposal for /ship enqueue (${err instanceof Error ? err.message : String(err)}). Re-fire with /ship manually.`;
+  }
+  if (!proposal) {
+    return `but proposal row was missing at /ship enqueue time — re-fire manually if needed.`;
+  }
+  const source: DiscordCommandSource = {
+    kind: 'discord',
+    channelId: interaction.channelId,
+    userId: interaction.user.id,
+    userLabel: interaction.user.username,
+  };
+  const command: ControlCommand = {
+    type: 'sprint_goal',
+    goal: proposal.title,
+    repo: proposal.repo_id,
+    source,
+    idempotencyKey: `proposal:${proposalId}`,
+  };
+  let ack;
+  try {
+    ack = await deps.controlPlane.postCommand(command);
+  } catch (err) {
+    return `but control plane refused the /ship enqueue (${err instanceof Error ? err.message : String(err)}). Re-fire with /ship manually.`;
+  }
+  if (!ack.accepted || !ack.taskId) {
+    const msg = ack.message ? ` (${ack.message})` : '';
+    return `but control plane did not accept the /ship enqueue${msg}. Re-fire with /ship manually.`;
+  }
+  try {
+    await setResultingTaskId(proposalId, ack.taskId);
+  } catch (err) {
+    return `enqueued as \`${ack.taskId}\` but failed to link the task id back onto the proposal row (${err instanceof Error ? err.message : String(err)}).`;
+  }
+  return `enqueued as \`${ack.taskId}\`.`;
 }
 
 function formatAckReply(
