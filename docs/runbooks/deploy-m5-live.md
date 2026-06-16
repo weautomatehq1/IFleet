@@ -53,7 +53,7 @@ Prints every SSH command that would run; exits 0 without touching the VPS.
 | 2 | `pnpm install --frozen-lockfile` (picks up any new deps) |
 | 3 | `pnpm graph:migrate` — applies `0004-goal-proposals.sql` to the KG DB |
 | 4 | Idempotently upserts `IFLEET_PROPOSALS_CHANNEL_ID`, `IFLEET_PROPOSALS_APPROVER_IDS`, `PROPOSER_ENABLED=1` into `/etc/environment` |
-| 5 | `pm2 restart all --update-env` — picks up the new env vars |
+| 5 | `pm2 restart <IFleet apps> --update-env` — picks up the new env vars. Scripted as explicit names (`ifleet`, `ifleet-mcp`, `ifleet-standup`, `ifleet-canary`, `ifleet-retro`, `ifleet-audit-nightly`, `ifleet-proposer`, `ifleet-audit-morning`); never `pm2 restart all` because the host co-hosts `arca`. |
 | 6 | `pm2 describe ifleet-proposer \| grep cron` — confirms the cron entry is registered |
 | 7 | `pm2 logs ifleet-proposer --lines 50 --nostream` — sanity-check the last 50 log lines |
 
@@ -101,11 +101,15 @@ To disable without reverting the deploy:
 ```bash
 ssh root@<VPS_HOST> bash -c "
   sed -i 's|^PROPOSER_ENABLED=.*|PROPOSER_ENABLED=0|' /etc/environment
-  pm2 restart all --update-env
+  # Restart IFleet apps ONLY. Never \`pm2 restart all\` — the host co-hosts arca.
+  pm2 restart ifleet ifleet-mcp ifleet-standup ifleet-canary ifleet-retro \
+    ifleet-audit-nightly ifleet-proposer ifleet-audit-morning --update-env
 "
 ```
 
 This stops the proposer cron from running. Migration 0004 stays in place (harmless). Re-enable by setting `PROPOSER_ENABLED=1` and restarting PM2 again.
+
+> ⚠️ Drift watch: if `ecosystem.config.cjs` grows a new `ifleet-*` app, add it to both `scripts/deploy-m5-live.sh` (Step 5 `IFLEET_PM2_APPS`) and the rollback block above. `pm2 restart all` is forbidden on this host.
 
 ---
 
