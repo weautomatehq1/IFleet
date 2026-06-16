@@ -18,6 +18,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { parseEvents } from '../../observability/event-log.js';
+import { countPendingProposals } from '../../orchestrator/goal-proposals-store.js';
 import { readFileSync } from 'node:fs';
 
 const execFileAsync = promisify(execFile);
@@ -37,6 +38,13 @@ interface StandupData {
   pm2Restarts: number;
   pm2Uptime: string;
   blockers: string[];
+  /**
+   * Count of `goal_proposals` rows still awaiting a HITL decision
+   * (decision IS NULL). Zero means an empty queue OR KG unavailable —
+   * both render the same way (omitted from the standup) per
+   * `countPendingProposals`'s fail-open contract.
+   */
+  pendingProposals: number;
 }
 
 async function collectData(): Promise<StandupData> {
@@ -107,6 +115,10 @@ async function collectData(): Promise<StandupData> {
     // PM2 not available in dev — ignore
   }
 
+  // M5: surface pending proposals so the approver doesn't forget the queue.
+  // countPendingProposals is fail-open — KG unavailable returns 0.
+  const pendingProposals = await countPendingProposals();
+
   return {
     date: now.toISOString().slice(0, 10),
     tasksCompleted,
@@ -116,6 +128,7 @@ async function collectData(): Promise<StandupData> {
     pm2Restarts,
     pm2Uptime,
     blockers: [],
+    pendingProposals,
   };
 }
 
@@ -147,7 +160,12 @@ export function formatStandup(data: StandupData): string {
     for (const b of data.blockers) lines.push(`  ${b}`);
   }
 
-  // TODO M5+: goal_proposals queue — "N proposals queued in #ifleet-proposals"
+  if (data.pendingProposals > 0) {
+    lines.push('');
+    lines.push(
+      `**Proposer queue:** ${data.pendingProposals} pending in #ifleet-proposals`,
+    );
+  }
 
   return lines.join('\n');
 }

@@ -271,3 +271,37 @@ export async function getPastProposalsByRepo(
     return [];
   }
 }
+
+/**
+ * Count proposals still awaiting a HITL decision. Used by the daily
+ * standup to surface "N proposals queued in #ifleet-proposals" so the
+ * approver doesn't forget the queue exists.
+ *
+ * Fail-open: KG unavailable, query error, or row shape surprise all
+ * yield 0 (logged). The standup must not crash on a cold dev box where
+ * the KG migration hasn't run.
+ */
+export async function countPendingProposals(
+  pool: Pool = getKgPool(),
+): Promise<number> {
+  try {
+    const result = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM goal_proposals
+        WHERE decision IS NULL`,
+    );
+    const raw = result.rows[0]?.count;
+    if (typeof raw !== 'string') return 0;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch (err) {
+    if (err instanceof KgPostgresUnavailableError) {
+      console.warn(`[proposals-store] countPendingProposals: ${err.message}`);
+      return 0;
+    }
+    console.warn(
+      `[proposals-store] countPendingProposals failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return 0;
+  }
+}

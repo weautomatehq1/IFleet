@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
 
 import {
+  countPendingProposals,
   extractProposalIdFromIdempotencyKey,
   recordProposalDecision,
   setResultingPrOutcome,
@@ -147,4 +148,27 @@ test('Reject on an already-Approved row returns updated:false + existing_decisio
   );
   assert.equal(result.updated, false);
   assert.equal(result.existing_decision, 'approved');
+});
+
+test('countPendingProposals: returns the count from the query', async () => {
+  const { pool, calls } = makeMultiPool([{ rowCount: 1, rows: [{ count: '7' }] }]);
+  const n = await countPendingProposals(pool);
+  assert.equal(n, 7);
+  assert.match(calls[0]!.text, /goal_proposals/);
+  assert.match(calls[0]!.text, /decision IS NULL/);
+});
+
+test('countPendingProposals: returns 0 when no rows pending', async () => {
+  const { pool } = makeMultiPool([{ rowCount: 1, rows: [{ count: '0' }] }]);
+  assert.equal(await countPendingProposals(pool), 0);
+});
+
+test('countPendingProposals: returns 0 on pool error (fail-open for standup)', async () => {
+  const { pool } = makePool({ throws: true });
+  assert.equal(await countPendingProposals(pool), 0);
+});
+
+test('countPendingProposals: returns 0 when row count shape is unexpected', async () => {
+  const { pool } = makeMultiPool([{ rowCount: 0, rows: [] }]);
+  assert.equal(await countPendingProposals(pool), 0);
 });

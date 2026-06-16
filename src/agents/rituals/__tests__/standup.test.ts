@@ -10,6 +10,7 @@ const BASE = {
   pm2Restarts: 0,
   pm2Uptime: '12h0m',
   blockers: [],
+  pendingProposals: 0,
 };
 
 describe('formatStandup', () => {
@@ -60,5 +61,17 @@ describe('formatStandup', () => {
   it('shows uptime restarts when non-zero', () => {
     const out = formatStandup({ ...BASE, pm2Restarts: 2, pm2Uptime: '4h30m' });
     expect(out).toContain('2 restarts');
+  });
+
+  it('omits Proposer queue section when pendingProposals is zero', () => {
+    const out = formatStandup({ ...BASE, pendingProposals: 0 });
+    expect(out).not.toContain('Proposer queue');
+    expect(out).not.toContain('pending in #ifleet-proposals');
+  });
+
+  it('shows Proposer queue line when pendingProposals > 0', () => {
+    const out = formatStandup({ ...BASE, pendingProposals: 4 });
+    expect(out).toContain('Proposer queue');
+    expect(out).toContain('4 pending in #ifleet-proposals');
   });
 });
