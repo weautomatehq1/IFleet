@@ -155,9 +155,15 @@ step_start "pm2 restart IFleet apps only (never arca) — apps: $IFLEET_PM2_APPS
 run_ssh "pm2 restart" "pm2 restart $IFLEET_PM2_APPS --update-env"
 
 # ── Step 6: confirm cron registered ──────────────────────────────────────────
-step_start "verify ifleet-proposer cron entry"
+# `grep` returning 1 on a missing match must NOT abort the deploy — Step 6 is
+# diagnostic, not gating. Under `set -euo pipefail`, `pm2 describe | grep -i cron`
+# (no `|| true`) terminates the script if the PM2 output happens not to contain
+# the literal substring "cron" (variance across PM2 versions, or the cron field
+# rendered before the process registers). The deploy is otherwise complete by
+# this point — let Step 7 (log tail) be the human-readable confirmation.
+step_start "verify ifleet-proposer cron entry (diagnostic — non-gating)"
 echo "PM2 ifleet-proposer describe (cron field):"
-run_ssh "pm2 describe" "pm2 describe ifleet-proposer | grep -i cron"
+run_ssh "pm2 describe" "pm2 describe ifleet-proposer | grep -i cron || true"
 
 # ── Step 7: tail recent logs ──────────────────────────────────────────────────
 step_start "pm2 logs ifleet-proposer --lines 50 --nostream"
