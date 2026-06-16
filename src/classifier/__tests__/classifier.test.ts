@@ -700,3 +700,110 @@ describe('classifyTask — plan-reviewer floor derivation (M2, upgrades/02-plan-
     assert.equal(result.planReviewer?.provider, 'claude');
   });
 });
+
+describe('classifyTask — M4.6 mode×category matrix (Opus floor + warn observability)', () => {
+  // Canonical §3.2 override #1 says category ∈ {security, auth, payments,
+  // migration} → Opus regardless of severity. M4.6 extends that to
+  // "regardless of mode": when the HIGH_KEYWORDS scorer (or a category rule
+  // match) puts architect at Opus, a mode override MUST NOT demote the
+  // architect below Opus. This 4×4 matrix pins the contract end-to-end:
+  // every (mode, category) pair must keep architect=Opus AND emit the
+  // documented warn-level suppression so the precedence decision is visible
+  // in operator logs.
+  //
+  // Modes: tdd, ulw, ralph, deslop — every mode in routing.json whose
+  // architect pin is below Opus (i.e. would demote). 'standard' is omitted
+  // because its override block is empty {} — there is nothing to suppress.
+  //
+  // Category triggers: one title per canonical category that hits the
+  // HIGH_KEYWORDS scorer. 'security' / 'auth' / 'migration' also match
+  // rule 1 (architect→Opus). 'payments' is covered via 'stripe' + 'payment'
+  // — both HIGH_KEYWORDS but no rule pins payments specifically; this
+  // exercises the scorer-only trigger path. 'rls' / 'oauth' / 'encryption'
+  // / 'supabase' are HIGH_KEYWORDS too but are not in the canonical category
+  // override list, so they are out of scope for this matrix.
+
+  type ModeName = 'tdd' | 'ulw' | 'ralph' | 'deslop';
+  const MODES: ModeName[] = ['tdd', 'ulw', 'ralph', 'deslop'];
+
+  const CATEGORIES: ReadonlyArray<{ name: string; title: string }> = [
+    { name: 'security', title: 'security audit of the api boundary' },
+    { name: 'auth', title: 'fix auth middleware regression' },
+    { name: 'payments', title: 'wire up stripe payment intents' },
+    { name: 'migration', title: 'plan the migration to multi-tenant schema' },
+  ];
+
+  function captureWarn<T>(fn: () => T): { result: T; warnings: string[] } {
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+    };
+    try {
+      const result = fn();
+      return { result, warnings };
+    } finally {
+      console.warn = originalWarn;
+    }
+  }
+
+  for (const mode of MODES) {
+    for (const { name, title } of CATEGORIES) {
+      it(`mode:${mode} × ${name}: architect stays Opus and suppression warn is emitted`, () => {
+        const { result, warnings } = captureWarn(() =>
+          classifyTask({
+            title,
+            body: '',
+            labels: ['auto:ship', `mode:${mode}`],
+          }),
+        );
+        assert.equal(
+          result.architect.model,
+          'claude-opus-4-7',
+          `mode:${mode} × ${name}: architect must remain claude-opus-4-7`,
+        );
+        const suppression = warnings.find(
+          (w) =>
+            w.includes(`mode '${mode}'`) &&
+            w.includes('Opus floor') &&
+            w.includes('§3.2 override #1') &&
+            w.includes('suppressed'),
+        );
+        assert.ok(
+          suppression,
+          `mode:${mode} × ${name}: expected suppression warn citing canonical §3.2 override #1; got ${JSON.stringify(warnings)}`,
+        );
+      });
+    }
+  }
+
+  it('baseline — mode:tdd without HIGH_KEYWORDS still downshifts architect to Sonnet (no suppression warn)', () => {
+    // Confirms M4.6 only fires when the high-keyword path demands Opus.
+    // 'fix typo' carries no HIGH_KEYWORDS and no rule match → baseTier=haiku
+    // → mode:tdd's architect=sonnet pin applies normally with NO warn.
+    const { result, warnings } = captureWarn(() =>
+      classifyTask({
+        title: 'fix typo',
+        body: '',
+        labels: ['auto:ship', 'mode:tdd'],
+      }),
+    );
+    assert.equal(result.architect.model, 'claude-sonnet-4-6');
+    const suppression = warnings.find((w) => w.includes('Opus floor'));
+    assert.equal(suppression, undefined, `expected no suppression warn; got ${JSON.stringify(warnings)}`);
+  });
+
+  it('baseline — HIGH_KEYWORD ("auth") without mode still routes architect to Opus (no warn — nothing to suppress)', () => {
+    // Without a mode override there is no demotion attempt, so no warn fires.
+    const { result, warnings } = captureWarn(() =>
+      classifyTask({
+        title: 'security audit of auth middleware',
+        body: '',
+        labels: ['auto:ship'],
+      }),
+    );
+    assert.equal(result.architect.model, 'claude-opus-4-7');
+    const suppression = warnings.find((w) => w.includes('Opus floor'));
+    assert.equal(suppression, undefined, `expected no suppression warn; got ${JSON.stringify(warnings)}`);
+  });
+});
