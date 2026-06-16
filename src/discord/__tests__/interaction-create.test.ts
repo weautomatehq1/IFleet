@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscordAPIError } from 'discord.js';
+import { recordProposalDecision } from '../../orchestrator/approval-gate.js';
 import {
   buildCommandFromButton,
   buildCommandFromSlash,
@@ -708,5 +709,77 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringMatching(/proposal row was missing/),
     );
+  });
+});
+
+describe('AUDIT-IFleet-50b49e86: first-write-wins guard — handler side', () => {
+  const PROPOSALS = '9999000099990000';
+  const APPROVER = '111';
+
+  function router(): ChannelRouter {
+    return {
+      resolve: () => null,
+      list: () => [
+        {
+          channelId: '1503769258981589012',
+          repo: 'weautomatehq1/IFleet',
+          defaultBranch: 'main',
+          defaultModel: 'opus',
+          allowedUserIds: [APPROVER],
+          codeowners: [],
+          workDir: '/tmp/r',
+        },
+      ],
+    };
+  }
+
+  function button(customId: string): any {
+    return {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId,
+      channelId: PROPOSALS,
+      user: { id: APPROVER, username: 'seb' },
+      deferReply: vi.fn(async () => undefined),
+      reply: vi.fn(),
+      editReply: vi.fn(),
+    };
+  }
+
+  function cp(): ControlPlaneClient & { posted: ControlCommand[] } {
+    const posted: ControlCommand[] = [];
+    return { posted, postCommand: async (c) => { posted.push(c); return { accepted: true, taskId: 'task-xyz' }; } };
+  }
+
+  beforeEach(() => {
+    process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    proposalStoreState.getProposalForShip = vi.fn(async () => ({
+      id: 'p-dupe',
+      repo_id: 'weautomatehq1/IFleet',
+      title: 'Duplicate approve test',
+      rationale: 'r',
+    }));
+    proposalStoreState.setResultingTaskId = vi.fn(async () => ({ updated: true }));
+  });
+
+  afterEach(() => {
+    delete process.env['IFLEET_PROPOSALS_CHANNEL_ID'];
+    vi.mocked(recordProposalDecision).mockRestore();
+  });
+
+  it('proposal_approve on already-decided row replies "already decided" and does NOT call enqueueApprovedProposal', async () => {
+    vi.mocked(recordProposalDecision).mockResolvedValueOnce({
+      updated: false,
+      existing_decision: 'approved',
+    });
+    const controlPlane = cp();
+    const interaction = button('proposal_approve:p-dupe');
+    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(/already decided/i),
+    );
+    expect(controlPlane.posted).toHaveLength(0);
+    expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
   });
 });
