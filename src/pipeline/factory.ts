@@ -2,10 +2,11 @@ import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import type Database from 'better-sqlite3';
 import type { Octokit } from '@octokit/rest';
 import { buildShadowObservations } from '../agents/bandit/observations.js';
 import { KNOWN_MODEL_IDS } from '../agents/bandit/known-arms.js';
-import { recordShadowDecision } from '../agents/bandit/shadow.js';
+import { resolveRoutingModel } from '../agents/bandit/live.js';
 import { classifyTask } from '../classifier/index.js';
 import {
   decodeBridgeBrief,
@@ -26,6 +27,7 @@ import type {
   PipelineInput,
   PipelineResult,
   PrOpener,
+  RoutingDecision,
   SpawnHandle as PipelineSpawnHandle,
   SpawnOpts as PipelineSpawnOpts,
   VerifyRunner,
@@ -262,33 +264,15 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 
     const workerPool = buildWorkerPool(worker, pool);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
-    // M6-T3: persist the live routing decision + log the bandit's shadow pick.
-    // Strictly fail-open — neither the persistence write nor the shadow log
-    // is allowed to break live routing. `routing.architect.model` remains the
-    // model that runs the task; the shadow_log only records the would-be pick.
+    // M6-T3 + AUDIT-IFleet-406c8c3e: shadow-log every role AND apply the gated
+    // BANDIT_LIVE flip (a no-op while the flag is OFF — see applyBanditRouting).
+    // `setRoutingDecision` runs AFTER the flip so the persisted RoutingDecision
+    // is the model that actually runs (the live-flip result when ON, the
+    // unchanged decision when OFF).
     if (opts.taskStore) {
       const db = opts.taskStore.getDb();
+      applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
       opts.taskStore.setRoutingDecision(task.id, routing);
-      const ROLES = ['architect', 'editor', 'reviewer'] as const;
-      for (const role of ROLES) {
-        try {
-          recordShadowDecision(db, {
-            taskId: task.id,
-            repo: task.repo,
-            decidedAt: Date.now(),
-            actualModel: routing[role].model,
-            observations: buildShadowObservations(db, task.repo, role),
-            knownArms: KNOWN_MODEL_IDS,
-            role,
-          });
-        } catch (err) {
-          console.warn(
-            `[shadow] recordShadowDecision wiring failed for ${role} on task ${task.id}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      }
     }
     const abortController = new AbortController();
 
@@ -325,6 +309,66 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
   };
 
   return { factory, rebuildPool };
+}
+
+// ---------------------------------------------------------------------------
+// Bandit routing seam (M6-T3 shadow-log + AUDIT-IFleet-406c8c3e live flip)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shadow-log the bandit's would-be pick for all three roles AND apply the
+ * gated `BANDIT_LIVE` flip. Mutates `routing` IN PLACE.
+ *
+ * For each role, `resolveRoutingModel` always records the shadow decision
+ * first (so #370 shadow logging is preserved verbatim), then:
+ *   - `BANDIT_LIVE` OFF (default) ⇒ `routed.overridden === false` ⇒ `routing`
+ *     is never mutated. Behavior is byte-identical to the pre-wiring
+ *     shadow-only path: the live `classifyTask` decision still runs.
+ *   - `BANDIT_LIVE` ON ⇒ the Thompson-sampled arm is promoted to
+ *     `routing[role].model`, making the bandit's pick the actual routing
+ *     decision.
+ *
+ * Strictly fail-open: a shadow-write/sampler hiccup (`record === null`) never
+ * overrides, and a throw in one role is caught so the other roles still fire.
+ *
+ * `opts.live` overrides the env read (tests pass it for determinism); omit it
+ * in production so the `BANDIT_LIVE` env flag is the source of truth.
+ * `opts.now` injects the decision timestamp for test determinism.
+ */
+export function applyBanditRouting(
+  db: Database.Database,
+  routing: RoutingDecision,
+  task: { id: string; repo: string },
+  opts: { live?: boolean; now?: number } = {},
+): void {
+  const ROLES = ['architect', 'editor', 'reviewer'] as const;
+  for (const role of ROLES) {
+    try {
+      const routed = resolveRoutingModel(
+        db,
+        {
+          taskId: task.id,
+          repo: task.repo,
+          decidedAt: opts.now ?? Date.now(),
+          actualModel: routing[role].model,
+          observations: buildShadowObservations(db, task.repo, role),
+          knownArms: KNOWN_MODEL_IDS,
+          role,
+        },
+        opts.live === undefined ? {} : { live: opts.live },
+      );
+      // OFF ⇒ overridden is always false ⇒ no-op. ON ⇒ promote the arm.
+      if (routed.overridden) {
+        routing[role].model = routed.model;
+      }
+    } catch (err) {
+      console.warn(
+        `[shadow] resolveRoutingModel wiring failed for ${role} on task ${task.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
