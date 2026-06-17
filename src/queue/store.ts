@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   picked_at INTEGER,
   completed_at INTEGER,
   priority TEXT NOT NULL DEFAULT 'normal',
-  routing_decision TEXT
+  routing_decision TEXT,
+  mode TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo);
@@ -105,6 +106,7 @@ interface TaskRow {
   priority: string;
   attempts: number;
   routing_decision: string | null;
+  mode: string | null;
 }
 
 export interface ListFilter {
@@ -207,6 +209,16 @@ export class TaskStore {
       const message = err instanceof Error ? err.message : String(err);
       if (!/duplicate column name: routing_decision/i.test(message)) throw err;
     }
+    // mode column persists the per-task SprintMode (ralph | ulw | tdd | deslop |
+    // standard) so the classifier's mode override survives a persist→load
+    // round-trip. Nullable — pre-this-migration rows stay NULL and rowToTask
+    // maps that to undefined (AUDIT-IFleet-4a3c058d).
+    try {
+      this.db.exec(`ALTER TABLE tasks ADD COLUMN mode TEXT`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/duplicate column name: mode/i.test(message)) throw err;
+    }
     // pr_decisions table was added later; SCHEMA creates it on fresh DBs, this
     // migration covers existing DBs that pre-date the table.
     this.db.exec(`
@@ -305,9 +317,9 @@ export class TaskStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, source_kind, source_data, repo, brief, title, routing_hints,
-                            state, state_meta, idempotency_key, created_at, priority)
+                            state, state_meta, idempotency_key, created_at, priority, mode)
          VALUES (@id, @source_kind, @source_data, @repo, @brief, @title, @routing_hints,
-                 @state, @state_meta, @idempotency_key, @created_at, @priority)`,
+                 @state, @state_meta, @idempotency_key, @created_at, @priority, @mode)`,
       )
       .run({
         id: task.id,
@@ -322,6 +334,7 @@ export class TaskStore {
         idempotency_key: task.idempotencyKey,
         created_at: task.createdAt,
         priority,
+        mode: task.mode ?? null,
       });
     return { inserted: true };
   }
@@ -402,6 +415,11 @@ export class TaskStore {
         )
         .run({ now, cutoff, maxAttempts });
       // Remaining stale tasks (below cap) are reset to pending with incremented attempts.
+      // Branch ranges are complementary: the failed UPDATE above claims every stale
+      // in_flight row with attempts >= maxAttempts, this one claims attempts < maxAttempts.
+      // Together they cover the full integer range so NO stale row is ever left
+      // in_flight (the off-by-one in the old `attempts + 1 < maxAttempts` predicate
+      // stranded rows at attempts == maxAttempts - 1; AUDIT-IFleet-6a9857a0).
       const recoveredResult = this.db
         .prepare(
           `UPDATE tasks
@@ -412,7 +430,7 @@ export class TaskStore {
             WHERE state = 'in_flight'
               AND picked_at IS NOT NULL
               AND picked_at < @cutoff
-              AND attempts + 1 < @maxAttempts`,
+              AND attempts < @maxAttempts`,
         )
         .run({ now, cutoff, maxAttempts });
       return failedResult.changes + recoveredResult.changes;
@@ -785,5 +803,6 @@ function rowToTask(row: TaskRow): QueuedTask {
     routingDecision: row.routing_decision
       ? (safeJsonParse(row.routing_decision, null, `task ${row.id} routing_decision`) as RoutingDecision | null)
       : null,
+    mode: (row.mode as QueuedTask['mode']) ?? null,
   };
 }
