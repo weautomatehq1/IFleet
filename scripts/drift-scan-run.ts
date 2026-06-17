@@ -13,6 +13,8 @@
 
 import { Client, GatewayIntentBits, type TextChannel } from 'discord.js';
 
+import { planDriftPrs } from '../src/agents/drift-detector/real-pr.js';
+import type { DriftPrPlan } from '../src/agents/drift-detector/real-pr.js';
 import { runDriftScan as defaultRunDriftScan } from '../src/agents/drift-detector/scan.js';
 import type {
   DriftCandidate,
@@ -23,6 +25,12 @@ const ENABLED_ENV = 'DRIFT_SCAN_ENABLED';
 const KG_URL_ENV = 'IFLEET_KG_DATABASE_URL';
 const DISCORD_TOKEN_ENV = 'DISCORD_BOT_TOKEN';
 const REPOS_ENV = 'DRIFT_SCAN_REPOS';
+
+// M6 closure flag — OFF by default. When OFF the scan stays report-only
+// (post the digest, stop). When ON the flagged drift candidates additionally
+// route to the real candidate-PR path (one plan per source-of-truth repo).
+// Flip only after the candidate-merge-rate KPI clears ≥70%.
+const REAL_PR_ENV = 'DRIFT_REAL_PR';
 
 // Same constant as standup.ts — #ifleet.
 const IFLEET_CHANNEL_ID = '1504120127791042631';
@@ -36,6 +44,14 @@ const DEFAULT_REPOS = ['weautomatehq1/IFleet', 'weautomatehq1/factory'];
 export interface DriftScanDeps {
   runDriftScan: (opts: { repos: string[] }) => Promise<DriftScanResult>;
   postToDiscord: (message: string) => Promise<void>;
+  /**
+   * Real candidate-PR emitter. Only invoked when `DRIFT_REAL_PR` is ON and
+   * the scan produced ≥1 plan. Optional so the report-only path (and every
+   * existing caller/test) is unaffected. Per the architecture rule the
+   * default emitter does NOT call GitHub directly — it hands plans to the
+   * bridge layer (stubbed today; see `emitDriftPrsStub`).
+   */
+  emitDriftPrs?: (plans: DriftPrPlan[]) => Promise<void>;
 }
 
 function envFlag(name: string): boolean {
@@ -183,7 +199,48 @@ export async function mainWithDeps(deps: DriftScanDeps): Promise<number> {
       `[drift-scan-run] discord post failed (fail-open): ${(err as Error).message}`,
     );
   }
+
+  // ---- DRIFT_REAL_PR gated branch (OFF by default) ----------------------
+  // OFF: nothing happens here — the report-only path above is the whole
+  // behavior (byte-identical to pre-flag main). ON: route flagged drift
+  // candidates to the real candidate-PR path. Fail-open — a PR-emit hiccup
+  // must not crash the cron or trip PM2 backoff.
+  if (envFlag(REAL_PR_ENV)) {
+    const plans = planDriftPrs(result);
+    if (plans.length > 0) {
+      const emit = deps.emitDriftPrs ?? emitDriftPrsStub;
+      try {
+        await emit(plans);
+      } catch (err) {
+        console.warn(
+          `[drift-scan-run] drift-PR emit failed (fail-open): ${(err as Error).message}`,
+        );
+      }
+    } else {
+      console.warn(
+        '[drift-scan-run] DRIFT_REAL_PR on but scan produced no drift plans — nothing to open',
+      );
+    }
+  }
+
   return 0;
+}
+
+/**
+ * Default real-PR emitter. The bridge wiring (emit a candidate-PR event per
+ * plan, let the queue bridge open the PR) is a follow-up — the architecture
+ * rule forbids calling GitHub from here. Until that lands this stub logs what
+ * WOULD be opened so an operator flipping the flag sees the plans. Safe
+ * because `DRIFT_REAL_PR` defaults OFF.
+ */
+async function emitDriftPrsStub(plans: DriftPrPlan[]): Promise<void> {
+  for (const p of plans) {
+    console.warn(
+      `[drift-scan-run] DRIFT_REAL_PR would open candidate PR — source=${p.sourceRepo} ` +
+        `symbols=${p.candidates.length} targets=${p.targetRepos.join(',') || '(none)'} ` +
+        `(bridge emit not yet wired)`,
+    );
+  }
 }
 
 async function main(): Promise<void> {
