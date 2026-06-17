@@ -119,7 +119,12 @@ export function broadcastIFleet(msg: string): void {
   if (state.pendingCount >= MAX_QUEUE_DEPTH) {
     if (_outbox) {
       // Message is durably queued in SQLite — drain job will deliver it.
-      _outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated, url }));
+      // Persist WITHOUT the webhook URL+token: the secret must never live at
+      // rest in the outbox. The `channel` column ('broadcast') is the stable
+      // alias; the drain resolves it back to DISCORD_IFLEET_WEBHOOK at send
+      // time. Closes AUDIT-IFleet-b97d9070. (No fast-path send on this overflow
+      // branch, so the row legitimately stays `pending` for the drain to own.)
+      _outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated }));
       console.warn(
         `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — message persisted to outbox for drain`,
       );
@@ -135,11 +140,26 @@ export function broadcastIFleet(msg: string): void {
 
   if (_outbox) {
     const outbox = _outbox;
-    const rowId = outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated, url }));
+    // Persist WITHOUT the webhook URL+token — the secret must not live at rest
+    // in the SQLite outbox. The `channel` column ('broadcast') is the stable
+    // alias; the drain job resolves it back to DISCORD_IFLEET_WEBHOOK at send
+    // time. Closes AUDIT-IFleet-b97d9070.
+    const rowId = outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated }));
+    // Exactly-once: claim the row OUT of `pending` (single atomic UPDATE)
+    // BEFORE the fast-path send fires, so the 30s drain (WHERE state='pending')
+    // can never re-select and re-deliver a message the fast path already owns.
+    // On send success the row stays `sent`; on failure we transition it back to
+    // `pending` via markAttemptFailed so the drain retries it (and resolves the
+    // URL from env). enqueue + markSent run in the same synchronous tick, so no
+    // drain cycle can interleave and observe the row while it is `pending`.
+    // Closes AUDIT-IFleet-0d22c6e7.
+    outbox.markSent(rowId);
     setTimeout(() => {
       state.pendingCount--;
       void sendNowAsync(url, truncated).then(
-        () => outbox.markSent(rowId),
+        () => {
+          // Row already claimed as `sent` at enqueue time — nothing to do.
+        },
         (err: unknown) =>
           outbox.markAttemptFailed(rowId, err instanceof Error ? err.message : String(err)),
       );
