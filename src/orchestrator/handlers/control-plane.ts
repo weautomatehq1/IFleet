@@ -140,11 +140,25 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
         );
         return;
       }
-      // Mark as failed first so the picked-up state flips back before the
-      // architect resolves cancel — keeps the store consistent if the
-      // architect is still mid-spawn.
+      // Flip the in-flight state to a terminal cancel state first so the
+      // picked-up state resolves before the architect handles cancel — keeps
+      // the store consistent if the architect is still mid-spawn.
+      //
+      // AUDIT-IFleet-3db72bd3 / 7b13a148: a deliberate operator /cancel is NOT
+      // a pipeline failure. Recording 'failed' here polluted failure metrics
+      // and risked failure-driven retry/backoff treating an intentional stop
+      // as a crash. The TaskState enum (src/contracts/task.ts) has no
+      // 'cancelled' member and that contract is owned by another lane, so we
+      // record the existing terminal-ish 'blocked' state — which pickNext()
+      // (pending-only) and recoverStale() (in_flight-only) both leave
+      // untouched, so it is never auto-retried — and tag the meta with
+      // cancelled:true so metrics/consumers can tell a deliberate cancel apart
+      // from a capability block.
       try {
-        store.updateState(resolvedId, 'failed', { reason: reason ?? 'cancelled via control plane' });
+        store.updateState(resolvedId, 'blocked', {
+          reason: reason ?? 'cancelled via control plane',
+          cancelled: true,
+        });
       } catch {
         /* row may not exist yet */
       }
@@ -239,7 +253,12 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
         try {
           for (const unifiedId of sprintToUnified.get(sprint.id) ?? []) {
             try {
-              store.updateState(unifiedId, 'failed', { reason });
+              // AUDIT-IFleet-3db72bd3 / 7b13a148: /stop is a deliberate
+              // operator action, not a failure. Record the terminal-ish
+              // 'blocked' state with cancelled:true (see onCancel above) so an
+              // intentional fleet stop does not pollute failure metrics or
+              // trip failure-driven retry/backoff.
+              store.updateState(unifiedId, 'blocked', { reason, cancelled: true });
             } catch {
               /* unified row may already be terminal — leave it */
             }

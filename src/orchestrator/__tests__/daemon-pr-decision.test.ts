@@ -84,6 +84,7 @@ function makeAdapter(): UnifiedQueueAdapter {
   return {
     markCompleted: async () => undefined,
     markFailed: async () => undefined,
+    markCancelled: async () => undefined,
     pickNext: async () => null,
   } as unknown as UnifiedQueueAdapter;
 }
