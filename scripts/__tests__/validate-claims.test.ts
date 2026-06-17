@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 import {
   parseClaimBlocks,
   validateBlock,
@@ -9,6 +10,8 @@ import {
   normalizeLabel,
   findMarkdownFiles,
   registerClaimType,
+  isValidBaseRef,
+  changedMarkdownFiles,
 } from '../validate-claims.ts';
 import type { ClaimTypeHandler } from '../validate-claims.ts';
 
@@ -315,6 +318,60 @@ describe('validateBlock', () => {
     const block = parseClaimBlocks(docPath, md)[0]!;
     const findings = validateBlock(block, root);
     expect(findings.some((f) => f.kind === 'mismatch')).toBe(false);
+  });
+});
+
+// ─── Shell-injection hardening (AUDIT-IFleet-1bea4d5d / e2e32d03) ───────────
+
+describe('isValidBaseRef', () => {
+  it('accepts legitimate git refs', () => {
+    expect(isValidBaseRef('origin/main')).toBe(true);
+    expect(isValidBaseRef('main')).toBe(true);
+    expect(isValidBaseRef('v1.2.3')).toBe(true);
+    expect(isValidBaseRef('feature/foo-bar_baz')).toBe(true);
+    expect(isValidBaseRef('a1b2c3d')).toBe(true);
+  });
+
+  it('rejects refs carrying shell metacharacters', () => {
+    expect(isValidBaseRef('main; touch PWNED')).toBe(false);
+    expect(isValidBaseRef("x'; rm -rf .; '")).toBe(false);
+    expect(isValidBaseRef('$(rm -rf /)')).toBe(false);
+    expect(isValidBaseRef('main && echo hi')).toBe(false);
+    expect(isValidBaseRef('`id`')).toBe(false);
+    expect(isValidBaseRef('a|b')).toBe(false);
+    expect(isValidBaseRef('')).toBe(false);
+  });
+});
+
+describe('changedMarkdownFiles — no shell injection', () => {
+  it('does not execute an injected command and returns empty for a malicious --base', () => {
+    const root = mkdtempSync(join(tmpdir(), 'validate-claims-inj-'));
+    // Seed a real git repo so a *valid* base would actually run git, proving the
+    // empty result below is the rejection path, not just "git failed anyway".
+    execSync('git init -q && git config user.email t@t.t && git config user.name t', {
+      cwd: root,
+      shell: '/bin/sh',
+    });
+    writeFileSync(join(root, 'a.md'), '# hi');
+    execSync('git add -A && git commit -qm init', { cwd: root, shell: '/bin/sh' });
+
+    const sentinel = join(root, 'PWNED');
+    // If `base` were interpolated into a shell string this would create the file.
+    const malicious = `main; touch ${sentinel}`;
+    const result = changedMarkdownFiles(malicious, root);
+
+    expect(existsSync(sentinel)).toBe(false); // no shell execution
+    expect(result.size).toBe(0); // rejected before reaching git
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('command-substitution payload never runs', () => {
+    const root = mkdtempSync(join(tmpdir(), 'validate-claims-inj2-'));
+    const sentinel = join(root, 'OWNED');
+    const result = changedMarkdownFiles(`$(touch ${sentinel})`, root);
+    expect(existsSync(sentinel)).toBe(false);
+    expect(result.size).toBe(0);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 
