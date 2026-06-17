@@ -1,8 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { runProcess } from '../spawn-util.js';
+import { runProcess, verifyChildEnv } from '../spawn-util.js';
 import { OUTPUT_BUFFER_CAP_BYTES } from '../types.js';
 
 const NODE = process.execPath;
+
+// Print one env var's value to stdout from inside the child, so the test can
+// assert what the subprocess actually saw (not just what we passed).
+const PRINT_ENV = (key: string): string =>
+  `process.stdout.write(String(process.env[${JSON.stringify(key)}] ?? ''));`;
+
+const SENSITIVE_KEYS = [
+  'GITHUB_TOKEN',
+  'IFLEET_HMAC_SECRET',
+  'ANTHROPIC_API_KEY',
+  'DISCORD_BOT_TOKEN',
+] as const;
 
 /**
  * These tests exercise the real spawn path (not mocked) because the contract
@@ -88,4 +100,71 @@ describe('runProcess — real child', () => {
     expect(result.ok).toBe(false);
     expect(result.output).toContain('[spawn error]');
   }, 10_000);
+});
+
+describe('runProcess — child env is allowlisted (AUDIT-IFleet-193fb84e)', () => {
+  it('does NOT forward sensitive parent env into the child by default', async () => {
+    // Seed every sensitive key in THIS process so we prove the child env is
+    // filtered, not merely that the var happened to be unset on the runner.
+    for (const key of SENSITIVE_KEYS) process.env[key] = `secret-${key}`;
+    try {
+      for (const key of SENSITIVE_KEYS) {
+        const result = await runProcess(NODE, ['-e', PRINT_ENV(key)], {
+          cwd: process.cwd(),
+          timeoutMs: 10_000,
+          // no `env` → default minimal allowlist
+        });
+        expect(result.ok).toBe(true);
+        expect(result.output).toBe('');
+        expect(result.output).not.toContain('secret-');
+      }
+    } finally {
+      for (const key of SENSITIVE_KEYS) delete process.env[key];
+    }
+  }, 30_000);
+
+  it('still forwards PATH so the toolchain (pnpm/npx/node) resolves', async () => {
+    const result = await runProcess(NODE, ['-e', PRINT_ENV('PATH')], {
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.output.length).toBeGreaterThan(0);
+    expect(result.output).toBe(process.env.PATH ?? '');
+  }, 15_000);
+});
+
+describe('verifyChildEnv', () => {
+  it('drops every key outside the allowlist', () => {
+    const source: NodeJS.ProcessEnv = {
+      PATH: '/usr/bin',
+      HOME: '/home/x',
+      GITHUB_TOKEN: 'ghp_xxx',
+      IFLEET_HMAC_SECRET: 'hmac',
+      ANTHROPIC_API_KEY: 'sk-ant',
+      DISCORD_BOT_TOKEN: 'disc',
+      OPENAI_API_KEY: 'sk-oai',
+    };
+    const env = verifyChildEnv(source);
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.HOME).toBe('/home/x');
+    for (const key of [...SENSITIVE_KEYS, 'OPENAI_API_KEY']) {
+      expect(env[key]).toBeUndefined();
+    }
+  });
+
+  it('layers non-secret extra vars on top of the allowlist', () => {
+    const env = verifyChildEnv(
+      { PATH: '/usr/bin', GITHUB_TOKEN: 'leak' },
+      { PLAYWRIGHT_JSON_OUTPUT_NAME: '/tmp/report.json' },
+    );
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.PLAYWRIGHT_JSON_OUTPUT_NAME).toBe('/tmp/report.json');
+    expect(env.GITHUB_TOKEN).toBeUndefined();
+  });
+
+  it('extra vars win on collision with allowlisted keys', () => {
+    const env = verifyChildEnv({ NODE_ENV: 'production' }, { NODE_ENV: 'test' });
+    expect(env.NODE_ENV).toBe('test');
+  });
 });

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { runProcess } from './spawn-util.js';
+import { runProcess, verifyChildEnv } from './spawn-util.js';
 import { loadVerifyConfig } from './config-loader.js';
 import { hasPlaywrightConfig, parsePlaywrightReport } from './playwright.js';
 import type { VerifyConfig, VerifyKindResult } from './types.js';
@@ -42,12 +42,13 @@ export async function runScreenshotDiff(
   const paths = ensureScreenshotDirs(worktreePath);
   const firstRun = !existsSync(resolve(paths.baselinesDir, '.initialized'));
 
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
+  // Allowlisted child env + the screenshot-specific (non-secret) vars; never
+  // spread the full `process.env` into a worktree-script subprocess.
+  const env: NodeJS.ProcessEnv = verifyChildEnv(process.env, {
     PLAYWRIGHT_JSON_OUTPUT_NAME: paths.reportPath,
     OMC_SCREENSHOT_THRESHOLD: String(cfg.screenshot.threshold),
     OMC_SCREENSHOT_MAX_DIFF_PIXELS: String(cfg.screenshot.maxDiffPixels),
-  };
+  });
 
   const args = ['playwright', 'test', '--reporter=json'];
   if (firstRun) args.push('--update-snapshots');
