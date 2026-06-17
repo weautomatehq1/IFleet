@@ -4,6 +4,22 @@
 
 set -e
 
+# Defense in depth (AUDIT-IFleet-43254bcf): `git push` exports GIT_DIR /
+# GIT_WORK_TREE / GIT_INDEX_FILE / GIT_PREFIX / … into this hook's environment.
+# Any test that shells out to git can have its -C/cwd overridden by those vars
+# and silently mutate THIS repo (empty `init` commits, a flipped core.bare, or a
+# wiped working tree). Scrub them so child git processes resolve from cwd. The
+# per-test helper (src/testing/git-env.ts) is the primary guard; this is the
+# belt-and-suspenders layer for any test that forgets it.
+for _v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do
+  unset "$_v"
+done
+
+# Snapshot repo state so contamination is caught even if a test slips past the
+# env scrub above.
+_before_head="$(git rev-parse HEAD 2>/dev/null || echo none)"
+_before_bare="$(git config --get core.bare 2>/dev/null || echo false)"
+
 echo "→ typecheck"
 pnpm typecheck
 
@@ -12,5 +28,20 @@ pnpm lint || echo "  (lint not configured yet — skipping)"
 
 echo "→ test"
 pnpm test
+
+# Abort the push if the checks mutated this repo — fail loud rather than push a
+# contaminated tree.
+_after_head="$(git rev-parse HEAD 2>/dev/null || echo none)"
+_after_bare="$(git config --get core.bare 2>/dev/null || echo false)"
+if [ "$_before_head" != "$_after_head" ]; then
+  echo "✗ FATAL: HEAD changed during pre-push checks ($_before_head → $_after_head)." >&2
+  echo "  A test leaked git state into THIS repo. Push aborted — inspect with 'git log' and reset." >&2
+  exit 1
+fi
+if [ "$_before_bare" != "$_after_bare" ]; then
+  echo "✗ FATAL: core.bare changed during pre-push checks ($_before_bare → $_after_bare) — a test leaked git state. Push aborted." >&2
+  echo "  Recover with: git config core.bare false" >&2
+  exit 1
+fi
 
 echo "✓ pre-push checks passed"

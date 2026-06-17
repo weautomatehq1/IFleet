@@ -36,16 +36,12 @@ import {
 import { VerifierController } from '../../agents/verifier/controller';
 import { StubSandboxRunner } from '../../agents/verifier/sandbox';
 import type { InvariantRunner } from '../../agents/verifier/invariants';
+// Strips git hook env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, …) inherited
+// from `git push` so they can't override `-C`/`cwd` and land writes in the host
+// repo instead of the tmpdir. See src/testing/git-env.ts.
+import { cleanGitEnv } from '../../testing/git-env';
 
 const execFileAsync = promisify(execFile);
-
-// Strip git hook env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, …) before
-// invoking git. The pre-push hook inherits these from `git push`, and they
-// override the `-C <path>` flag's repo discovery — so `git config` writes land
-// in the host repo's .git/config instead of the tmpdir.
-const cleanGitEnv: NodeJS.ProcessEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
-);
 
 function git(args: string[]): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync('git', args, { env: cleanGitEnv });

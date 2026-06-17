@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { cleanGitEnv } from '../../../testing/git-env.js';
 import { computeStructuralFingerprint } from '../fingerprint.js';
 
 const execFileAsync = promisify(execFile);
@@ -11,13 +12,12 @@ const execFileAsync = promisify(execFile);
 async function git(cwd: string, ...args: string[]): Promise<void> {
   await execFileAsync('git', args, {
     cwd,
+    // Full GIT_* scrub so temp-repo commits don't leak into the parent repo
+    // when this test runs inside the git push hook. The previous version unset
+    // only GIT_DIR/GIT_WORK_TREE and missed GIT_INDEX_FILE (also exported by
+    // `git push`); cleanGitEnv strips every GIT_* var. See src/testing/git-env.ts.
     env: {
-      ...process.env,
-      // Unset git-dir overrides so temp-repo commits don't leak into the
-      // parent repo when this test runs inside a git push hook (GIT_DIR is
-      // set by git itself before invoking pre-push hooks).
-      GIT_DIR: undefined,
-      GIT_WORK_TREE: undefined,
+      ...cleanGitEnv,
       GIT_AUTHOR_NAME: 't2-fingerprint-test',
       GIT_AUTHOR_EMAIL: 't2@example.com',
       GIT_COMMITTER_NAME: 't2-fingerprint-test',
