@@ -5,12 +5,12 @@
 set -e
 
 echo "→ typecheck"
-npm run typecheck
+pnpm typecheck
 
 echo "→ lint"
-npm run lint || echo "  (lint not configured yet — skipping)"
+pnpm lint || echo "  (lint not configured yet — skipping)"
 
 echo "→ test"
-npm test
+pnpm test
 
 echo "✓ pre-push checks passed"
