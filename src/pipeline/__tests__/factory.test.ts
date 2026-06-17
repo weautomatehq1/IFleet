@@ -5,8 +5,12 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
-import { buildWorkerPool, FIVE_HOURS_MS, normalizeReviewers } from '../factory.js';
+import Database from 'better-sqlite3';
+import { applyBanditRouting, buildWorkerPool, FIVE_HOURS_MS, normalizeReviewers } from '../factory.js';
 import { classifyTask } from '../../classifier/index.js';
+import { readShadowDecisions } from '../../agents/bandit/shadow.js';
+import { KNOWN_MODEL_IDS } from '../../agents/bandit/known-arms.js';
+import type { RoutingDecision } from '../types.js';
 import type { AccountPool, AcquireResult } from '../../workers/account-pool.js';
 import type { WorkerConfig } from '../../orchestrator/types.js';
 import type {
@@ -61,12 +65,21 @@ describe('M6-T3: factory persists RoutingDecision and records shadow pick', () =
   // Source-level guard mirrors AUDIT-IFleet-d3e66e4a's pattern. A future
   // refactor that drops the persist+shadow step on the floor would still
   // typecheck — this assertion catches it at the call site.
-  it('factory.ts calls setRoutingDecision + recordShadowDecision after classifyTask', () => {
+  it('factory.ts calls setRoutingDecision + resolveRoutingModel after classifyTask', () => {
     const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
     expect(src).toMatch(/opts\.taskStore\.setRoutingDecision\(task\.id, routing\)/);
-    expect(src).toMatch(/recordShadowDecision\(/);
+    // AUDIT-IFleet-406c8c3e: shadow logging now flows through the live seam
+    // (resolveRoutingModel calls recordShadowDecision internally).
+    expect(src).toMatch(/resolveRoutingModel\(/);
     expect(src).toMatch(/buildShadowObservations\(/);
     expect(src).toMatch(/knownArms:\s*KNOWN_MODEL_IDS/);
+  });
+
+  it('factory.ts wires the gated BANDIT_LIVE flip — overridden ⇒ promote sampled arm', () => {
+    const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
+    // The single live mutation point: only fires when resolveRoutingModel
+    // reports an override (which is impossible while BANDIT_LIVE is OFF).
+    expect(src).toMatch(/if \(routed\.overridden\)\s*\{\s*routing\[role\]\.model = routed\.model;/);
   });
 
   it('factory.ts loops over all three roles (architect, editor, reviewer)', () => {
@@ -78,15 +91,121 @@ describe('M6-T3: factory persists RoutingDecision and records shadow pick', () =
 
   it('each role call is wrapped in its own try/catch so a single-role failure cannot skip the others', () => {
     const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
-    // The for-loop body must be a try{ recordShadowDecision } catch{ console.warn }
+    // The for-loop body must be a try{ resolveRoutingModel } catch{ console.warn }
     // so a throw in (e.g.) the editor call still lets the reviewer call fire.
     const block = src.match(
-      /for \(const role of ROLES\)\s*\{\s*try\s*\{[\s\S]*?recordShadowDecision[\s\S]*?\}\s*catch[\s\S]*?console\.warn/,
+      /for \(const role of ROLES\)\s*\{\s*try\s*\{[\s\S]*?resolveRoutingModel[\s\S]*?\}\s*catch[\s\S]*?console\.warn/,
     );
     expect(
       block,
-      'per-role try/catch around recordShadowDecision not found in factory.ts',
+      'per-role try/catch around resolveRoutingModel not found in factory.ts',
     ).not.toBeNull();
+  });
+});
+
+describe('AUDIT-IFleet-406c8c3e: applyBanditRouting wires the gated BANDIT_LIVE flip', () => {
+  // Integration-style: drive the real factory wiring (applyBanditRouting →
+  // resolveRoutingModel → recordShadowDecision) against an in-memory sqlite db
+  // and a real RoutingDecision. Proves the seam the audit flagged as dead.
+
+  function makeDb(): Database.Database {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(`
+      CREATE TABLE tasks (id TEXT PRIMARY KEY, routing_decision TEXT);
+      CREATE TABLE pr_decisions (task_id TEXT, repo TEXT, verdict TEXT);
+      CREATE TABLE routing_shadow_log (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        decided_at INTEGER NOT NULL,
+        actual_model TEXT NOT NULL,
+        shadow_model TEXT NOT NULL,
+        alpha_snapshot TEXT NOT NULL,
+        beta_snapshot TEXT NOT NULL,
+        sample_snapshot TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'architect',
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+    `);
+    db.prepare('INSERT INTO tasks (id) VALUES (?)').run('task-1');
+    return db;
+  }
+
+  // Sentinels that are NOT known arms — so a sampled arm (always ∈ KNOWN_MODEL_IDS)
+  // can never coincidentally equal them. The flip is then provable for any rng.
+  const SENTINEL = {
+    architect: '__live_architect__',
+    editor: '__live_editor__',
+    reviewer: '__live_reviewer__',
+  } as const;
+
+  function makeRouting(): RoutingDecision {
+    return {
+      architect: { provider: 'claude', model: SENTINEL.architect, workerId: 'w-a' },
+      editor: { provider: 'claude', model: SENTINEL.editor, workerId: 'w-e' },
+      reviewer: { provider: 'claude', model: SENTINEL.reviewer, workerId: 'w-r' },
+      verify: ['typecheck', 'test'],
+    };
+  }
+
+  const TASK = { id: 'task-1', repo: 'weautomatehq1/IFleet' };
+
+  it('flag OFF (default) ⇒ routing decision unchanged, but all three shadow rows are still written', () => {
+    const db = makeDb();
+    const routing = makeRouting();
+
+    applyBanditRouting(db, routing, TASK, { live: false, now: 1_700_000_000_000 });
+
+    // Live decision byte-identical to classifyTask's output.
+    expect(routing.architect.model).toBe(SENTINEL.architect);
+    expect(routing.editor.model).toBe(SENTINEL.editor);
+    expect(routing.reviewer.model).toBe(SENTINEL.reviewer);
+
+    // Shadow logging preserved — one row per role.
+    const rows = readShadowDecisions(db);
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((r) => r.role))).toEqual(new Set(['architect', 'editor', 'reviewer']));
+    // Each row records the ORIGINAL live decision as actual_model.
+    for (const r of rows) {
+      expect(r.actualModel).toBe(SENTINEL[r.role]);
+    }
+  });
+
+  it('flag ON ⇒ each role.model becomes its Thompson-sampled arm (a known arm), shadow row keeps the original', () => {
+    const db = makeDb();
+    const routing = makeRouting();
+
+    applyBanditRouting(db, routing, TASK, { live: true, now: 1_700_000_000_000 });
+
+    // Every role flipped to a real known arm — the sentinel is gone.
+    for (const role of ['architect', 'editor', 'reviewer'] as const) {
+      expect(routing[role].model).not.toBe(SENTINEL[role]);
+      expect(KNOWN_MODEL_IDS).toContain(routing[role].model);
+    }
+
+    // Shadow rows still record the original live decision for analytics, and
+    // shadow_model == the model we flipped to.
+    const rows = readShadowDecisions(db);
+    expect(rows).toHaveLength(3);
+    for (const r of rows) {
+      expect(r.actualModel).toBe(SENTINEL[r.role]);
+      expect(r.shadowModel).toBe(routing[r.role].model);
+    }
+  });
+
+  it('fail-open: a shadow-write failure for one role never overrides AND does not skip the others', () => {
+    // pr_decisions table dropped → buildShadowObservations throws for every
+    // role; the per-role try/catch must swallow it and leave routing untouched.
+    const db = makeDb();
+    db.exec('DROP TABLE pr_decisions;');
+    const routing = makeRouting();
+
+    applyBanditRouting(db, routing, TASK, { live: true, now: 1_700_000_000_000 });
+
+    expect(routing.architect.model).toBe(SENTINEL.architect);
+    expect(routing.editor.model).toBe(SENTINEL.editor);
+    expect(routing.reviewer.model).toBe(SENTINEL.reviewer);
   });
 });
 
