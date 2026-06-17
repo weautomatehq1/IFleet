@@ -195,6 +195,62 @@ describe('TaskStore', () => {
     }
   });
 
+  // AUDIT-IFleet-6a9857a0: the old predicates (`attempts >= maxAttempts` to fail,
+  // `attempts + 1 < maxAttempts` to requeue) left a gap at `attempts == maxAttempts - 1`
+  // — that row matched NEITHER branch and was stranded in_flight forever. These tests
+  // pin the boundary: every stale row must transition (to pending or failed), never stay.
+  it('recoverStale requeues a stale row at attempts == maxAttempts - 1 (never left in_flight)', async () => {
+    const prevMax = process.env['IFLEET_MAX_ATTEMPTS'];
+    process.env['IFLEET_MAX_ATTEMPTS'] = '3';
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const t = fakeGithubTask({ idempotencyKey: 'boundary-below' });
+      store.insert(t);
+      store.updateState(t.id, 'in_flight');
+      // Force attempts to maxAttempts - 1 (= 2) — the value that used to fall through.
+      store.getDb().prepare(`UPDATE tasks SET attempts = 2 WHERE id = @id`).run({ id: t.id });
+
+      // maxAgeMs of 0 → any in_flight row whose picked_at is strictly in the past qualifies.
+      await new Promise((r) => setTimeout(r, 5));
+      const moved = store.recoverStale(0);
+      assert.equal(moved, 1, 'the boundary row must be counted as recovered');
+      const got = store.getById(t.id)!;
+      assert.equal(got.state, 'pending', 'attempts == maxAttempts-1 must requeue, not stay in_flight');
+      store.close();
+    } finally {
+      cleanup();
+      if (prevMax === undefined) delete process.env['IFLEET_MAX_ATTEMPTS'];
+      else process.env['IFLEET_MAX_ATTEMPTS'] = prevMax;
+    }
+  });
+
+  it('recoverStale dead-letters a stale row at attempts == maxAttempts (never left in_flight)', async () => {
+    const prevMax = process.env['IFLEET_MAX_ATTEMPTS'];
+    process.env['IFLEET_MAX_ATTEMPTS'] = '3';
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const t = fakeGithubTask({ idempotencyKey: 'boundary-at' });
+      store.insert(t);
+      store.updateState(t.id, 'in_flight');
+      // attempts == maxAttempts (= 3) → the cap is hit, must fail.
+      store.getDb().prepare(`UPDATE tasks SET attempts = 3 WHERE id = @id`).run({ id: t.id });
+
+      await new Promise((r) => setTimeout(r, 5));
+      const moved = store.recoverStale(0);
+      assert.equal(moved, 1, 'the capped row must be counted as failed');
+      const got = store.getById(t.id)!;
+      assert.equal(got.state, 'failed', 'attempts == maxAttempts must dead-letter, not stay in_flight');
+      assert.equal((got.stateMeta as { reason: string }).reason, 'max-attempts');
+      store.close();
+    } finally {
+      cleanup();
+      if (prevMax === undefined) delete process.env['IFLEET_MAX_ATTEMPTS'];
+      else process.env['IFLEET_MAX_ATTEMPTS'] = prevMax;
+    }
+  });
+
   it('recoverStale leaves fresh in_flight rows alone', async () => {
     const { path, cleanup } = tmpDb();
     try {
@@ -378,6 +434,26 @@ describe('TaskStore', () => {
 
       const round = store.getById(task.id)!;
       assert.deepEqual(round.routingDecision, decision);
+      store.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('insert→load round-trips task.mode (AUDIT-IFleet-4a3c058d)', () => {
+    const { path, cleanup } = tmpDb();
+    try {
+      const store = new TaskStore(path);
+      const task = fakeGithubTask({ idempotencyKey: 'mode-rt-1', mode: 'ralph' });
+      store.insert(task);
+
+      const got = store.getById(task.id)!;
+      assert.equal(got.mode, 'ralph', 'mode must survive a persist→load round-trip');
+
+      // A task with no mode reads back as null (not undefined-via-missing-column).
+      const plain = fakeGithubTask({ idempotencyKey: 'mode-rt-2' });
+      store.insert(plain);
+      assert.equal(store.getById(plain.id)!.mode, null, 'absent mode round-trips to null');
       store.close();
     } finally {
       cleanup();
