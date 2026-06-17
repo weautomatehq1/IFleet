@@ -1,4 +1,6 @@
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DiscordOutbox } from '../discord-outbox.js';
 
 // ---------------------------------------------------------------------------
 // Module mock — intercept node:https and node:http requests at the module
@@ -18,7 +20,9 @@ vi.mock('node:https', () => ({
     mockHttpRequest(opts, cb);
     const fakeReq = makeFakeReq();
     // Call the response callback with a fake res that has .resume()
-    if (typeof cb === 'function') cb({ resume: () => {} });
+    // statusCode 200 so sendNowAsync (outbox fast path) resolves; sendNow
+    // (non-outbox path) ignores statusCode, so existing tests are unaffected.
+    if (typeof cb === 'function') cb({ resume: () => {}, statusCode: 200 });
     return fakeReq;
   },
 }));
@@ -26,13 +30,17 @@ vi.mock('node:http', () => ({
   request: (opts: unknown, cb: unknown) => {
     mockHttpRequest(opts, cb);
     const fakeReq = makeFakeReq();
-    if (typeof cb === 'function') cb({ resume: () => {} });
+    // statusCode 200 so sendNowAsync (outbox fast path) resolves; sendNow
+    // (non-outbox path) ignores statusCode, so existing tests are unaffected.
+    if (typeof cb === 'function') cb({ resume: () => {}, statusCode: 200 });
     return fakeReq;
   },
 }));
 
 // Import AFTER mock declaration
-const { broadcastIFleet, __resetBroadcastStateForTests } = await import('../discord-broadcast.js');
+const { broadcastIFleet, setDiscordOutbox, __resetBroadcastStateForTests } = await import(
+  '../discord-broadcast.js'
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -241,5 +249,143 @@ describe('broadcastIFleet — queue depth cap', () => {
     expect(mockHttpRequest).toHaveBeenCalledTimes(51);
 
     warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Durable outbox — credential not at rest (AUDIT-IFleet-b97d9070)
+// + exactly-once delivery under concurrent fast-path + drain
+// (AUDIT-IFleet-0d22c6e7)
+// ---------------------------------------------------------------------------
+
+describe('broadcastIFleet — durable outbox security + exactly-once', () => {
+  // Webhook URL whose token segment is a unique, searchable secret.
+  const SECRET_TOKEN = 'sUpErSecRetToken_DEADBEEF';
+  const SECRET_WEBHOOK_URL = `https://discord.com/api/webhooks/9999/${SECRET_TOKEN}`;
+
+  let db: Database.Database;
+  let outbox: DiscordOutbox;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    outbox = new DiscordOutbox(db);
+    setDiscordOutbox(outbox);
+    process.env['DISCORD_IFLEET_WEBHOOK'] = SECRET_WEBHOOK_URL;
+  });
+
+  afterEach(() => {
+    setDiscordOutbox(null);
+    db.close();
+  });
+
+  it('never persists the webhook token in any outbox row body', () => {
+    broadcastIFleet('credential check');
+
+    const rows = db
+      .prepare('SELECT payload FROM discord_outbox')
+      .all() as Array<{ payload: string }>;
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.payload).not.toContain(SECRET_TOKEN);
+      expect(row.payload).not.toContain('discord.com');
+      // Payload still carries the message content for the drain to deliver.
+      expect(JSON.parse(row.payload)).toMatchObject({ content: 'credential check' });
+    }
+  });
+
+  it('persists no token even on the queue-overflow (drain-owned) branch', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Fill the in-memory queue to MAX_QUEUE_DEPTH (50), then one more to hit
+    // the overflow branch that enqueues straight to the outbox.
+    for (let i = 0; i < 51; i++) broadcastIFleet(`overflow-${i}`);
+
+    const rows = db
+      .prepare('SELECT payload FROM discord_outbox')
+      .all() as Array<{ payload: string }>;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.payload).not.toContain(SECRET_TOKEN);
+    }
+    vi.runAllTimers();
+    warnSpy.mockRestore();
+  });
+
+  it('delivers exactly once under concurrent fast-path send + drain', async () => {
+    // Count drain-path deliveries separately from fast-path HTTP deliveries.
+    let drainDeliveries = 0;
+    const drain = () =>
+      outbox.drainOnce({
+        send: async () => {
+          drainDeliveries++;
+        },
+      });
+
+    broadcastIFleet('exactly once');
+
+    // The row is claimed (markSent) synchronously at enqueue time, so a drain
+    // that races the still-scheduled fast-path send finds nothing pending.
+    let res = await drain();
+    expect(res.sent).toBe(0);
+    expect(drainDeliveries).toBe(0);
+
+    // Fire the fast-path send (the single real delivery).
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+
+    // A drain after a successful fast-path send still finds nothing pending.
+    res = await drain();
+    expect(res.sent).toBe(0);
+    expect(drainDeliveries).toBe(0);
+
+    // Total deliveries across both paths == 1.
+    expect(mockHttpRequest.mock.calls.length + drainDeliveries).toBe(1);
+
+    // Row ended in the terminal `sent` state.
+    const row = db
+      .prepare('SELECT state FROM discord_outbox')
+      .get() as { state: string };
+    expect(row.state).toBe('sent');
+  });
+
+  it('re-pends for the drain (still one net delivery) when the fast-path send fails', async () => {
+    let drainDeliveries = 0;
+    const drain = () =>
+      outbox.drainOnce({
+        send: async () => {
+          drainDeliveries++;
+        },
+      });
+
+    // Force the fast-path send to fail: a malformed URL makes `new URL(url)`
+    // inside sendNowAsync throw, so the promise rejects → markAttemptFailed
+    // re-pends the row for the drain. (The webhook is read fresh on each send,
+    // so overriding the env after enqueue still drives the send path.)
+    process.env['DISCORD_IFLEET_WEBHOOK'] = 'not a valid url';
+
+    broadcastIFleet('retry path');
+
+    // Claimed synchronously → not pending while the fast-path send is in flight.
+    let pending = db
+      .prepare("SELECT COUNT(*) AS n FROM discord_outbox WHERE state = 'pending'")
+      .get() as { n: number };
+    expect(pending.n).toBe(0);
+
+    // Fire the (failing) fast-path send → row transitions back to pending.
+    await vi.advanceTimersByTimeAsync(1);
+    pending = db
+      .prepare("SELECT COUNT(*) AS n FROM discord_outbox WHERE state = 'pending'")
+      .get() as { n: number };
+    expect(pending.n).toBe(1);
+
+    // The drain now legitimately delivers the message exactly once.
+    const res = await drain();
+    expect(res.sent).toBe(1);
+    expect(drainDeliveries).toBe(1);
+
+    // A second drain finds nothing — no duplicate.
+    const res2 = await drain();
+    expect(res2.sent).toBe(0);
+    expect(drainDeliveries).toBe(1);
   });
 });
