@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { cleanGitEnv } from '../../testing/git-env.js';
 import { FileChannelRouter } from '../router.js';
 import { GitRepoManager } from '../manager.js';
 import { RepoHealthChecker } from '../health.js';
@@ -13,9 +14,9 @@ let bareRepo: string;
 let channelsPath: string;
 
 function git(cwd: string, ...args: string[]): void {
-  // Strip git hook env vars so spawned processes use cwd for repo discovery.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
-  const res = spawnSync('git', args, { cwd, stdio: 'pipe', env });
+  // cleanGitEnv strips inherited GIT_* so spawned git uses cwd for repo
+  // discovery, not the host repo via the pre-push hook. See src/testing/git-env.ts.
+  const res = spawnSync('git', args, { cwd, stdio: 'pipe', env: cleanGitEnv });
   if (res.status !== 0) throw new Error(`git ${args.join(' ')}: ${res.stderr.toString()}`);
 }
 

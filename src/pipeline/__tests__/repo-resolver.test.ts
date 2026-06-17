@@ -22,6 +22,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
+import { cleanGitEnv } from '../../testing/git-env.js';
 import { makeProductionFactory, type RepoResolver, type ResolvedRepo } from '../factory.js';
 import { encodeBridgeBrief } from '../../orchestrator/pipeline-bridge.js';
 import type { QueuedTask as UnifiedQueuedTask } from '../../contracts/task.js';
@@ -140,10 +141,17 @@ describe('makeProductionFactory — cross-repo dispatch refusal (AUDIT-IFleet-61
 describe('makeProductionFactory — M6-T3 shadow wiring', () => {
   function initGitRepo(): string {
     const repoRoot = mkdtempSync(join(tmpdir(), 'm6-fakerepo-'));
-    execFileSync('git', ['init', '-q', '-b', 'main', repoRoot]);
-    execFileSync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
-    execFileSync('git', ['-C', repoRoot, 'config', 'user.name', 'test']);
-    execFileSync('git', ['-C', repoRoot, 'commit', '--allow-empty', '-q', '-m', 'init']);
+    // cleanGitEnv strips inherited GIT_* so these calls can't be redirected onto
+    // the host repo by the husky pre-push hook's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE
+    // (this is the test that produced the empty `init` commits — AUDIT-IFleet-43254bcf
+    // follow-up). Identity comes from the local `git config` below, so the scratch
+    // GIT_CONFIG_GLOBAL form is intentionally NOT used here: repoRoot is the work
+    // tree and a .gitconfig inside it could be picked up by `git add` in code under test.
+    const env = cleanGitEnv;
+    execFileSync('git', ['init', '-q', '-b', 'main', repoRoot], { env });
+    execFileSync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com'], { env });
+    execFileSync('git', ['-C', repoRoot, 'config', 'user.name', 'test'], { env });
+    execFileSync('git', ['-C', repoRoot, 'commit', '--allow-empty', '-q', '-m', 'init'], { env });
     return repoRoot;
   }
 

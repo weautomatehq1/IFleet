@@ -40,17 +40,14 @@ import type { OrchestratorEvent, SprintId } from '../types.js';
 import type { QueuedTask } from '../../contracts/task.js';
 import type { UnifiedQueueAdapter } from '../../queue/unified-adapter.js';
 import type { Orchestrator } from '../index.js';
+// AUDIT-IFleet-43254bcf — strip every GIT_* env var inherited from the host
+// process before spawning git (the pre-push hook inherits GIT_DIR /
+// GIT_WORK_TREE / GIT_INDEX_FILE from `git push`; without scrubbing, a tmpdir's
+// `git init` writes land in the host repo — empty `init` commits, a flipped
+// core.bare, or a wiped tree). See src/testing/git-env.ts.
+import { cleanGitEnv, isolatedGitEnv } from '../../testing/git-env.js';
 
 const execFileAsync = promisify(execFile);
-
-// AUDIT-IFleet-43254bcf — strip every GIT_* env var inherited from the host
-// process before spawning git. The pre-push hook inherits GIT_DIR /
-// GIT_WORK_TREE / GIT_INDEX_FILE / etc. from `git push`; without scrubbing,
-// the tmpdir's `git init` writes land in the host repo's `.git/config`
-// (which is exactly how the parent repo's `core.bare` was flipped to `true`).
-const cleanGitEnv: NodeJS.ProcessEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
-);
 
 // ---------------------------------------------------------------------------
 // Minimal mock types
@@ -133,22 +130,12 @@ async function makeFixture(): Promise<Fixture> {
   const repoRoot = join(workdir, 'repo');
 
   // AUDIT-IFleet-43254bcf — isolate every git invocation from the host repo:
-  //   - cleanGitEnv strips inherited GIT_* (incl. those set by the husky hook)
-  //   - GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM point at scratch paths so the
-  //     test never touches ~/.gitconfig or /etc/gitconfig
-  //   - GIT_DIR / GIT_WORK_TREE are NOT pre-set here because `git init <path>`
-  //     creates the repo at <path>/.git and inherited values would clash;
-  //     the explicit `cwd: repoRoot` on every subsequent call scopes resolution
-  //     to the tmpdir.
-  const gitEnv = {
-    ...cleanGitEnv,
-    GIT_AUTHOR_NAME: 'test',
-    GIT_AUTHOR_EMAIL: 'test@example.com',
-    GIT_COMMITTER_NAME: 'test',
-    GIT_COMMITTER_EMAIL: 'test@example.com',
-    GIT_CONFIG_GLOBAL: join(workdir, '.gitconfig'),
-    GIT_CONFIG_SYSTEM: '/dev/null',
-  };
+  // strips inherited GIT_*, pins author/committer identity, and points
+  // GIT_CONFIG_GLOBAL/SYSTEM at scratch paths so the test never touches
+  // ~/.gitconfig or /etc/gitconfig. GIT_DIR/GIT_WORK_TREE are intentionally not
+  // pre-set (would clash with `git init <path>`); the explicit `cwd: repoRoot`
+  // scopes resolution to the tmpdir. See src/testing/git-env.ts.
+  const gitEnv = isolatedGitEnv(workdir);
   const opts = { cwd: repoRoot, env: gitEnv };
 
   await execFileAsync('git', ['init', '-q', '-b', 'main', repoRoot], { env: gitEnv });
