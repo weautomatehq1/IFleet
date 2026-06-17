@@ -1,6 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { GitHubQueue, THROTTLE_MAX_RETRIES, isAuthorAllowed, shouldRetryRateLimit } from '../github.js';
+import {
+  GitHubQueue,
+  THROTTLE_MAX_RETRIES,
+  allowAllAuthorsOptIn,
+  isAuthorAllowed,
+  shouldRetryRateLimit,
+} from '../github.js';
 import type { QueuedTask } from '../types.js';
 import {
   COOLDOWN_MS,
@@ -170,7 +176,11 @@ function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
   };
 }
 
-const REPO = { owner: 'weautomatehq1', name: 'IFleet' };
+// Carries an allowlist so the fail-closed author gate (AUDIT-00e80e02) doesn't
+// drop these issues; the lifecycle/priority tests here are not exercising the
+// gate, so the issues they enqueue use an author that is on the allowlist.
+const REPO = { owner: 'weautomatehq1', name: 'IFleet', allowedAuthors: ['monstersebas1'] };
+const ALLOWED_AUTHOR = { login: 'monstersebas1' };
 
 function makeQueue(state: MockState, now = () => Date.parse('2026-05-12T12:00:00Z')): GitHubQueue {
   return new GitHubQueue(mockOctokit(state) as never, { repos: [REPO], now });
@@ -225,6 +235,7 @@ describe('GitHubQueue.pickNext', () => {
         created_at: '2026-05-01T00:00:00Z',
         html_url: 'u1',
         node_id: 'n1',
+        user: ALLOWED_AUTHOR,
       },
       {
         number: 2,
@@ -233,6 +244,7 @@ describe('GitHubQueue.pickNext', () => {
         created_at: '2026-05-05T00:00:00Z',
         html_url: 'u2',
         node_id: 'n2',
+        user: ALLOWED_AUTHOR,
       },
       {
         number: 3,
@@ -241,6 +253,7 @@ describe('GitHubQueue.pickNext', () => {
         created_at: '2026-04-01T00:00:00Z',
         html_url: 'u3',
         node_id: 'n3',
+        user: ALLOWED_AUTHOR,
       },
     ]);
     const q = makeQueue(state);
@@ -486,13 +499,37 @@ describe('isAuthorAllowed', () => {
     assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice'] }, ''), false);
   });
 
-  it('permits everyone in legacy mode (allowlist undefined)', () => {
-    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, 'anyone'), true);
-    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, ''), true);
+  it('denies everyone when the allowlist is undefined (fail-closed default)', () => {
+    // No opt-in passed → uses the env-driven default, which is off in the test env.
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, 'anyone'), false);
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, ''), false);
   });
 
-  it('permits everyone when allowlist is an empty array (legacy mode)', () => {
-    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: [] }, 'anyone'), true);
+  it('denies everyone when the allowlist is an empty array (fail-closed default)', () => {
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: [] }, 'anyone'), false);
+  });
+
+  it('restores allow-all on an unconfigured allowlist only when opted in', () => {
+    // Deliberate opt-in (third arg) flips the empty/undefined allowlist back to allow-all.
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r' }, 'anyone', true), true);
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: [] }, 'anyone', true), true);
+    // Opt-in does NOT widen a configured allowlist — listed authors still gate.
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice'] }, 'mallory', true), false);
+    assert.equal(isAuthorAllowed({ owner: 'o', name: 'r', allowedAuthors: ['alice'] }, 'alice', true), true);
+  });
+});
+
+describe('allowAllAuthorsOptIn', () => {
+  it('is off by default and for unset/empty/other values', () => {
+    assert.equal(allowAllAuthorsOptIn({}), false);
+    assert.equal(allowAllAuthorsOptIn({ IFLEET_ALLOW_ALL_AUTHORS: '' }), false);
+    assert.equal(allowAllAuthorsOptIn({ IFLEET_ALLOW_ALL_AUTHORS: '0' }), false);
+    assert.equal(allowAllAuthorsOptIn({ IFLEET_ALLOW_ALL_AUTHORS: 'yes' }), false);
+  });
+
+  it('is on for the deliberate "1" / "true" opt-in', () => {
+    assert.equal(allowAllAuthorsOptIn({ IFLEET_ALLOW_ALL_AUTHORS: '1' }), true);
+    assert.equal(allowAllAuthorsOptIn({ IFLEET_ALLOW_ALL_AUTHORS: 'true' }), true);
   });
 });
 
