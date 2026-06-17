@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { runProcess } from './spawn-util.js';
+import { runProcess, verifyChildEnv } from './spawn-util.js';
 import { loadVerifyConfig } from './config-loader.js';
 import type { VerifyConfig, VerifyKindResult } from './types.js';
 
@@ -165,7 +165,8 @@ export async function runPlaywright(
     {
       cwd: worktreePath,
       timeoutMs: cfg.timeouts.playwright,
-      env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath },
+      // Allowlisted child env + the report-path var only; no secret inherit.
+      env: verifyChildEnv(process.env, { PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath }),
     },
   );
 
