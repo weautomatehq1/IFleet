@@ -8,12 +8,65 @@ import {
   type SpawnOpts,
   type WorkerAdapter,
   type WorkerEvent,
+  type WorkerResult,
 } from './types.ts';
+
+// Process-env *allowlist* for the `codex` subprocess. Without this the child
+// inherited the full parent `process.env` (GITHUB_TOKEN, DISCORD_BOT_TOKEN,
+// IFLEET_HMAC_SECRET, ANTHROPIC_API_KEY, …), so a prompt-injected codex run
+// could exfiltrate every secret by simply echoing it. Mirrors
+// `claudeChildEnv()` in `claude-env.ts`; `git` subprocesses in
+// `src/repos/manager.ts` still get the real env on a different code path.
+// CODEX_HOME points at the codex config/auth dir (default ~/.codex), where the
+// ChatGPT-login credential lives — that's the auth codex actually needs, so no
+// API key is required in the common case. (AUDIT-IFleet-046c37f4)
+const CODEX_ENV_ALLOWLIST = [
+  'HOME',
+  'PATH',
+  'USER',
+  'LOGNAME',
+  'NODE_ENV',
+  'LANG',
+  'LC_ALL',
+  'CODEX_HOME',
+] as const;
+
+export interface CodexChildEnvOptions {
+  /**
+   * Pass true only when codex is authenticated via OPENAI_API_KEY rather than
+   * the ChatGPT login stored under CODEX_HOME (~/.codex). The IFleet default is
+   * subscription/ChatGPT auth, which does NOT need the key — omitting it from
+   * the child env closes the prompt-injection exfiltration vector.
+   */
+  includeApiKey?: boolean;
+}
+
+/**
+ * Build the scoped child env for a `codex` subprocess. Only allowlisted keys
+ * are forwarded; every secret outside the allowlist is dropped.
+ */
+export function codexChildEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  opts: CodexChildEnvOptions = {},
+): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const key of CODEX_ENV_ALLOWLIST) {
+    const value = source[key];
+    if (typeof value === 'string') out[key] = value;
+  }
+  if (opts.includeApiKey) {
+    const apiKey = source['OPENAI_API_KEY'];
+    if (typeof apiKey === 'string') out['OPENAI_API_KEY'] = apiKey;
+  }
+  return out;
+}
 
 export interface CodexAdapterOptions {
   binary?: string;
   spawnImpl?: SpawnLike;
   tmpRoot?: string;
+  /** Forward OPENAI_API_KEY into the codex child env (default: false). */
+  includeApiKey?: boolean;
 }
 
 export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): WorkerAdapter {
@@ -29,17 +82,71 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
 
       let threadId = '';
       let progressBuffer = '';
+      // Terminal signals observed on the event stream. `finalize()` used to
+      // hardcode `ok: true`, so a rate-limited or errored codex run was
+      // reported as success and silently dropped instead of being re-queued /
+      // routed to the blocked path. Track them and classify the result.
+      // (AUDIT-IFleet-fcec2264)
+      let sawRateLimit = false;
+      let sawError = false;
+      let errorMessage = '';
+
+      const readFinalAndCleanup = (): string => {
+        let finalText = progressBuffer;
+        try {
+          finalText = readFileSync(lastMessagePath, 'utf8');
+        } catch {
+          // tmpfile may not exist if run ended early
+        }
+        try {
+          rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+          // best effort
+        }
+        return finalText;
+      };
+
+      const classifyResult = (durationMs: number): WorkerResult => {
+        const text = readFinalAndCleanup();
+        if (sawRateLimit) {
+          // A rate limit / transient server error is NOT a failed task — the
+          // pipeline should re-queue it for a later window (mandatory rule 5).
+          return { ok: false, text, sessionId: threadId, durationMs, rateLimited: true };
+        }
+        if (sawError) {
+          // Hard error (auth, billing, invalid request, …). Surface the codex
+          // message as `text` so the operator/queue sees why it failed.
+          return {
+            ok: false,
+            text: errorMessage !== '' ? errorMessage : text,
+            sessionId: threadId,
+            durationMs,
+          };
+        }
+        return { ok: true, text, sessionId: threadId, durationMs };
+      };
 
       const handle = runStreaming({
         command: binary,
         args,
         cwd: opts.workingDir,
+        env: codexChildEnv(process.env, { includeApiKey: adapterOpts.includeApiKey ?? false }),
         signal: opts.signal,
         spawnImpl: adapterOpts.spawnImpl,
         parseLine: (line, emit) => {
           const evt = safeJsonParse(line);
           if (evt === undefined) return;
-          parseCodexEvent(evt, emit, {
+          // Observe terminal events as they are emitted so finalize/classifyExit
+          // can downgrade a non-clean run from the old hardcoded ok:true.
+          parseCodexEvent(evt, (e) => {
+            if (e.kind === 'rate_limit') {
+              sawRateLimit = true;
+            } else if (e.kind === 'error') {
+              sawError = true;
+              if (errorMessage === '') errorMessage = e.message;
+            }
+            emit(e);
+          }, {
             onThreadId: (id) => {
               if (threadId === '') threadId = id;
             },
@@ -48,24 +155,14 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
             },
           });
         },
-        finalize: ({ startedAt, endedAt }) => {
-          let finalText = progressBuffer;
-          try {
-            finalText = readFileSync(lastMessagePath, 'utf8');
-          } catch {
-            // tmpfile may not exist if run ended early
-          }
-          try {
-            rmSync(tmpDir, { recursive: true, force: true });
-          } catch {
-            // best effort
-          }
-          return {
-            ok: true,
-            text: finalText,
-            sessionId: threadId,
-            durationMs: endedAt - startedAt,
-          };
+        finalize: ({ startedAt, endedAt }) => classifyResult(endedAt - startedAt),
+        // Codex can emit a rate-limit / server-error event and then exit
+        // non-zero. Reclassify that as a result (ok:false, rateLimited) so the
+        // pipeline re-queues instead of treating it as a crash. A non-zero exit
+        // with no terminal event observed is a genuine crash → return undefined.
+        classifyExit: ({ startedAt, endedAt }) => {
+          if (!sawRateLimit && !sawError) return undefined;
+          return classifyResult(endedAt - startedAt);
         },
       });
 
