@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     frozen_at: new Date().toISOString(),
   }));
 
-  writeFileSync('.ifleet/eval/eval-set.jsonl', frozen.map(r => JSON.stringify(r)).join('\n'));
+  writeFileSync('.ifleet/eval/eval-set.jsonl', frozen.map(r => JSON.stringify(r)).join('\n') + '\n');
   console.log(`✓ Frozen ${frozen.length} rows to .ifleet/eval/eval-set.jsonl`);
   console.log(`\nBreakdown by repo:`);
   const byRepo: Record<string, number> = {};
