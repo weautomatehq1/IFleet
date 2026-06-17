@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { formatMessage, mainWithDeps } from '../drift-scan-run.js';
+import type { DriftPrPlan } from '../../src/agents/drift-detector/real-pr.js';
 import type {
   DriftCandidate,
   DriftScanResult,
@@ -32,6 +33,7 @@ beforeEach(() => {
   delete process.env.DRIFT_SCAN_ENABLED;
   delete process.env.DRIFT_SCAN_REPOS;
   delete process.env.IFLEET_KG_DATABASE_URL;
+  delete process.env.DRIFT_REAL_PR;
 });
 
 afterEach(() => {
@@ -229,5 +231,79 @@ describe('mainWithDeps — execution', () => {
     }
     expect(postToDiscord).toHaveBeenCalledTimes(1);
     expect(warns.some((w) => /discord post failed/.test(w))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mainWithDeps — DRIFT_REAL_PR flag (default OFF)
+// ---------------------------------------------------------------------------
+
+describe('mainWithDeps — DRIFT_REAL_PR flag', () => {
+  beforeEach(() => {
+    setEnv({
+      DRIFT_SCAN_ENABLED: '1',
+      IFLEET_KG_DATABASE_URL: 'postgres://kg',
+    });
+  });
+
+  it('(a) flag OFF (default) ⇒ report-only: emitDriftPrs is NOT called even with drift candidates', async () => {
+    // DRIFT_REAL_PR is left unset by the outer beforeEach.
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    const code = await mainWithDeps({ runDriftScan, postToDiscord, emitDriftPrs });
+
+    expect(code).toBe(0);
+    expect(postToDiscord).toHaveBeenCalledTimes(1); // report path unchanged
+    expect(emitDriftPrs).not.toHaveBeenCalled(); // real-PR path NOT taken
+  });
+
+  it('(b) flag ON ⇒ real-PR path: emitDriftPrs is invoked with the planned PRs', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    const code = await mainWithDeps({ runDriftScan, postToDiscord, emitDriftPrs });
+
+    expect(code).toBe(0);
+    expect(postToDiscord).toHaveBeenCalledTimes(1); // report still posted
+    expect(emitDriftPrs).toHaveBeenCalledTimes(1); // real-PR path taken
+    const plans = emitDriftPrs.mock.calls[0]![0];
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.sourceRepo).toBe('weautomatehq1/IFleet');
+    expect(plans[0]!.targetRepos).toEqual(['weautomatehq1/factory']);
+  });
+
+  it('flag ON but no candidates ⇒ emitDriftPrs not called (nothing to open)', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const runDriftScan = vi.fn(async () => result({ candidates: [] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    await mainWithDeps({ runDriftScan, postToDiscord, emitDriftPrs });
+
+    expect(emitDriftPrs).not.toHaveBeenCalled();
+  });
+
+  it('flag ON + emitDriftPrs throws ⇒ does NOT propagate (fail-open), still exits 0', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async () => {
+      throw new Error('bridge unavailable');
+    });
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: unknown) => warns.push(String(msg));
+    try {
+      const code = await mainWithDeps({ runDriftScan, postToDiscord, emitDriftPrs });
+      expect(code).toBe(0);
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(emitDriftPrs).toHaveBeenCalledTimes(1);
+    expect(warns.some((w) => /drift-PR emit failed/.test(w))).toBe(true);
   });
 });
