@@ -211,7 +211,43 @@ function mapPipelineResult(
     spawnResult.error = result.failureReason ?? result.status;
   }
   if (result.totalTokens) spawnResult.totalTokens = result.totalTokens;
+  const totalCostUsd = sumAttemptCost(result);
+  // Preserve zero-vs-missing: only set the field when a cost was actually
+  // reported. A genuine 0 (all reporting workers were free) is propagated;
+  // "no worker reported cost" stays undefined so SprintManager treats it as
+  // unknown rather than free.
+  if (totalCostUsd !== undefined) spawnResult.totalCostUsd = totalCostUsd;
   return spawnResult;
+}
+
+/**
+ * Aggregate the per-attempt USD cost for a pipeline run, preserving the
+ * "zero vs missing" distinction. {@link PipelineResult} has no top-level cost
+ * field today (only `totalTokens`), so the real spend lives on each
+ * {@link AttemptRecord.totalCostUsd}, populated from the worker's
+ * `SpawnResult.totalCostUsd`. Returns `undefined` when NO attempt reported a
+ * cost (workers like Codex don't surface USD — treat as "unknown", not "free")
+ * and the sum of the reported values otherwise — which may be a genuine `0`.
+ *
+ * Without this, `mapPipelineResult` left `SpawnResult.totalCostUsd` undefined,
+ * so `SprintManager.accumulateCost` (sprint.ts) never advanced the running
+ * total and the `BUDGET_USD` cap could never fire. Closes
+ * AUDIT-IFleet-25b947c4 / AUDIT-IFleet-9e154efd.
+ */
+function sumAttemptCost(result: PipelineResult): number | undefined {
+  // Future-proofing: honour an aggregate field if the pipeline ever sets one
+  // on PipelineResult directly (mirrors how `totalTokens` is surfaced).
+  const aggregate = (result as { totalCostUsd?: number }).totalCostUsd;
+  if (typeof aggregate === 'number') return aggregate;
+  let sum = 0;
+  let sawCost = false;
+  for (const attempt of result.attempts) {
+    if (typeof attempt.totalCostUsd === 'number') {
+      sawCost = true;
+      sum += attempt.totalCostUsd;
+    }
+  }
+  return sawCost ? sum : undefined;
 }
 
 function statusToExitCode(status: PipelineResult['status']): number {

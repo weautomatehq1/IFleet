@@ -8,6 +8,7 @@ import {
   type PipelineRunnerFactory,
 } from '../pipeline-bridge';
 import type {
+  AttemptRecord,
   PipelineInput,
   PipelineResult,
   PipelineRunner,
@@ -218,6 +219,107 @@ test('decodeBridgeBrief returns undefined when task is missing required fields',
   // valid task should decode successfully
   const valid = makeTask();
   assert.deepEqual(decodeBridgeBrief(JSON.stringify({ kind: 'ifleet.pipeline.v1', task: valid })), valid);
+});
+
+// AUDIT-IFleet-25b947c4 / -9e154efd: totalCostUsd must flow through the bridge
+// so SprintManager's BUDGET_USD cap can fire. mapPipelineResult previously
+// copied totalTokens but never totalCostUsd, leaving sprint spend stuck at 0.
+
+function makeAttempt(overrides: Partial<AttemptRecord> = {}): AttemptRecord {
+  return {
+    role: 'editor',
+    workerId: 'w1',
+    startedAt: 0,
+    endedAt: 1,
+    ok: true,
+    output: '',
+    rateLimitHits: 0,
+    ...overrides,
+  };
+}
+
+test('PipelineBridge sums per-attempt cost into SpawnResult.totalCostUsd', async () => {
+  const factory: PipelineRunnerFactory = async () =>
+    makeBootstrap({
+      status: 'pr_opened',
+      prUrl: 'https://x/1',
+      attempts: [
+        makeAttempt({ role: 'architect', totalCostUsd: 0.5 }),
+        makeAttempt({ role: 'editor', totalCostUsd: 1.25 }),
+        makeAttempt({ role: 'reviewer', totalCostUsd: 0.25 }),
+      ],
+    });
+  const bridge = new PipelineBridge(factory);
+  const handle = await bridge.spawn(newTaskId('cost-1'), 'brief', {});
+  const result = await handle.done;
+  assert.equal(result.totalCostUsd, 2.0);
+});
+
+test('PipelineBridge leaves totalCostUsd undefined when no attempt reports cost', async () => {
+  // Codex-style workers surface no USD; the mapped result must stay "unknown",
+  // not coerce to 0 (which would let a free run advance budget by nothing while
+  // masking that cost data was missing).
+  const factory: PipelineRunnerFactory = async () =>
+    makeBootstrap({
+      status: 'pr_opened',
+      prUrl: 'https://x/1',
+      attempts: [makeAttempt({ totalTokens: 1000 })],
+    });
+  const bridge = new PipelineBridge(factory);
+  const handle = await bridge.spawn(newTaskId('cost-2'), 'brief', {});
+  const result = await handle.done;
+  assert.equal(result.totalCostUsd, undefined);
+});
+
+test('PipelineBridge preserves a genuine zero cost (not collapsed to undefined)', async () => {
+  const factory: PipelineRunnerFactory = async () =>
+    makeBootstrap({
+      status: 'pr_opened',
+      prUrl: 'https://x/1',
+      attempts: [makeAttempt({ totalCostUsd: 0 })],
+    });
+  const bridge = new PipelineBridge(factory);
+  const handle = await bridge.spawn(newTaskId('cost-3'), 'brief', {});
+  const result = await handle.done;
+  assert.equal(result.totalCostUsd, 0);
+});
+
+// Budget-cap behaviour: model SprintManager.accumulateCost over the mapped
+// SpawnResult. Asserts the cap CANNOT trip when cost is omitted (the bug) and
+// DOES trip once cost is wired through (the fix). Mirrors sprint.ts:436-450.
+test('BUDGET_USD cap cannot fire when bridge omits cost, fires once wired', async () => {
+  function accumulate(spend: number, costUsd: number | undefined): number {
+    if (!costUsd) return spend; // mirrors SprintManager.accumulateCost
+    return spend + costUsd;
+  }
+  const capUsd = 2.0;
+  const capFires = (spend: number) => spend >= capUsd;
+
+  // Bug repro: build a result whose attempts carry cost but pretend the bridge
+  // never propagated it (the pre-fix behaviour). Cap can never trip.
+  let spend = 0;
+  for (let i = 0; i < 5; i++) {
+    spend = accumulate(spend, undefined); // pre-fix: totalCostUsd undefined
+  }
+  assert.equal(capFires(spend), false, 'cap cannot fire while cost is omitted');
+
+  // Fixed behaviour: the real bridge now carries totalCostUsd, so summing
+  // across runs crosses the cap.
+  const factory: PipelineRunnerFactory = async () =>
+    makeBootstrap({
+      status: 'pr_opened',
+      prUrl: 'https://x/1',
+      attempts: [makeAttempt({ totalCostUsd: 1.5 })],
+    });
+  const bridge = new PipelineBridge(factory);
+  spend = 0;
+  for (let i = 0; i < 2; i++) {
+    const handle = await bridge.spawn(newTaskId('budget-' + i), 'brief', {});
+    const mapped = await handle.done;
+    spend = accumulate(spend, mapped.totalCostUsd);
+  }
+  assert.equal(spend, 3.0);
+  assert.equal(capFires(spend), true, 'cap fires once cost is wired through');
 });
 
 // Item 8: warn when abortController is absent from bootstrap
