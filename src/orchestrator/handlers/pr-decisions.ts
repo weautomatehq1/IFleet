@@ -11,7 +11,7 @@ import { broadcastIFleet } from '../../observability/discord-broadcast.js';
 import { DiscordOutAdapter } from '../../observability/discord-output.js';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from '../pipeline-bridge.js';
 import { decodeBridgeBrief } from '../pipeline-bridge.js';
-import type { PipelineEvent } from '../../pipeline/types.js';
+import type { PipelineEvent, PrOpener } from '../../pipeline/types.js';
 import { StateStore } from '../store.js';
 import { TaskStore } from '../../queue/store.js';
 import { ControlPlaneApprovalGate } from '../approval-gate.js';
@@ -26,6 +26,18 @@ interface TaskContextRecord {
   branch: string;
   worktreePath: string;
   sha?: string;
+  // Per-task bridge handle for opening PRs. This is the SAME PrOpener the
+  // normal pipeline uses (factory's buildPrOpener: `git push -u origin` +
+  // `gh pr create`). handleForcePr routes the operator force-PR through this
+  // seam instead of shelling git + calling Octokit inline, so the orchestrator
+  // handler never touches GitHub directly (load-bearing architecture rule).
+  // AUDIT-IFleet-1b3a9906 / 4cd45bea. Captured at bootstrap in
+  // wrapFactoryWithVerifierContext; absent only in synthetic test setups.
+  pr?: PrOpener;
+  // Configured base branch for this repo (channels.json `defaultBranch`,
+  // surfaced as PipelineInput.baseBranch). Replaces the hardcoded `base:'main'`
+  // in the force-PR path. AUDIT-IFleet-4cd45bea.
+  baseBranch?: string;
   // M4-T6: cached structural fingerprint computed at teardown time, while
   // the worktree still exists. Read at sprint.completed/failed/cancelled
   // event time (after the worktree is gone). `null` means compute was
@@ -104,6 +116,12 @@ export function wrapFactoryWithVerifierContext(
           repoUrl: `https://github.com/${task.repo}`,
           branch: titleToBranchName(task.issueNumber, task.title),
           worktreePath: bootstrap.input.worktreePath,
+          // Stash the bridge PR-opener + configured base branch so a later
+          // /force-pr can open the PR through the same bridge the normal
+          // pipeline uses (no inline git/Octokit in the handler).
+          // AUDIT-IFleet-1b3a9906 / 4cd45bea.
+          pr: bootstrap.input.pr,
+          ...(bootstrap.input.baseBranch ? { baseBranch: bootstrap.input.baseBranch } : {}),
         },
         task.id,
       );
@@ -148,38 +166,64 @@ export function wrapFactoryWithVerifierContext(
 }
 
 /**
- * Dependencies for {@link handleForcePr}. `execFile` and `broadcast` default
- * to the module-level production wiring; tests inject stubs.
+ * Dependencies for {@link handleForcePr}. `broadcast` defaults to the
+ * module-level production wiring; tests inject a stub.
+ *
+ * The actual GitHub interaction (push + PR creation) is NOT a dependency here:
+ * it flows through the per-task {@link PrOpener} bridge handle captured on the
+ * {@link TaskContextRegistry} at bootstrap. `octokit` is retained as an
+ * optional, UNUSED field purely so the existing daemon wiring
+ * (handlers/control-plane.ts) keeps compiling without an out-of-lane edit —
+ * the handler no longer calls it. Slated for removal when that wiring drops
+ * the arg. AUDIT-IFleet-1b3a9906 / 4cd45bea.
  */
 export interface ForcePrDeps {
   store: TaskStore;
   orchestratorStore: StateStore;
   unifiedToSprintId: Map<string, SprintId>;
   verifierCtx: TaskContextRegistry;
-  octokit: Pick<Octokit, 'rest'>;
-  execFile?: typeof execFileAsync;
+  /** @deprecated unused — force-PR now routes through the PrOpener bridge. */
+  octokit?: Pick<Octokit, 'rest'>;
   broadcast?: (msg: string) => void;
 }
 
-type ForcePrPushOutcome = 'success' | 'already-up-to-date' | 'failed';
+/**
+ * Reject branch / base refs that are empty, contain whitespace, or could be
+ * mis-parsed as a CLI flag (leading `-`). Even though the bridge uses argv-style
+ * git/gh (no shell interpolation), a ref like `--upload-pack=…` smuggled in as a
+ * branch name would still be consumed as an option. AUDIT-IFleet-4cd45bea.
+ */
+function isSafeGitRef(ref: string | undefined): ref is string {
+  if (typeof ref !== 'string') return false;
+  const trimmed = ref.trim();
+  if (trimmed.length === 0 || trimmed.length > 255) return false;
+  if (trimmed.startsWith('-')) return false;
+  if (/\s/.test(trimmed)) return false;
+  // git refname grammar (loosened): forbid the characters git itself rejects.
+  if (/[~^:?*\[\\]/.test(trimmed) || trimmed.includes('..')) return false;
+  return true;
+}
 
 /**
  * Operator override handler. Logs the deliberate verifier bypass into the
- * events table, pushes the task's branch to origin, and opens a PR via the
- * Octokit client.
+ * events table, then opens the task's PR through the per-task {@link PrOpener}
+ * bridge — the SAME seam the normal pipeline uses (push + PR creation behind
+ * one abstraction). The orchestrator handler NEVER shells git or calls Octokit
+ * directly: that would couple sprint logic to GitHub and violate the
+ * load-bearing architecture rule. AUDIT-IFleet-1b3a9906 / 4cd45bea.
  *
- * Push outcomes (AUDIT-IFleet-c9d0e1f2):
- *   - success: branch pushed, proceed to pulls.create
- *   - already-up-to-date: branch already at this SHA on origin (benign,
- *     git exits 0 with "Everything up-to-date"), proceed to pulls.create
- *   - failed: real push error (auth, network, branch protection, worktree
- *     gone) — abort the force-PR and tell the operator via broadcastIFleet.
- *     Do NOT call pulls.create, which would emit a misleading "PR may
- *     already exist" message when the real cause is upstream of PR creation
- *     entirely.
+ * Failure handling (carries over AUDIT-IFleet-c9d0e1f2's intent):
+ *   - The bridge opener pushes BEFORE creating the PR, so a push failure
+ *     structurally prevents PR creation — no misleading "PR may already
+ *     exist" message when the real cause is upstream.
+ *   - "already exists" errors are benign (branch already has an open PR):
+ *     logged quietly, no operator alarm.
+ *   - Any other open() failure (auth, network, branch protection, worktree
+ *     gone) aborts loudly: a `verifier.force_pr_aborted` audit row plus an
+ *     operator broadcast with recovery guidance.
  *
- * Extracted from the inline onForcePr callback so the push-outcome branches
- * can be exercised in unit tests without booting the daemon.
+ * Extracted from the inline onForcePr callback so the branches can be exercised
+ * in unit tests without booting the daemon.
  */
 export async function handleForcePr(
   taskId: string,
@@ -191,8 +235,6 @@ export async function handleForcePr(
     orchestratorStore,
     unifiedToSprintId,
     verifierCtx,
-    octokit,
-    execFile = execFileAsync,
     broadcast = broadcastIFleet,
   } = deps;
   let sprintId: SprintId | undefined;
@@ -235,45 +277,65 @@ export async function handleForcePr(
       );
       return;
     }
+    // Resolve the per-task bridge opener. Without it (synthetic setup, or a
+    // teardown race that cleared the record) we can log the audit event but
+    // cannot open a PR without reaching for GitHub directly — which the
+    // architecture rule forbids. Warn and stop. AUDIT-IFleet-1b3a9906.
+    const prOpener = ctx.pr;
+    if (!prOpener) {
+      console.warn(
+        `[daemon] onForcePr(${taskId}): no PrOpener bridge handle in TaskContextRegistry — audit event logged but PR not opened`,
+      );
+      return;
+    }
+    // Base branch is the repo's configured default (channels.json), not a
+    // hardcoded 'main'. AUDIT-IFleet-4cd45bea.
+    const baseBranch = ctx.baseBranch ?? 'main';
+    // Validate refs before handing them to the bridge (which shells argv-style
+    // git/gh). AUDIT-IFleet-4cd45bea.
+    if (!isSafeGitRef(ctx.branch) || !isSafeGitRef(baseBranch)) {
+      console.warn(
+        `[daemon] onForcePr(${taskId}): unsafe branch/base ref (head=${JSON.stringify(ctx.branch)}, base=${JSON.stringify(baseBranch)}) — PR not opened`,
+      );
+      return;
+    }
     const title = unified?.title ?? `Force-PR for ${taskId}`;
     const body =
       `Force-PR override dispatched via Discord.\n\n` +
       `- Task: \`${taskId}\`\n` +
       `- Reason: \`${(reason ?? '(none)').replace(/`/g, "'")}\`\n` +
       `- Verifier status: \`failed\` (deliberate operator bypass)\n`;
-    // Push the branch first — onForcePr can fire from a failed-verifier
-    // worktree that the normal PR path never reached, so origin may not
-    // have the head yet. Three outcomes:
-    //   - success: branch pushed, proceed to pulls.create
-    //   - already-up-to-date: branch already at this SHA on origin (benign),
-    //     proceed to pulls.create
-    //   - failed: real push error (auth, network, branch protection, worktree
-    //     gone) — abort the force-PR and tell the operator. Do NOT call
-    //     pulls.create, which would emit a misleading "PR may already exist"
-    //     message when the real cause is upstream of PR creation entirely.
-    // (AUDIT-IFleet-c9d0e1f2 closed by this change.)
-    let pushOutcome: ForcePrPushOutcome = 'success';
-    let pushErrorMessage = '';
+    // Route through the bridge. PrOpener.open() pushes the branch FIRST, then
+    // opens the PR — so a push failure structurally prevents PR creation, and
+    // there's no misleading "PR may already exist" when the real cause is the
+    // push (the intent of AUDIT-IFleet-c9d0e1f2 carries over). The orchestrator
+    // handler itself never touches git or GitHub. AUDIT-IFleet-1b3a9906.
     try {
-      const { stdout, stderr } = await execFile(
-        'git',
-        ['push', '-u', 'origin', ctx.branch],
-        { cwd: ctx.worktreePath },
-      );
-      if (
-        /Everything up-to-date/i.test(stderr ?? '') ||
-        /Everything up-to-date/i.test(stdout ?? '')
-      ) {
-        pushOutcome = 'already-up-to-date';
+      await prOpener.open({
+        repo: repoSlug,
+        headBranch: ctx.branch,
+        baseBranch,
+        title,
+        body,
+        issueNumber: 0,
+        reviewers: [],
+      });
+    } catch (openErr) {
+      const openErrorMessage = openErr instanceof Error ? openErr.message : String(openErr);
+      // "already exists" is benign: the branch already has an open PR. Log
+      // quietly and stop — no operator alarm (matches the old pulls.create
+      // PR-already-exists path).
+      if (/already exists/i.test(openErrorMessage)) {
+        console.warn(
+          `[daemon] onForcePr(${taskId}): bridge open() — PR already exists: ${openErrorMessage}`,
+        );
+        return;
       }
-    } catch (pushErr) {
-      pushOutcome = 'failed';
-      pushErrorMessage = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      // Any other failure (auth, network, branch protection, worktree gone)
+      // aborts loudly: audit row + operator broadcast with recovery guidance.
       console.warn(
-        `[daemon] onForcePr(${taskId}): git push failed, aborting force-PR: ${pushErrorMessage}`,
+        `[daemon] onForcePr(${taskId}): bridge open() failed, aborting force-PR: ${openErrorMessage}`,
       );
-    }
-    if (pushOutcome === 'failed') {
       if (sprintId) {
         try {
           orchestratorStore.appendEvent({
@@ -281,42 +343,22 @@ export async function handleForcePr(
             sprintId,
             taskId: taskId as TaskId,
             kind: 'verifier.force_pr_aborted',
-            payload: { reason: reason ?? null, cause: 'push_failed', error: pushErrorMessage },
+            payload: { reason: reason ?? null, cause: 'bridge_open_failed', error: openErrorMessage },
           });
         } catch (err) {
           console.warn('[daemon] onForcePr abort event append failed:', err);
         }
       }
       const abortMsg =
-        `⛔ /force-pr ABORTED — \`${taskId}\` — \`git push origin ${ctx.branch}\` failed; PR NOT opened. ` +
+        `⛔ /force-pr ABORTED — \`${taskId}\` — opening PR for \`${ctx.branch}\` failed; PR NOT opened. ` +
         `Reason: \`${(reason ?? '(none)').replace(/`/g, "'")}\`. ` +
         `Recovery: investigate push failure (auth, network, branch protection, worktree state), then retry /force-pr if appropriate. ` +
-        `Push error: ${pushErrorMessage || '(no message)'}`;
+        `Push error: ${openErrorMessage || '(no message)'}`;
       try {
         broadcast(abortMsg);
       } catch (err) {
         console.warn('[daemon] onForcePr abort broadcast failed:', err);
       }
-      return;
-    }
-    // Use the existing Octokit client (already authenticated with
-    // GITHUB_TOKEN) instead of shelling to `gh`, which isn't installed on
-    // the VPS daemon image. AUDIT-IFleet-63347c06.
-    try {
-      await octokit.rest.pulls.create({
-        owner,
-        repo,
-        base: 'main',
-        head: ctx.branch,
-        title,
-        body,
-      });
-    } catch (err) {
-      console.warn(
-        `[daemon] onForcePr(${taskId}): pulls.create failed (PR may already exist): ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
     }
   } catch (err) {
     console.warn('[daemon] onForcePr append failed:', err);
