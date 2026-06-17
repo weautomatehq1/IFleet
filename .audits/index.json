@@ -1,13 +1,14 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-13T04:18:34Z",
-  "open_findings": 14,
+  "last_updated": "2026-06-16T20:45:00Z",
+  "open_findings": 15,
   "fixed_this_run": 8,
   "by_severity": {
     "CRITICAL": 8,
-    "IMPORTANT": 5,
-    "COSMETIC": 1
+    "IMPORTANT": 7
   },
+  "reconciled_at": "2026-06-16T20:45:00Z",
+  "reconciliation_note": "Reconciled 2026-06-16 against global closed store (~/.claude/audits/IFleet/closed.json, last_updated 2026-06-16T19:28:16Z, 0 open) and filesystem HEAD (branch splittasks/20260616-2043-ifleet-next-loop/t4). Original header was wrong: open_findings:14, by_severity:{C:8,I:5,COSMETIC:1}. Actual status:open entries: 15 (8C+7I). COSMETIC:1 was a scan artifact; no COSMETIC entry carries status:open. Cross-check result: NONE of the 15 open findings have matching closure records in the global store — sequential IDs (a1b2c3d4…d6e7f8b1) were assigned by the nightly scan script and do not appear in global closed.json by finding_id, fingerprint, or file_globs+title. Code inspection at HEAD confirmed all 15 described issues still present. All 15 remain open per task step-4 rule: do not force-close unresolved work.",
   "findings": [
     {
       "id": "AUDIT-IFleet-e1044724",
@@ -294,7 +295,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json (checked by finding_id, fingerprint, file_globs). Code check 2026-06-16: src/workers/codex.ts has no env allowlist; createCodexAdapter does not pass env: to runStreaming. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-b2c3d4f5",
@@ -308,7 +311,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: finalize() in codex.ts (lines ~51-68) returns { ok: true } unconditionally. rate_limit event handling exists in the streaming path but does not affect finalize return value. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-c3d4e5f6",
@@ -322,7 +327,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: github.ts line 69 still returns true for empty allowedAuthors. A warning log was added (lines ~123-128) but fail-open behavior is unchanged. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-d4e5f6a7",
@@ -336,7 +343,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: pr-decisions.ts still imports Octokit at line 7 and calls octokit.rest.pulls.create at line ~306 directly inside the handler. Architecture violation persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-e5f6a7b8",
@@ -350,7 +359,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: grep for 'totalCostUsd' in pipeline-bridge.ts returns nothing. mapPipelineResult does not set totalCostUsd. M6 commits (PRs #354/#362/#370) touched this file for shadow routing, not cost propagation. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-f6a7b8c9",
@@ -364,7 +375,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: nginx/langfuse.conf location / has no IP allowlist or HTTP basic auth. Hardening headers present but access control absent. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-a7b8c9d0",
@@ -378,7 +391,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: discord-broadcast.ts lines ~122 and ~138 call outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated, url })) where url is the live webhook URL from process.env. Credential is still persisted to SQLite. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-b8c9d0e1",
@@ -392,7 +407,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: discord-broadcast.ts lines ~138-145 enqueue the row then sendNowAsync via setTimeout; markSent called only in async callback. Drain running between enqueue and markSent would double-deliver. Race persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-c9d0e1f2",
@@ -406,7 +423,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: spawn-util.ts line 30 still has `env: opts.env ?? process.env`. No callers pass an env allowlist. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-d0e1f2a3",
@@ -420,7 +439,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: recoverStale SQL confirmed — failed gate: `attempts >= @maxAttempts`; recovered gate: `attempts + 1 < @maxAttempts`. A task with attempts==maxAttempts-1 satisfies neither and stays in_flight forever. Off-by-one persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-f2a3b4c5",
@@ -434,7 +455,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: store.ts has no mode column definition, no INSERT binding for mode, no rowToTask mapping for mode. PR #367 fixed classifier routing for mode but not store persistence. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-a3b4c5d6",
@@ -448,7 +471,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: sprint.ts line ~311 completion gate uses `this.running.size === 0` (global). A per-sprint `sprintHasRunning` was added for the rate-limit path only; completion gate is unchanged. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-b4c5d6e7",
@@ -462,7 +487,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: control-plane.ts line ~147 onCancel calls store.updateState(resolvedId, 'failed'); line ~242 onStop calls store.updateState(unifiedId, 'failed'). Deliberate cancels record as failed. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-c5d6e7f8",
@@ -476,7 +503,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: validate-claims.ts line ~593 still uses execSync(`git diff --name-only ${base}...HEAD -- '*.md'`) with string interpolation. Issue persists at HEAD."
     },
     {
       "id": "AUDIT-IFleet-d6e7f8b1",
@@ -490,7 +519,9 @@
       "status": "open",
       "opened_at": "2026-06-13T04:00:00Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "reconciliation_status": "still-open",
+      "reconciliation_evidence": "No closure record in global closed.json. Code check 2026-06-16: .husky/pre-push still runs `npm run typecheck`, `npm run lint`, `npm test`. Repo packageManager is pnpm@10.33.2. Issue persists at HEAD."
     }
   ]
 }
