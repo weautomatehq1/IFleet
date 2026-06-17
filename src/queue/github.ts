@@ -57,16 +57,40 @@ export function shouldRetryRateLimit(
 }
 
 /**
+ * True when the operator has DELIBERATELY opted into accepting `auto:ship`
+ * issues from any author via `IFLEET_ALLOW_ALL_AUTHORS=1` (or `=true`). This is
+ * the only escape hatch out of the fail-closed default below and must never be
+ * set on a public repo — the worker spawns `claude -p --permission-mode auto`
+ * on the issue body, so allow-all means any GitHub user can drive the runner.
+ *
+ * `env` is injectable so the wiring can be unit-tested without mutating the
+ * real process environment.
+ */
+export function allowAllAuthorsOptIn(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = env.IFLEET_ALLOW_ALL_AUTHORS;
+  return v === '1' || v === 'true';
+}
+
+/**
  * Decide whether `author` may open `auto:ship` issues for `repo`. Pure
  * function exported so the wiring can be unit-tested.
  *
- * Returns `true` when the author is in `repo.allowedAuthors`. When the repo
- * has no allowlist (undefined or empty array), the function returns `true`
- * for backwards compatibility — the queue itself logs a one-time warning at
- * construction so the operator notices.
+ * Returns `true` when the author is in `repo.allowedAuthors`.
+ *
+ * FAIL-CLOSED: when the repo has no allowlist (undefined or empty array) the
+ * function returns `false` (deny) — an unconfigured author gate on a PUBLIC,
+ * branch-protected repo must not fall open, because the worker runs
+ * `claude -p --permission-mode auto` on the issue body. The only way to restore
+ * allow-all is the deliberate `IFLEET_ALLOW_ALL_AUTHORS=1` opt-in, surfaced via
+ * the `allowAll` argument (defaults to {@link allowAllAuthorsOptIn}). The queue
+ * also announces an unconfigured allowlist with a loud warning at construction.
  */
-export function isAuthorAllowed(repo: RepoRef, author: string): boolean {
-  if (!repo.allowedAuthors || repo.allowedAuthors.length === 0) return true;
+export function isAuthorAllowed(
+  repo: RepoRef,
+  author: string,
+  allowAll: boolean = allowAllAuthorsOptIn(),
+): boolean {
+  if (!repo.allowedAuthors || repo.allowedAuthors.length === 0) return allowAll;
   return repo.allowedAuthors.includes(author);
 }
 
@@ -119,13 +143,23 @@ export class GitHubQueue implements QueueAdapter {
     this.repos = opts.repos;
     this.pollIntervalMs = opts.pollIntervalMs ?? 30_000;
     this.now = opts.now ?? Date.now;
+    const allowAll = allowAllAuthorsOptIn();
     for (const repo of this.repos) {
-      if (!repo.allowedAuthors || repo.allowedAuthors.length === 0) {
+      if (repo.allowedAuthors && repo.allowedAuthors.length > 0) continue;
+      if (allowAll) {
         console.warn(
-          `[queue] WARNING: ${repo.owner}/${repo.name} has no allowedAuthors configured. ` +
-            `Issues from any author will be picked. This is INSECURE for public repos because ` +
-            `the worker spawns "claude -p --permission-mode auto" on the issue body. ` +
-            `Set "allowedAuthors": ["<github-login>", ...] in config/repos.json.`,
+          `[queue] WARNING: ${repo.owner}/${repo.name} has no allowedAuthors but ` +
+            `IFLEET_ALLOW_ALL_AUTHORS is set — accepting "auto:ship" issues from ANY author. ` +
+            `This is INSECURE for public repos because the worker spawns ` +
+            `"claude -p --permission-mode auto" on the issue body. Configure ` +
+            `"allowedAuthors": ["<github-login>", ...] in config/repos.json and unset the override.`,
+        );
+      } else {
+        console.warn(
+          `[queue] ${repo.owner}/${repo.name} has no allowedAuthors configured — ` +
+            `DENYING all "auto:ship" issues (fail-closed). Set ` +
+            `"allowedAuthors": ["<github-login>", ...] in config/repos.json, or set ` +
+            `IFLEET_ALLOW_ALL_AUTHORS=1 to deliberately accept every author (INSECURE for public repos).`,
         );
       }
     }
