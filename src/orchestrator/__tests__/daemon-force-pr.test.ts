@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { handleForcePr, TaskContextRegistry } from '../daemon.js';
 import type { ForcePrDeps } from '../daemon.js';
+import { isSafeGitRef } from '../handlers/pr-decisions.js';
 import { StateStore } from '../store.js';
 import { TaskStore } from '../../queue/store.js';
 import type { PrOpener, OpenPrInput } from '../../pipeline/types.js';
@@ -276,4 +277,63 @@ test('handleForcePr — missing bridge handle → audit row logged, open() never
   } finally {
     fx.cleanup();
   }
+});
+
+// ---------------------------------------------------------------------------
+// isSafeGitRef — unit tests (AUDIT-IFleet-4cd45bea hardening)
+// ---------------------------------------------------------------------------
+
+test('isSafeGitRef — accepts valid refs', () => {
+  assert.ok(isSafeGitRef('main'), 'main');
+  assert.ok(isSafeGitRef('develop'), 'develop');
+  assert.ok(isSafeGitRef('release/v2'), 'release/v2');
+  assert.ok(isSafeGitRef('feat/force-pr-test'), 'feat/force-pr-test');
+  assert.ok(isSafeGitRef('release-1.2.3'), 'release-1.2.3');
+});
+
+test('isSafeGitRef — rejects .lock suffix on final component', () => {
+  assert.equal(isSafeGitRef('foo.lock'), false, 'foo.lock');
+  assert.equal(isSafeGitRef('refs/heads/x.lock'), false, 'refs/heads/x.lock');
+});
+
+test('isSafeGitRef — rejects .lock on non-final component (contains .lock/)', () => {
+  assert.equal(isSafeGitRef('refs/heads.lock/main'), false, 'refs/heads.lock/main');
+});
+
+test('isSafeGitRef — rejects trailing dot', () => {
+  assert.equal(isSafeGitRef('foo.'), false, 'foo.');
+});
+
+test('isSafeGitRef — rejects leading dot', () => {
+  assert.equal(isSafeGitRef('.foo'), false, '.foo');
+});
+
+test('isSafeGitRef — rejects component beginning with dot', () => {
+  assert.equal(isSafeGitRef('foo/.bar'), false, 'foo/.bar');
+});
+
+test('isSafeGitRef — rejects leading slash', () => {
+  assert.equal(isSafeGitRef('/foo'), false, '/foo');
+});
+
+test('isSafeGitRef — rejects trailing slash', () => {
+  assert.equal(isSafeGitRef('foo/'), false, 'foo/');
+});
+
+test('isSafeGitRef — rejects consecutive slashes', () => {
+  assert.equal(isSafeGitRef('foo//bar'), false, 'foo//bar');
+});
+
+test('isSafeGitRef — rejects @{ sequence', () => {
+  assert.equal(isSafeGitRef('foo@{1}'), false, 'foo@{1}');
+});
+
+test('isSafeGitRef — rejects bare @', () => {
+  assert.equal(isSafeGitRef('@'), false, '@');
+});
+
+test('isSafeGitRef — rejects ref containing ASCII control character', () => {
+  assert.equal(isSafeGitRef('foo\x01bar'), false, 'foo<SOH>bar');
+  assert.equal(isSafeGitRef('foo\x00bar'), false, 'foo<NUL>bar');
+  assert.equal(isSafeGitRef('foo\x7fbar'), false, 'foo<DEL>bar');
 });

@@ -191,16 +191,40 @@ export interface ForcePrDeps {
  * Reject branch / base refs that are empty, contain whitespace, or could be
  * mis-parsed as a CLI flag (leading `-`). Even though the bridge uses argv-style
  * git/gh (no shell interpolation), a ref like `--upload-pack=…` smuggled in as a
- * branch name would still be consumed as an option. AUDIT-IFleet-4cd45bea.
+ * branch name would still be consumed as an option. Mirrors `git check-ref-format`
+ * rules. AUDIT-IFleet-4cd45bea.
+ *
+ * Rejected cases (superset of the original checks):
+ *   - non-string, empty/whitespace-trimmed, length > 255, leading '-'
+ *   - any whitespace character
+ *   - chars git rejects: ~ ^ : ? * [ backslash
+ *   - the sequence '..' (double dot)
+ *   - any component ending in '.lock' (ref ends with '.lock' or contains '.lock/')
+ *   - trailing dot (ref ends with '.') or leading/component dot ('.' prefix)
+ *   - leading '/', trailing '/', or consecutive '//' (empty path component)
+ *   - the sequence '@{' (reflog shorthand that can mis-parse)
+ *   - exactly '@' (invalid bare reflog ref)
+ *   - ASCII control characters (U+0000–U+001F) or DEL (U+007F)
  */
-function isSafeGitRef(ref: string | undefined): ref is string {
+export function isSafeGitRef(ref: string | undefined): ref is string {
   if (typeof ref !== 'string') return false;
   const trimmed = ref.trim();
   if (trimmed.length === 0 || trimmed.length > 255) return false;
   if (trimmed.startsWith('-')) return false;
   if (/\s/.test(trimmed)) return false;
-  // git refname grammar (loosened): forbid the characters git itself rejects.
+  // git refname grammar: forbid the characters git itself rejects.
   if (/[~^:?*\[\\]/.test(trimmed) || trimmed.includes('..')) return false;
+  // Reject .lock suffix on any path component.
+  if (trimmed.endsWith('.lock') || trimmed.includes('.lock/')) return false;
+  // Reject trailing dot, leading dot, or any component that begins with '.'.
+  if (trimmed.endsWith('.') || trimmed.startsWith('.') || trimmed.includes('/.')) return false;
+  // Reject leading '/', trailing '/', or consecutive '//'.
+  if (trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.includes('//')) return false;
+  // Reject reflog shorthand and bare '@'.
+  if (trimmed.includes('@{') || trimmed === '@') return false;
+  // Reject ASCII control characters (U+0000–U+001F) and DEL (U+007F).
+  // (The \s check above already covers space/tab/newline, but this is explicit.)
+  if (/[\x00-\x1f\x7f]/.test(trimmed)) return false;
   return true;
 }
 
