@@ -8,7 +8,7 @@
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, resolve, dirname } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -588,9 +588,27 @@ function findRepoRoot(start: string): string {
   return start;
 }
 
-function changedMarkdownFiles(base: string, repoRoot: string): Set<string> {
+/**
+ * Git ref-name charset. Conservative allowlist covering branch names, tags,
+ * remotes (`origin/main`), and SHAs. Deliberately excludes shell metacharacters
+ * (spaces, `;`, `|`, `$`, backticks, quotes) so a malicious `--base` value such
+ * as `main; rm -rf .` is rejected before it ever reaches git.
+ */
+const BASE_REF_RE = /^[A-Za-z0-9._/-]+$/;
+
+export function isValidBaseRef(base: string): boolean {
+  return BASE_REF_RE.test(base);
+}
+
+export function changedMarkdownFiles(base: string, repoRoot: string): Set<string> {
+  if (!isValidBaseRef(base)) {
+    console.warn(`validate-claims: refusing invalid --base ref "${base}" (must match ${BASE_REF_RE})`);
+    return new Set();
+  }
   try {
-    const out = execSync(`git diff --name-only ${base}...HEAD -- '*.md'`, {
+    // argv-style: no shell is spawned, so even a ref that slipped the regex
+    // could not inject a command. `${base}...HEAD` is a single argv token.
+    const out = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`, '--', '*.md'], {
       cwd: repoRoot,
       encoding: 'utf8',
     });
