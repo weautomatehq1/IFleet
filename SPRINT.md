@@ -2,6 +2,15 @@
 
 > Current sprint. Read `ROADMAP.md` for the 6-month context.
 
+> **Status update (2026-06-17):** M5.2 + M6 substrate have **shipped** — Approve→/ship
+> enqueue, PR-outcome tracking, M6 drift-scan cron, triple shadow signal, M4.6 mode-override
+> realignment, retro generator, and the flag-gated M6 closure paths (`DRIFT_REAL_PR`,
+> `BANDIT_LIVE`, both default OFF) are all merged. The in-sprint task table below is
+> historical. An audit-hardening sweep also landed (#374–#386, 15 findings incl. 6 CRITICAL
+> security) — see `docs/runbooks/audit-hardening-2026-06.md` for the deploy-affecting changes.
+> Remaining gates are operator/prod-signal bound: M5 live deploy (`#ifleet-proposals` channel
+> + `PROPOSER_ENABLED=1`) and the M6 live flips (`DRIFT_REAL_PR`/`BANDIT_LIVE`).
+
 ## Sprint goal
 
 M5 substrate landed 2026-06-15 across #323/#325/#326 (proposer skeleton + types contract, candidate-gen/dedupe/scorer/budget, goal_proposals schema + Discord HITL gate). Today the Approve button persists a decision to `goal_proposals` and stops — it does NOT yet trigger a sprint. M5.2 closes that loop so an approved proposal becomes a real sprint goal end-to-end.
