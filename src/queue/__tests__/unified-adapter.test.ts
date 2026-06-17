@@ -185,6 +185,50 @@ describe('UnifiedQueueAdapter', () => {
     }
   });
 
+  it('markCancelled records blocked+cancelled:true, never failed (AUDIT-IFleet-3db72bd3/7b13a148)', async () => {
+    const { store, cleanup } = tmpStore();
+    try {
+      const t = ghTask('tc');
+      store.insert(t);
+      const github = mockSource('github');
+      const discord = mockSource('discord');
+      const adapter = new UnifiedQueueAdapter(store, { github, discord });
+
+      await adapter.markCancelled(t, 'operator cancelled');
+
+      const row = store.getById('tc');
+      assert.ok(row, 'task row exists after markCancelled');
+      assert.equal(row!.state, 'blocked', 'markCancelled records blocked, not failed');
+      assert.notEqual(row!.state, 'failed', 'markCancelled must not record failed');
+      assert.equal(row!.stateMeta?.['cancelled'], true, 'cancelled:true distinguishes from capability block');
+      // Source-side notification uses markFailed (TaskSource has no markCancelled —
+      // adding a new required method would break all existing implementors).
+      assert.deepEqual(github.calls, ['failed:tc:operator cancelled'],
+        'source receives markFailed for label/thread close-out (tradeoff: source-side still shows "failed")');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('markCancelled-then-pickNext: cancelled row is not re-served (terminal, not retried)', async () => {
+    const { store, cleanup } = tmpStore();
+    try {
+      const t = ghTask('tc-terminal');
+      store.insert(t);
+      const github = mockSource('github');
+      const discord = mockSource('discord');
+      const adapter = new UnifiedQueueAdapter(store, { github, discord });
+
+      await adapter.markCancelled(t, 'cancelled');
+
+      assert.equal(store.getById('tc-terminal')!.state, 'blocked');
+      // pickNext only picks 'pending' rows; blocked cancel rows must not be re-served
+      assert.equal(store.pickNext(), null, 'blocked cancelled row is not re-served by pickNext');
+    } finally {
+      cleanup();
+    }
+  });
+
   it('pickNext does not leave row pending if source.markPicked throws', async () => {
     const { store, cleanup } = tmpStore();
     try {

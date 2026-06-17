@@ -279,9 +279,19 @@ export function wireSprintCompletion(
         }
       }
 
-      void adapter.markFailed(task, reason).catch((err) =>
-        console.warn('[daemon] markFailed failed:', err),
-      );
+      // AUDIT-IFleet-3db72bd3 / 7b13a148: split the terminal path so a
+      // deliberate cancel is NOT recorded as 'failed' in the unified store.
+      // sprint.cancelled → markCancelled (store: 'blocked'+cancelled:true)
+      // sprint.failed   → markFailed    (store: 'failed')
+      if (event.kind === 'sprint.cancelled') {
+        void adapter.markCancelled(task, reason).catch((err) =>
+          console.warn('[daemon] markCancelled failed:', err),
+        );
+      } else {
+        void adapter.markFailed(task, reason).catch((err) =>
+          console.warn('[daemon] markFailed failed:', err),
+        );
+      }
     }
   };
 
