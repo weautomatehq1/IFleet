@@ -337,3 +337,34 @@ test('isSafeGitRef — rejects ref containing ASCII control character', () => {
   assert.equal(isSafeGitRef('foo\x00bar'), false, 'foo<NUL>bar');
   assert.equal(isSafeGitRef('foo\x7fbar'), false, 'foo<DEL>bar');
 });
+
+// ---------------------------------------------------------------------------
+// AUDIT-IFleet-4cd45bea: raw-ref validation — leading/trailing whitespace/newline
+// must be rejected (previously these slipped through trim() and reached the bridge)
+// ---------------------------------------------------------------------------
+
+test('isSafeGitRef — rejects ref with leading newline (\\nmain)', () => {
+  assert.equal(isSafeGitRef('\nmain'), false, '\\nmain must be rejected');
+});
+
+test('isSafeGitRef — rejects ref with leading space ( main)', () => {
+  assert.equal(isSafeGitRef(' main'), false, '" main" must be rejected');
+});
+
+test('isSafeGitRef — rejects ref with trailing space (main )', () => {
+  assert.equal(isSafeGitRef('main '), false, '"main " must be rejected');
+});
+
+test('isSafeGitRef — rejects ref with trailing tab (main\\t)', () => {
+  assert.equal(isSafeGitRef('main\t'), false, '"main\\t" must be rejected');
+});
+
+test('isSafeGitRef — rejects ref with leading tab (\\tmain)', () => {
+  assert.equal(isSafeGitRef('\tmain'), false, '"\\tmain" must be rejected');
+});
+
+test('isSafeGitRef — still accepts clean valid refs', () => {
+  assert.ok(isSafeGitRef('main'), 'main');
+  assert.ok(isSafeGitRef('release/v2'), 'release/v2');
+  assert.ok(isSafeGitRef('feat/force-pr-test'), 'feat/force-pr-test');
+});

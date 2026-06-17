@@ -195,8 +195,8 @@ export interface ForcePrDeps {
  * rules. AUDIT-IFleet-4cd45bea.
  *
  * Rejected cases (superset of the original checks):
- *   - non-string, empty/whitespace-trimmed, length > 255, leading '-'
- *   - any whitespace character
+ *   - non-string, empty, length > 255, leading '-'
+ *   - any whitespace character (including leading/trailing space, newline, tab)
  *   - chars git rejects: ~ ^ : ? * [ backslash
  *   - the sequence '..' (double dot)
  *   - any component ending in '.lock' (ref ends with '.lock' or contains '.lock/')
@@ -205,26 +205,32 @@ export interface ForcePrDeps {
  *   - the sequence '@{' (reflog shorthand that can mis-parse)
  *   - exactly '@' (invalid bare reflog ref)
  *   - ASCII control characters (U+0000–U+001F) or DEL (U+007F)
+ *
+ * The raw `ref` is validated directly — no trimming — so the type guard
+ * truthfully describes the exact value the caller forwards to the bridge.
+ * A ref like "\nmain" or " main " is rejected here rather than slipping
+ * through with its whitespace intact.
  */
 export function isSafeGitRef(ref: string | undefined): ref is string {
   if (typeof ref !== 'string') return false;
-  const trimmed = ref.trim();
-  if (trimmed.length === 0 || trimmed.length > 255) return false;
-  if (trimmed.startsWith('-')) return false;
-  if (/\s/.test(trimmed)) return false;
+  if (ref.length === 0 || ref.length > 255) return false;
+  if (ref.startsWith('-')) return false;
+  // Reject any whitespace (space, tab, newline, carriage return, etc.) anywhere
+  // in the ref — including leading/trailing. Git refs never contain whitespace.
+  if (/\s/.test(ref)) return false;
   // git refname grammar: forbid the characters git itself rejects.
-  if (/[~^:?*\[\\]/.test(trimmed) || trimmed.includes('..')) return false;
+  if (/[~^:?*\[\\]/.test(ref) || ref.includes('..')) return false;
   // Reject .lock suffix on any path component.
-  if (trimmed.endsWith('.lock') || trimmed.includes('.lock/')) return false;
+  if (ref.endsWith('.lock') || ref.includes('.lock/')) return false;
   // Reject trailing dot, leading dot, or any component that begins with '.'.
-  if (trimmed.endsWith('.') || trimmed.startsWith('.') || trimmed.includes('/.')) return false;
+  if (ref.endsWith('.') || ref.startsWith('.') || ref.includes('/.')) return false;
   // Reject leading '/', trailing '/', or consecutive '//'.
-  if (trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.includes('//')) return false;
+  if (ref.startsWith('/') || ref.endsWith('/') || ref.includes('//')) return false;
   // Reject reflog shorthand and bare '@'.
-  if (trimmed.includes('@{') || trimmed === '@') return false;
+  if (ref.includes('@{') || ref === '@') return false;
   // Reject ASCII control characters (U+0000–U+001F) and DEL (U+007F).
   // (The \s check above already covers space/tab/newline, but this is explicit.)
-  if (/[\x00-\x1f\x7f]/.test(trimmed)) return false;
+  if (/[\x00-\x1f\x7f]/.test(ref)) return false;
   return true;
 }
 
