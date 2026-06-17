@@ -308,7 +308,14 @@ export class SprintManager {
       (t) =>
         t.state.kind === 'completed' || t.state.kind === 'failed' || t.state.kind === 'cancelled',
     );
-    if (freshTasks.length > 0 && allTerminal && this.running.size === 0) {
+    // Gate completion on THIS sprint's running set, not the global one. With
+    // cross-task parallelism (ADR-0001) another sprint may hold a running task
+    // in `this.running`; `this.running.size` would then stay non-zero and block
+    // this sprint from completing even though all of its own tasks are terminal.
+    const sprintRunningCount = Array.from(this.running.values()).filter(
+      (r) => r.sprintId === sprintId,
+    ).length;
+    if (freshTasks.length > 0 && allTerminal && sprintRunningCount === 0) {
       // A worker self-cancel (exit 2) is treated as sprint failure: a sprint where any task did not complete is a failed sprint.
       const anyFailed = freshTasks.some((t) => t.state.kind === 'failed' || t.state.kind === 'cancelled');
       if (anyFailed) {

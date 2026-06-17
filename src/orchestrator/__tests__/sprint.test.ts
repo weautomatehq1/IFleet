@@ -450,6 +450,48 @@ test('awaitHandle: exitCode 3 → task failed, task.capability_blocked event emi
   }
 });
 
+test('completion gate: two concurrent sprints complete independently (per-sprint running set)', async () => {
+  // Cross-task parallelism (ADR-0001): two sprints run at once on the same
+  // manager. Sprint A's task completes while Sprint B still has a running
+  // task. The global `this.running.size` would be 1 (B's task) at that moment,
+  // so without scoping the gate to the current sprint, A would never reach
+  // `completed`. This asserts each sprint completes on its OWN running set.
+  const adapter = new MockAdapter({ controllable: true });
+  const h = makeManager({ adapter });
+  try {
+    // Sprint B dispatched first; its task is held open by the controllable adapter.
+    const sprintB = h.manager.startSprint({ mode: 'normal', goal: 'B', newTaskBriefs: ['b1'] });
+    await h.manager.tick(sprintB.id);
+    // Sprint A dispatched second.
+    const sprintA = h.manager.startSprint({ mode: 'normal', goal: 'A', newTaskBriefs: ['a1'] });
+    await h.manager.tick(sprintA.id);
+
+    assert.equal(adapter.spawned.length, 2, 'both sprints dispatched a task');
+    assert.equal(h.manager.runningTaskIds().length, 2, 'global running set holds both tasks');
+
+    // Resolve ONLY Sprint A's task (spawned second → resolvers[1]).
+    adapter.resolvers[1]!({ taskId: sprintA.tasks[0]!, workerId: 'w1', exitCode: 0, pr: 'PR-A' });
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(sprintA.id);
+
+    const a = h.env.store.loadSprint(sprintA.id);
+    const b = h.env.store.loadSprint(sprintB.id);
+    assert.equal(a?.state.kind, 'completed', 'Sprint A completes despite Sprint B still running a task');
+    if (a?.state.kind === 'completed') assert.deepEqual(a.state.prs, ['PR-A']);
+    assert.equal(b?.state.kind, 'running', 'Sprint B must NOT complete — its own task is still running');
+
+    // Finish Sprint B's task; it completes independently on its own running set.
+    adapter.resolvers[0]!({ taskId: sprintB.tasks[0]!, workerId: 'w1', exitCode: 0, pr: 'PR-B' });
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(sprintB.id);
+    const b2 = h.env.store.loadSprint(sprintB.id);
+    assert.equal(b2?.state.kind, 'completed', 'Sprint B completes once its own task finishes');
+    if (b2?.state.kind === 'completed') assert.deepEqual(b2.state.prs, ['PR-B']);
+  } finally {
+    h.env.cleanup();
+  }
+});
+
 test('rate-limit: sprint auto-resumes when resetAt has passed', async () => {
   let now = 1000;
   const resetAt = 60_000;
