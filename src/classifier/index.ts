@@ -61,7 +61,7 @@ const FALLBACK_TIERS: Record<Tier, string> = {
 
 const TIERS: Record<Tier, string> = { ...FALLBACK_TIERS, ...(config.tiers ?? {}) };
 
-const HIGH_KEYWORDS = [
+export const HIGH_KEYWORDS = [
   'auth',
   'security',
   'migration',
