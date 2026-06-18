@@ -429,6 +429,16 @@ function readCachedFingerprint(
  * as one signal for opus, not three. That keeps `BANDIT_CB_THRESHOLD`
  * meaningful in per-task units.
  *
+ * AUDIT-IFleet-8ef3f10c — caveat: we record against EVERY unique arm in
+ * the decision, including roles the bandit did NOT override. Example:
+ * `BANDIT_LIVE=1` overrides architect→opus while editor+reviewer stay
+ * sonnet (classifier choice). A rejected PR records failure for BOTH
+ * opus AND sonnet, even though only opus was the bandit's call. This is
+ * the documented per-task-units design (not a defect): if you later want
+ * outcomes only against arms the bandit actually selected, narrow this
+ * loop to consult `routing._meta.banditOverrides` (set by
+ * `applyBanditRouting`) before flipping BANDIT_LIVE wider.
+ *
  * Fail-open: every call is wrapped — a CB read/write error must never
  * disturb the PR-decision recording path, same rationale as
  * `applyBanditRouting`.
