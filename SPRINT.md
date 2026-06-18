@@ -27,11 +27,11 @@ M6 prep is concurrent because the substrate is independent of M5 deploy state: a
 
 | ID | Task | Status | Owner |
 |---|---|---|---|
-| M5.2-T1 | Wire Approve button → /ship enqueue. Approve handler emits a `sprint_goal` ControlCommand with the proposal title as the goal text and `resulting_task_id` written back to the `goal_proposals` row when the task spawns. | open | fleet |
-| M5.2-T2 | Resulting PR outcome tracking: on PR merge/close from a proposal-spawned task, write `resulting_pr_url` + `resulting_pr_outcome` back to `goal_proposals`. Feeds Voyager iterative-prompting loop. | open | fleet |
-| M5.2-T3 | Deploy gate: `pnpm graph:migrate` on VPS; create #ifleet-proposals + set `IFLEET_PROPOSALS_CHANNEL_ID` + `IFLEET_PROPOSALS_APPROVER_IDS`; `pm2 restart all --update-env`; enable `PROPOSER_ENABLED=1`. | open | fleet+seb |
-| M6-T1 | Drift detector skeleton: cross-repo coherence scan over the M3 KG. Reads stable signatures across repos and flags rename/deletion/signature-change pairs. Output: candidate drift PRs (one per source-of-truth repo). | open | fleet |
-| M6-T2 | Thompson sampling bandit routing: per-model success/cost posterior, sample-once-per-task to pick the model. Reads `pr_decisions.verdict` for reward signal. Read-only shadow mode for the first 100 tasks. | open | fleet |
+| M5.2-T1 | Wire Approve button → /ship enqueue. Approve handler emits a `sprint_goal` ControlCommand with the proposal title as the goal text and `resulting_task_id` written back to the `goal_proposals` row when the task spawns. | **shipped** ([#351](https://github.com/weautomatehq1/IFleet/pull/351)) | fleet |
+| M5.2-T2 | Resulting PR outcome tracking: on PR merge/close from a proposal-spawned task, write `resulting_pr_url` + `resulting_pr_outcome` back to `goal_proposals`. Feeds Voyager iterative-prompting loop. | **shipped** ([#352](https://github.com/weautomatehq1/IFleet/pull/352)) | fleet |
+| M5.2-T3 | Deploy gate: `pnpm graph:migrate` on VPS; create #ifleet-proposals + set `IFLEET_PROPOSALS_CHANNEL_ID` + `IFLEET_PROPOSALS_APPROVER_IDS`; `pm2 restart all --update-env`; enable `PROPOSER_ENABLED=1`. | **script merged** ([#355](https://github.com/weautomatehq1/IFleet/pull/355)); VPS deploy pending | fleet+seb |
+| M6-T1 | Drift detector skeleton: cross-repo coherence scan over the M3 KG. Reads stable signatures across repos and flags rename/deletion/signature-change pairs. Output: candidate drift PRs (one per source-of-truth repo). | **shipped** ([#353](https://github.com/weautomatehq1/IFleet/pull/353)) | fleet |
+| M6-T2 | Thompson sampling bandit routing: per-model success/cost posterior, sample-once-per-task to pick the model. Reads `pr_decisions.verdict` for reward signal. Read-only shadow mode for the first 100 tasks. | **shipped** ([#354](https://github.com/weautomatehq1/IFleet/pull/354)) | fleet |
 
 ## Out of scope (this sprint)
 
