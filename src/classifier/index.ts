@@ -128,13 +128,23 @@ function makeSpec(provider: string, model: string, role: string): WorkerSpec {
   };
 }
 
+/** Escape regex metacharacters in a keyword so it can be used in a RegExp. */
+function escapeRegex(kw: string): string {
+  return kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Test whether `kw` appears as a whole word in `text` (case-insensitive). */
+function matchesWordBoundary(text: string, kw: string): boolean {
+  return new RegExp(`\\b${escapeRegex(kw)}\\b`, 'i').test(text);
+}
+
 function scoreKeywords(text: string): number {
   let score = 0;
   for (const kw of HIGH_KEYWORDS) {
-    if (text.includes(kw)) score += 3;
+    if (matchesWordBoundary(text, kw)) score += 3;
   }
   for (const kw of MEDIUM_KEYWORDS) {
-    if (text.includes(kw)) score += 1;
+    if (matchesWordBoundary(text, kw)) score += 1;
   }
   return score;
 }
@@ -206,7 +216,7 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     task.mode ?? detectExplicitMode({ labels: task.labels, body: task.body });
 
   const rawScore = scoreKeywords(text);
-  const hasHighKeyword = HIGH_KEYWORDS.some(kw => text.includes(kw));
+  const hasHighKeyword = HIGH_KEYWORDS.some(kw => matchesWordBoundary(text, kw));
   const baseTier = applyLabelBumps(scoreToTier(rawScore), hints.priority, task.labels);
   // M4.6 trigger #1: canonical category keyword present in text (HIGH_KEYWORDS
   // hit). MEDIUM_KEYWORD aggregation and priority:high bumping a non-category
@@ -264,7 +274,7 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
   let matchedKeyword: string | undefined;
   let matchedGlob: string | undefined;
   for (const rule of config.rules) {
-    const keywordHit = rule.match.keywords?.find((kw) => text.includes(kw.toLowerCase()));
+    const keywordHit = rule.match.keywords?.find((kw) => matchesWordBoundary(text, kw.toLowerCase()));
     let globHit: string | undefined;
     if (rule.match.fileGlobs) {
       for (const g of rule.match.fileGlobs) {
