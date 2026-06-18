@@ -20,6 +20,10 @@ import type {
   DriftCandidate,
   DriftScanResult,
 } from '../src/agents/drift-detector/types.js';
+import {
+  SqliteDriftIdempotencyStore,
+  type DriftIdempotencyStore,
+} from '../src/agents/drift-detector/idempotency-store.js';
 
 const ENABLED_ENV = 'DRIFT_SCAN_ENABLED';
 const KG_URL_ENV = 'IFLEET_KG_DATABASE_URL';
@@ -52,6 +56,15 @@ export interface DriftScanDeps {
    * bridge layer (stubbed today; see `emitDriftPrsStub`).
    */
   emitDriftPrs?: (plans: DriftPrPlan[]) => Promise<void>;
+  /**
+   * Idempotency store for the real-PR path. The cron filters every plan
+   * through `wasEmitted(plan.idempotencyKey)` before handing it to the
+   * emitter and calls `markEmitted` after a successful emit, so a re-run
+   * with the same drift signature does NOT open a second PR. Optional so
+   * tests and the OFF path stay free of SQLite setup; the default
+   * `mainWithDeps` caller injects a `SqliteDriftIdempotencyStore`.
+   */
+  idempotencyStore?: DriftIdempotencyStore;
 }
 
 function envFlag(name: string): boolean {
@@ -207,18 +220,67 @@ export async function mainWithDeps(deps: DriftScanDeps): Promise<number> {
   // must not crash the cron or trip PM2 backoff.
   if (envFlag(REAL_PR_ENV)) {
     const plans = planDriftPrs(result);
-    if (plans.length > 0) {
-      const emit = deps.emitDriftPrs ?? emitDriftPrsStub;
-      try {
-        await emit(plans);
-      } catch (err) {
-        console.warn(
-          `[drift-scan-run] drift-PR emit failed (fail-open): ${(err as Error).message}`,
-        );
-      }
-    } else {
+    if (plans.length === 0) {
       console.warn(
         '[drift-scan-run] DRIFT_REAL_PR on but scan produced no drift plans — nothing to open',
+      );
+      return 0;
+    }
+
+    // Idempotency gate: filter out any plan whose per-source-file-SHA key
+    // has already been emitted. Re-running the cron on identical drift
+    // becomes a no-op rather than reopening the same PR. The store is
+    // optional so tests (and any caller that opts out) just see every
+    // plan flow through.
+    const store = deps.idempotencyStore;
+    const fresh: DriftPrPlan[] = [];
+    const skipped: DriftPrPlan[] = [];
+    if (store) {
+      for (const p of plans) {
+        if (store.wasEmitted(p.idempotencyKey)) skipped.push(p);
+        else fresh.push(p);
+      }
+    } else {
+      fresh.push(...plans);
+    }
+
+    if (skipped.length > 0) {
+      console.warn(
+        `[drift-scan-run] skipping ${skipped.length} drift plan(s) — already emitted (idempotent re-run)`,
+      );
+    }
+
+    if (fresh.length === 0) {
+      console.warn(
+        '[drift-scan-run] DRIFT_REAL_PR on but every plan was already emitted — nothing new to open',
+      );
+      return 0;
+    }
+
+    const emit = deps.emitDriftPrs ?? emitDriftPrsStub;
+    try {
+      await emit(fresh);
+      // Mark only after the emit resolves so an emit-error leaves the
+      // store untouched and the next cron tick will retry. Each markEmitted
+      // is wrapped so a single bad row never aborts the loop.
+      if (store) {
+        const now = Date.now();
+        for (const p of fresh) {
+          try {
+            store.markEmitted(p.idempotencyKey, {
+              sourceRepo: p.sourceRepo,
+              emittedAt: now,
+            });
+          } catch (markErr) {
+            console.warn(
+              `[drift-scan-run] markEmitted failed for ${p.sourceRepo} (fail-open): ${(markErr as Error).message}`,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[drift-scan-run] drift-PR emit failed (fail-open): ${(err as Error).message}`,
       );
     }
   }
@@ -238,17 +300,34 @@ async function emitDriftPrsStub(plans: DriftPrPlan[]): Promise<void> {
     console.warn(
       `[drift-scan-run] DRIFT_REAL_PR would open candidate PR — source=${p.sourceRepo} ` +
         `symbols=${p.candidates.length} targets=${p.targetRepos.join(',') || '(none)'} ` +
+        `labels=${p.labels.join(',')} key=${p.idempotencyKey.slice(0, 12)}… ` +
         `(bridge emit not yet wired)`,
     );
   }
 }
 
 async function main(): Promise<void> {
-  const code = await mainWithDeps({
-    runDriftScan: (opts) => defaultRunDriftScan(opts),
-    postToDiscord: postViaDiscord,
-  });
-  process.exit(code);
+  // Open the real idempotency store only when DRIFT_REAL_PR is ON so the
+  // OFF path never touches SQLite. The store is kept alive for the entire
+  // mainWithDeps run and closed once the cron settles.
+  const realPrOn = process.env[REAL_PR_ENV] === '1' || process.env[REAL_PR_ENV] === 'true';
+  const idempotencyStore = realPrOn ? new SqliteDriftIdempotencyStore() : undefined;
+  try {
+    const code = await mainWithDeps({
+      runDriftScan: (opts) => defaultRunDriftScan(opts),
+      postToDiscord: postViaDiscord,
+      idempotencyStore,
+    });
+    process.exit(code);
+  } finally {
+    try {
+      idempotencyStore?.close?.();
+    } catch (err) {
+      console.warn(
+        `[drift-scan-run] idempotency store close failed: ${(err as Error).message}`,
+      );
+    }
+  }
 }
 
 const isMain = (() => {

@@ -13,10 +13,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { formatMessage, mainWithDeps } from '../drift-scan-run.js';
 import type { DriftPrPlan } from '../../src/agents/drift-detector/real-pr.js';
+import type { DriftIdempotencyStore } from '../../src/agents/drift-detector/idempotency-store.js';
 import type {
   DriftCandidate,
   DriftScanResult,
 } from '../../src/agents/drift-detector/types.js';
+
+/** In-memory DriftIdempotencyStore for the cron tests. */
+function memoryStore(): DriftIdempotencyStore & {
+  marks: Array<{ key: string; sourceRepo?: string }>;
+} {
+  const seen = new Set<string>();
+  const marks: Array<{ key: string; sourceRepo?: string }> = [];
+  return {
+    wasEmitted: (key: string) => seen.has(key),
+    markEmitted: (key: string, meta) => {
+      seen.add(key);
+      marks.push({ key, sourceRepo: meta?.sourceRepo });
+    },
+    marks,
+  };
+}
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -305,5 +322,216 @@ describe('mainWithDeps — DRIFT_REAL_PR flag', () => {
     }
     expect(emitDriftPrs).toHaveBeenCalledTimes(1);
     expect(warns.some((w) => /drift-PR emit failed/.test(w))).toBe(true);
+  });
+
+  it('every emitted plan carries the audit:drift label and an idempotencyKey', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    await mainWithDeps({ runDriftScan, postToDiscord, emitDriftPrs });
+
+    const plans = emitDriftPrs.mock.calls[0]![0];
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.labels).toContain('audit:drift');
+    expect(plans[0]!.idempotencyKey).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mainWithDeps — per-source-file-SHA idempotency (the 3-case plan)
+//
+//   (1) OFF              → emit never called, store never written
+//   (2) ON, first run    → emit called with every plan, store records keys
+//   (3) ON, second run   → emit called with NO plans (every key was seen)
+// ---------------------------------------------------------------------------
+
+describe('mainWithDeps — DRIFT_REAL_PR idempotency', () => {
+  beforeEach(() => {
+    setEnv({
+      DRIFT_SCAN_ENABLED: '1',
+      IFLEET_KG_DATABASE_URL: 'postgres://kg',
+    });
+  });
+
+  it('(1) OFF: idempotency store is never consulted nor written', async () => {
+    // DRIFT_REAL_PR left unset (=OFF) by the outer beforeEach.
+    const store = memoryStore();
+    const wasEmitted = vi.spyOn(store, 'wasEmitted');
+    const markEmitted = vi.spyOn(store, 'markEmitted');
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    const code = await mainWithDeps({
+      runDriftScan,
+      postToDiscord,
+      emitDriftPrs,
+      idempotencyStore: store,
+    });
+
+    expect(code).toBe(0);
+    expect(emitDriftPrs).not.toHaveBeenCalled();
+    expect(wasEmitted).not.toHaveBeenCalled();
+    expect(markEmitted).not.toHaveBeenCalled();
+    expect(store.marks).toHaveLength(0);
+  });
+
+  it('(2) ON, first run: every plan flows to emit and gets recorded', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const store = memoryStore();
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    const code = await mainWithDeps({
+      runDriftScan,
+      postToDiscord,
+      emitDriftPrs,
+      idempotencyStore: store,
+    });
+
+    expect(code).toBe(0);
+    expect(emitDriftPrs).toHaveBeenCalledTimes(1);
+    const plans = emitDriftPrs.mock.calls[0]![0];
+    expect(plans).toHaveLength(1);
+    expect(store.marks).toHaveLength(1);
+    expect(store.marks[0]!.key).toBe(plans[0]!.idempotencyKey);
+    expect(store.marks[0]!.sourceRepo).toBe('weautomatehq1/IFleet');
+  });
+
+  it('(3) ON, second run with same drift: emit is NOT called again', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const store = memoryStore();
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitDriftPrs = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+
+    // First run — primes the store.
+    await mainWithDeps({
+      runDriftScan,
+      postToDiscord,
+      emitDriftPrs,
+      idempotencyStore: store,
+    });
+    expect(emitDriftPrs).toHaveBeenCalledTimes(1);
+    expect(store.marks).toHaveLength(1);
+
+    // Second run — same drift, same scan result. Should be a no-op for emit.
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: unknown) => warns.push(String(msg));
+    try {
+      const code = await mainWithDeps({
+        runDriftScan,
+        postToDiscord,
+        emitDriftPrs,
+        idempotencyStore: store,
+      });
+      expect(code).toBe(0);
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(emitDriftPrs).toHaveBeenCalledTimes(1); // unchanged from the first run
+    expect(store.marks).toHaveLength(1); // no new key recorded
+    expect(warns.some((w) => /already emitted|nothing new to open/.test(w))).toBe(true);
+  });
+
+  it('ON: mixed batch — only NEW plans flow through, seen ones are skipped', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const store = memoryStore();
+    const postToDiscord = vi.fn(async () => undefined);
+
+    // First scan: one drift → emit + record.
+    const firstCand = candidate({
+      name: 'foo',
+      symbolKey: 'function:foo',
+      groups: [
+        { signature: 's1', repos: ['weautomatehq1/IFleet'], paths: ['src/a.ts'] },
+        { signature: 's2', repos: ['weautomatehq1/factory'], paths: ['src/b.ts'] },
+      ],
+      outlierRepos: ['weautomatehq1/factory'],
+    });
+    const runFirst = vi.fn(async () => result({ candidates: [firstCand] }));
+    const emit1 = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+    await mainWithDeps({
+      runDriftScan: runFirst,
+      postToDiscord,
+      emitDriftPrs: emit1,
+      idempotencyStore: store,
+    });
+    expect(emit1).toHaveBeenCalledTimes(1);
+    const firstKey = store.marks[0]!.key;
+
+    // Second scan: same source-repo plan PLUS a brand-new source-repo plan.
+    // The first plan must be filtered out as already-emitted; only the new
+    // one reaches the emitter, and only the new key is recorded.
+    const newCand = candidate({
+      name: 'bar',
+      symbolKey: 'function:bar',
+      groups: [
+        { signature: 'sN', repos: ['weautomatehq1/voice-discovery'], paths: ['src/c.ts'] },
+        { signature: 'sM', repos: ['weautomatehq1/IFleet'], paths: ['src/d.ts'] },
+      ],
+      outlierRepos: ['weautomatehq1/IFleet'],
+    });
+    const runSecond = vi.fn(async () =>
+      result({
+        candidates: [firstCand, newCand],
+        reposScanned: ['weautomatehq1/IFleet', 'weautomatehq1/factory', 'weautomatehq1/voice-discovery'],
+      }),
+    );
+    const emit2 = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+    await mainWithDeps({
+      runDriftScan: runSecond,
+      postToDiscord,
+      emitDriftPrs: emit2,
+      idempotencyStore: store,
+    });
+
+    expect(emit2).toHaveBeenCalledTimes(1);
+    const plans2 = emit2.mock.calls[0]![0];
+    expect(plans2).toHaveLength(1);
+    expect(plans2[0]!.sourceRepo).toBe('weautomatehq1/voice-discovery');
+    expect(store.marks).toHaveLength(2);
+    expect(store.marks[1]!.key).not.toBe(firstKey);
+  });
+
+  it('ON: when emit throws, store is NOT marked — next run retries', async () => {
+    setEnv({ DRIFT_REAL_PR: '1' });
+    const store = memoryStore();
+    const runDriftScan = vi.fn(async () => result({ candidates: [candidate()] }));
+    const postToDiscord = vi.fn(async () => undefined);
+    const emitFailing = vi.fn(async () => {
+      throw new Error('bridge down');
+    });
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: unknown) => warns.push(String(msg));
+    try {
+      await mainWithDeps({
+        runDriftScan,
+        postToDiscord,
+        emitDriftPrs: emitFailing,
+        idempotencyStore: store,
+      });
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(emitFailing).toHaveBeenCalledTimes(1);
+    expect(store.marks).toHaveLength(0); // emit failed → nothing persisted
+    expect(warns.some((w) => /drift-PR emit failed/.test(w))).toBe(true);
+
+    // A retry now must STILL emit (the prior failure left no idempotency mark).
+    const emitOk = vi.fn(async (_plans: DriftPrPlan[]) => undefined);
+    await mainWithDeps({
+      runDriftScan,
+      postToDiscord,
+      emitDriftPrs: emitOk,
+      idempotencyStore: store,
+    });
+    expect(emitOk).toHaveBeenCalledTimes(1);
+    expect(store.marks).toHaveLength(1);
   });
 });
