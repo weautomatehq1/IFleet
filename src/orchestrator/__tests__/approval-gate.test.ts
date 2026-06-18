@@ -101,7 +101,7 @@ describe('recordProposalDecision (kind: proposal)', () => {
       proposalId: 'prop-1',
       decision: 'approved',
       decidedBy: 'user-123',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       pool: pool as any,
     });
     assert.equal(result.updated, true);
@@ -121,7 +121,7 @@ describe('recordProposalDecision (kind: proposal)', () => {
       proposalId: 'prop-2',
       decision: 'rejected',
       decidedBy: 'user-456',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       pool: pool as any,
     });
     assert.equal(result.updated, true);
@@ -135,7 +135,7 @@ describe('recordProposalDecision (kind: proposal)', () => {
       proposalId: 'prop-3',
       decision: 'deferred',
       decidedBy: 'user-789',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       pool: pool as any,
     });
     assert.equal(result.updated, true);
@@ -149,7 +149,7 @@ describe('recordProposalDecision (kind: proposal)', () => {
       proposalId: 'missing',
       decision: 'approved',
       decidedBy: 'user-x',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       pool: pool as any,
     });
     assert.equal(result.updated, false);
