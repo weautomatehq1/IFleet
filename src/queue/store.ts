@@ -307,6 +307,20 @@ export class TaskStore {
       if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
     }
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_routing_shadow_role ON routing_shadow_log(role)`);
+    // M6 follow-up — per-arm circuit-breaker state (BANDIT_LIVE live-path).
+    // OFF by default and OFF for every shadow-only deployment because the
+    // table only gets written when `resolveRoutingModel` runs with live=true.
+    // Idempotent CREATE TABLE IF NOT EXISTS matches the in-line ALTER pattern
+    // above. Schema details live in src/agents/bandit/circuit-breaker.ts.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS bandit_arm_state (
+        arm TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'active',
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        assignments_remaining INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0
+      );
+    `);
   }
 
   insert(task: QueuedTask): InsertResult {
