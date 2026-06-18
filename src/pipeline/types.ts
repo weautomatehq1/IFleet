@@ -69,6 +69,8 @@ export interface RoutingDecision {
    * present or when the auto-router emits a high-confidence mode.
    */
   mode?: SprintMode | null;
+  /** Routing telemetry for false-positive rate analysis. Populated by classifyTask; absent on pre-M4.X rows. */
+  _meta?: { hitKeyword: string | null; rawScore: number; finalTier: 'haiku' | 'sonnet' | 'opus' };
 }
 
 export interface SpawnOpts {
