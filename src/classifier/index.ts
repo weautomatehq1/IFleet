@@ -422,6 +422,11 @@ export function classifyTask(task: ClassifyInput): RoutingDecision {
     verify,
   };
   if (explicitMode) decision.mode = explicitMode;
+  decision._meta = {
+    hitKeyword: HIGH_KEYWORDS.find((kw) => matchesWordBoundary(text, kw)) ?? null,
+    rawScore,
+    finalTier: modelToTier(architectModel) ?? architectTier,
+  };
   return decision;
 }
 
