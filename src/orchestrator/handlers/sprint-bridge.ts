@@ -11,7 +11,11 @@ import { broadcastIFleet } from '../../observability/discord-broadcast.js';
 import { encodeBridgeBrief } from '../pipeline-bridge.js';
 import { isFleetPaused } from '../fleet-control.js';
 import type { TaskContextRegistry } from './pr-decisions.js';
-import { recordPrDecisionMerged, recordPrDecisionRejected } from './pr-decisions.js';
+import {
+  recordBanditOutcomeForTask,
+  recordPrDecisionMerged,
+  recordPrDecisionRejected,
+} from './pr-decisions.js';
 import {
   extractProposalIdFromIdempotencyKey,
   setResultingPrOutcome,
@@ -212,6 +216,7 @@ export function wireSprintCompletion(
           // inserted (per M4-T5 contract).
           const ctx = verifierCtx?.get(task.id);
           void recordPrDecisionMerged(store, task, prNumber, ctx);
+          recordBanditOutcomeForTask(store, task, true);
           recordPrOutcomeOnProposal(task, lastPrUrl, 'merged');
         }
       }
@@ -270,6 +275,7 @@ export function wireSprintCompletion(
           // closed without merging => verdict='rejected'. Same async
           // fingerprint compute as the merged path; null on any failure.
           void recordPrDecisionRejected(store, task, prNumber, ctxSnapshot);
+          recordBanditOutcomeForTask(store, task, false);
           // M5.2-T2: outcome distinct from verdict — pr_decisions tracks
           // architect-side learning (rejected), proposal tracks
           // human-visible outcome (closed_unmerged) so the Voyager loop

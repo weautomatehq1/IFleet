@@ -7,6 +7,8 @@ import { promisify } from 'node:util';
 import { Octokit } from '@octokit/rest';
 import type { TaskRunContext } from '../../agents/verifier/controller.js';
 import { computeStructuralFingerprint } from '../../agents/verifier/fingerprint.js';
+import { recordOutcome } from '../../agents/bandit/circuit-breaker.js';
+import { banditLiveEnabled } from '../../agents/bandit/live.js';
 import { broadcastIFleet } from '../../observability/discord-broadcast.js';
 import { DiscordOutAdapter } from '../../observability/discord-output.js';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from '../pipeline-bridge.js';
@@ -409,6 +411,56 @@ function readCachedFingerprint(
   ctx: { fingerprint?: string | null } | undefined,
 ): string | null {
   return ctx?.fingerprint ?? null;
+}
+
+/**
+ * B2 wiring (2026-06-18) — feed the per-arm circuit-breaker from the
+ * PR-decision observer. `recordOutcome` was exported by the CB module
+ * (#394) but no production path called it, so the CB stayed inert
+ * regardless of `BANDIT_LIVE`. This is that path.
+ *
+ * Default OFF: when `BANDIT_LIVE` is not '1'/'true' we return without
+ * touching `bandit_arm_state`. The CB only learns when the live path
+ * is actually routing through it.
+ *
+ * Attribution: the persisted `routingDecision` on the task captures the
+ * three role arms that ran (architect/editor/reviewer). We record ONE
+ * outcome per UNIQUE arm — a task using opus for all three roles counts
+ * as one signal for opus, not three. That keeps `BANDIT_CB_THRESHOLD`
+ * meaningful in per-task units.
+ *
+ * Fail-open: every call is wrapped — a CB read/write error must never
+ * disturb the PR-decision recording path, same rationale as
+ * `applyBanditRouting`.
+ */
+export function recordBanditOutcomeForTask(
+  store: TaskStore,
+  task: QueuedTask,
+  success: boolean,
+): void {
+  if (!banditLiveEnabled()) return;
+  let routing = task.routingDecision;
+  if (!routing) {
+    const fresh = store.getById(task.id);
+    routing = fresh?.routingDecision ?? null;
+  }
+  if (!routing) return;
+  const arms = new Set<string>();
+  if (routing.architect?.model) arms.add(routing.architect.model);
+  if (routing.editor?.model) arms.add(routing.editor.model);
+  if (routing.reviewer?.model) arms.add(routing.reviewer.model);
+  if (arms.size === 0) return;
+  const db = store.getDb();
+  for (const arm of arms) {
+    try {
+      recordOutcome(db, arm, success);
+    } catch (err) {
+      console.warn(
+        `[daemon] bandit recordOutcome(${arm}, ${success ? 'success' : 'failure'}) failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
 }
 
 export function recordPrDecisionMerged(
