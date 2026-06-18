@@ -141,12 +141,19 @@ export function computeSourceFileSha(
   candidates: DriftCandidate[],
 ): string {
   const paths = new Set<string>();
+  const contentLines: string[] = [];
   for (const c of candidates) {
-    for (const p of c.groups[0]?.paths ?? []) paths.add(p);
+    const g0 = c.groups[0];
+    for (const p of g0?.paths ?? []) paths.add(p);
+    // Include the majority-group signature as a content proxy — a change to
+    // source-of-truth file content (captured by the indexer as a signature
+    // change) produces a different key even when paths are unchanged.
+    contentLines.push(`${c.symbolKey}\t${g0?.signature ?? ''}`);
   }
   const sorted = Array.from(paths).sort();
+  contentLines.sort();
   return createHash('sha256')
-    .update(`${sourceRepo}\n${sorted.join('\n')}`)
+    .update(`${sourceRepo}\n${sorted.join('\n')}\n${contentLines.join('\n')}`)
     .digest('hex');
 }
 

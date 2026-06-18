@@ -312,22 +312,21 @@ async function main(): Promise<void> {
   // mainWithDeps run and closed once the cron settles.
   const realPrOn = process.env[REAL_PR_ENV] === '1' || process.env[REAL_PR_ENV] === 'true';
   const idempotencyStore = realPrOn ? new SqliteDriftIdempotencyStore() : undefined;
+  let code: number | undefined;
   try {
-    const code = await mainWithDeps({
+    code = await mainWithDeps({
       runDriftScan: (opts) => defaultRunDriftScan(opts),
       postToDiscord: postViaDiscord,
       idempotencyStore,
     });
-    process.exit(code);
   } finally {
-    try {
-      idempotencyStore?.close?.();
-    } catch (err) {
+    try { idempotencyStore?.close?.(); } catch (err) {
       console.warn(
         `[drift-scan-run] idempotency store close failed: ${(err as Error).message}`,
       );
     }
   }
+  process.exit(code ?? 1);
 }
 
 const isMain = (() => {

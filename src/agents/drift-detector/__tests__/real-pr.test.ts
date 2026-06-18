@@ -205,6 +205,29 @@ describe('idempotencyKey determinism', () => {
     expect(forward).toBe(reverse);
   });
 
+  it('same paths but different majority-group content → different computeSourceFileSha and idempotencyKey', () => {
+    // Regression for AUDIT-IFleet-430e833b: structural-proxy SHA used only
+    // paths, so content changes in the same files silently reused the old key.
+    const base = candidate({
+      groups: [
+        { signature: 'function foo(): void', repos: ['weautomatehq1/IFleet'], paths: ['src/a.ts'] },
+        { signature: 'function foo(x: number): void', repos: ['weautomatehq1/factory'], paths: ['src/a.ts'] },
+      ],
+    });
+    const updated = candidate({
+      groups: [
+        { signature: 'function foo(opts: FooOpts): void', repos: ['weautomatehq1/IFleet'], paths: ['src/a.ts'] },
+        { signature: 'function foo(x: number): void', repos: ['weautomatehq1/factory'], paths: ['src/a.ts'] },
+      ],
+    });
+    const sha1 = computeSourceFileSha('weautomatehq1/IFleet', [base]);
+    const sha2 = computeSourceFileSha('weautomatehq1/IFleet', [updated]);
+    expect(sha1).not.toBe(sha2);
+    expect(computeIdempotencyKey('weautomatehq1/IFleet', [base])).not.toBe(
+      computeIdempotencyKey('weautomatehq1/IFleet', [updated]),
+    );
+  });
+
   it('exposed helpers compose into the final key', () => {
     const cands = [candidate({ name: 'foo', symbolKey: 'function:foo' })];
     const sourceFileSha = computeSourceFileSha('weautomatehq1/IFleet', cands);
