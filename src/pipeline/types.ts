@@ -80,6 +80,11 @@ export interface SpawnOpts {
   resumeSessionId?: string;
   abortSignal?: AbortSignal;
   role: 'architect' | 'editor' | 'reviewer' | 'doctor';
+  /**
+   * Sprint-level Langfuse trace ID. When set, `buildWorkerPool` forwards it to
+   * the pipeline adapter so every role spawn lands under one trace tree.
+   */
+  parentTraceId?: string;
 }
 
 export interface SpawnResult {

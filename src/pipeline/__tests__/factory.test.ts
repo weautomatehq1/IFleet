@@ -26,6 +26,7 @@ import {
   createClaudeCliPipelineAdapter,
 } from '../../workers/adapters/pipeline-registry.js';
 import { DEFAULT_ADAPTER_NAME } from '../../workers/adapters/registry.js';
+import { createFakeSpawn } from '../../workers/__tests__/fake-spawn.js';
 import type { WorkerSpec } from '../types.js';
 
 describe('F5: normalizeReviewers — gh-safe reviewer logins', () => {
@@ -514,5 +515,81 @@ describe('rate_limit event wires AccountPool.markRateLimited', () => {
 
     expect(calls).toEqual([]);
     expect(result.rateLimitHits).toBe(0);
+  });
+});
+
+describe('AUDIT-IFleet-123ca38b: buildWorkerPool forwards parentTraceId → LANGFUSE_PARENT_TRACE_ID', () => {
+  const ADAPTER_NAME = 'fake-cli-pipeline-langfuse';
+  const initLine = JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-langfuse' });
+  const resultLine = JSON.stringify({ type: 'result', result: 'done', total_cost_usd: 0 });
+
+  const workerConfig: WorkerConfig = {
+    id: 'claude-max-test',
+    provider: 'claude',
+    authProfile: 'default',
+    models: ['claude-sonnet-4-6'],
+    maxConcurrent: 1,
+    enabled: true,
+  };
+
+  const spec: WorkerSpec = {
+    provider: 'claude',
+    model: 'claude-sonnet-4-6',
+    workerId: 'editor-1',
+  };
+
+  beforeEach(() => {
+    __resetPipelineAdapterRegistry();
+  });
+
+  afterAll(() => {
+    delete process.env.IFLEET_ADAPTER;
+    __resetPipelineAdapterRegistry();
+    registerPipelineAdapter(DEFAULT_ADAPTER_NAME, () => createClaudeCliPipelineAdapter());
+  });
+
+  it('injects LANGFUSE_PARENT_TRACE_ID into child env when parentTraceId is passed to buildWorkerPool', async () => {
+    const fake = createFakeSpawn({ stdoutLines: [initLine, resultLine] });
+    registerPipelineAdapter(ADAPTER_NAME, () =>
+      createClaudeCliPipelineAdapter({ inner: { spawnImpl: fake.spawn } }),
+    );
+    process.env.IFLEET_ADAPTER = ADAPTER_NAME;
+
+    const wp = buildWorkerPool(workerConfig, undefined, 'trace-abc-123');
+    const handle = wp.spawn(spec, 'brief', {
+      role: 'editor',
+      worktreePath: '/tmp/wt',
+      abortSignal: new AbortController().signal,
+    });
+    await handle.result();
+
+    const call = fake.calls[0];
+    expect(call).toBeDefined();
+    expect(call?.env?.['LANGFUSE_PARENT_TRACE_ID']).toBe('trace-abc-123');
+  });
+
+  it('LANGFUSE_PARENT_TRACE_ID absent from child env when no parentTraceId given', async () => {
+    const fake = createFakeSpawn({ stdoutLines: [initLine, resultLine] });
+    registerPipelineAdapter(ADAPTER_NAME, () =>
+      createClaudeCliPipelineAdapter({ inner: { spawnImpl: fake.spawn } }),
+    );
+    process.env.IFLEET_ADAPTER = ADAPTER_NAME;
+    const saved = process.env['LANGFUSE_PARENT_TRACE_ID'];
+    delete process.env['LANGFUSE_PARENT_TRACE_ID'];
+    try {
+      const wp = buildWorkerPool(workerConfig);
+      const handle = wp.spawn(spec, 'brief', {
+        role: 'editor',
+        worktreePath: '/tmp/wt',
+        abortSignal: new AbortController().signal,
+      });
+      await handle.result();
+
+      const call = fake.calls[0];
+      expect(call).toBeDefined();
+      expect(call?.env?.['LANGFUSE_PARENT_TRACE_ID']).toBeUndefined();
+    } finally {
+      if (saved !== undefined) process.env['LANGFUSE_PARENT_TRACE_ID'] = saved;
+    }
   });
 });
