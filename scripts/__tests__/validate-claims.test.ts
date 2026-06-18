@@ -348,7 +348,7 @@ describe('changedMarkdownFiles — no shell injection', () => {
     const root = mkdtempSync(join(tmpdir(), 'validate-claims-inj-'));
     // Seed a real git repo so a *valid* base would actually run git, proving the
     // empty result below is the rejection path, not just "git failed anyway".
-    execSync('git init -q && git config user.email t@t.t && git config user.name t', {
+    execSync('git init -q && git config user.email t@t.t && git config user.name t && git config commit.gpgsign false', {
       cwd: root,
       shell: '/bin/sh',
     });
