@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
-import { applyBanditRouting, buildWorkerPool, FIVE_HOURS_MS, normalizeReviewers } from '../factory.js';
+import { applyBanditRouting, buildWorkerPool, FIVE_HOURS_MS, logPostRoutingDecision, normalizeReviewers } from '../factory.js';
 import { classifyTask } from '../../classifier/index.js';
 import { readShadowDecisions } from '../../agents/bandit/shadow.js';
 import { KNOWN_MODEL_IDS } from '../../agents/bandit/known-arms.js';
@@ -206,6 +206,132 @@ describe('AUDIT-IFleet-406c8c3e: applyBanditRouting wires the gated BANDIT_LIVE 
     expect(routing.architect.model).toBe(SENTINEL.architect);
     expect(routing.editor.model).toBe(SENTINEL.editor);
     expect(routing.reviewer.model).toBe(SENTINEL.reviewer);
+  });
+});
+
+describe('B3 (20260618 audit): closure log records post-bandit final_tier', () => {
+  // Regression cover for B3 — when BANDIT_LIVE=1 promotes the architect arm
+  // to a different tier, the [ROUTING-DECISION-LOG] line must report the
+  // tier that actually runs, not the classifier's original pick.
+
+  function makeDb(): Database.Database {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(`
+      CREATE TABLE tasks (id TEXT PRIMARY KEY, routing_decision TEXT);
+      CREATE TABLE pr_decisions (task_id TEXT, repo TEXT, verdict TEXT);
+      CREATE TABLE routing_shadow_log (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        decided_at INTEGER NOT NULL,
+        actual_model TEXT NOT NULL,
+        shadow_model TEXT NOT NULL,
+        alpha_snapshot TEXT NOT NULL,
+        beta_snapshot TEXT NOT NULL,
+        sample_snapshot TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'architect',
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+    `);
+    db.prepare('INSERT INTO tasks (id) VALUES (?)').run('task-b3');
+    return db;
+  }
+
+  it('logs the post-bandit architect tier when applyBanditRouting overrides the model', () => {
+    // Classifier picks sonnet; bandit overrides to opus.
+    const routing: RoutingDecision = {
+      architect: { provider: 'claude', model: 'claude-sonnet-4-6', workerId: 'w-a' },
+      editor: { provider: 'claude', model: 'claude-sonnet-4-6', workerId: 'w-e' },
+      reviewer: { provider: 'claude', model: 'claude-sonnet-4-6', workerId: 'w-r' },
+      verify: ['typecheck', 'test'],
+      _meta: { hitKeyword: null, rawScore: 0, finalTier: 'sonnet' },
+    };
+
+    // Simulate the post-bandit mutation that applyBanditRouting performs
+    // when BANDIT_LIVE=1 promotes the Thompson-sampled arm.
+    routing.architect.model = 'claude-opus-4-7';
+
+    const lines: string[] = [];
+    logPostRoutingDecision('task-b3', routing, () => '2026-06-18T06:00:00.000Z', (l) => lines.push(l));
+
+    expect(lines).toHaveLength(1);
+    const payload = JSON.parse(lines[0]!.replace(/^\[ROUTING-DECISION-LOG\] /, ''));
+    expect(payload.final_tier).toBe('opus');
+    expect(payload.final_tier).not.toBe(routing._meta!.finalTier);
+    expect(payload.task_id).toBe('task-b3');
+    expect(payload.decided_at).toBe('2026-06-18T06:00:00.000Z');
+  });
+
+  it('end-to-end: applyBanditRouting (live ON) then logPostRoutingDecision reflects the flipped tier', () => {
+    const db = makeDb();
+    // Classifier picks haiku; bandit will Thompson-sample a known arm
+    // (necessarily a different model id, since haiku-test isn't a known arm).
+    const routing: RoutingDecision = {
+      architect: { provider: 'claude', model: 'haiku-test', workerId: 'w-a' },
+      editor: { provider: 'claude', model: 'haiku-test', workerId: 'w-e' },
+      reviewer: { provider: 'claude', model: 'haiku-test', workerId: 'w-r' },
+      verify: ['typecheck', 'test'],
+      _meta: { hitKeyword: null, rawScore: 0, finalTier: 'haiku' },
+    };
+
+    applyBanditRouting(db, routing, { id: 'task-b3', repo: 'weautomatehq1/IFleet' }, { live: true, now: 1_700_000_000_000 });
+
+    // Bandit promoted architect to a known arm — modelToTier resolves to a
+    // real tier (haiku/sonnet/opus); the sentinel 'haiku-test' would have
+    // resolved to undefined.
+    expect(routing.architect.model).not.toBe('haiku-test');
+
+    const lines: string[] = [];
+    logPostRoutingDecision('task-b3', routing, () => '2026-06-18T06:00:00.000Z', (l) => lines.push(l));
+
+    expect(lines).toHaveLength(1);
+    const payload = JSON.parse(lines[0]!.replace(/^\[ROUTING-DECISION-LOG\] /, ''));
+    expect(['haiku', 'sonnet', 'opus']).toContain(payload.final_tier);
+    // The architect.model after the bandit flip MUST map to the logged tier.
+    const expectedTier =
+      routing.architect.model === 'claude-opus-4-7' ? 'opus' :
+      routing.architect.model === 'claude-sonnet-4-6' ? 'sonnet' :
+      routing.architect.model === 'claude-haiku-4-5-20251001' ? 'haiku' : null;
+    expect(payload.final_tier).toBe(expectedTier);
+  });
+
+  it('no _meta ⇒ no log line', () => {
+    const routing: RoutingDecision = {
+      architect: { provider: 'claude', model: 'claude-sonnet-4-6', workerId: 'w-a' },
+      editor: { provider: 'claude', model: 'claude-sonnet-4-6', workerId: 'w-e' },
+      reviewer: { provider: 'claude', model: 'claude-sonnet-4-6', workerId: 'w-r' },
+      verify: ['typecheck', 'test'],
+    };
+    const lines: string[] = [];
+    logPostRoutingDecision('task-b3', routing, () => '2026-06-18T06:00:00.000Z', (l) => lines.push(l));
+    expect(lines).toHaveLength(0);
+  });
+
+  it('falls back to _meta.finalTier when architect.model is unknown', () => {
+    // Defensive: an unmapped model id (e.g. a future arm not yet added to
+    // TIERS) must not crash the log — it falls back to the classifier's tier.
+    const routing: RoutingDecision = {
+      architect: { provider: 'claude', model: 'claude-future-9-9', workerId: 'w-a' },
+      editor: { provider: 'claude', model: 'claude-future-9-9', workerId: 'w-e' },
+      reviewer: { provider: 'claude', model: 'claude-future-9-9', workerId: 'w-r' },
+      verify: ['typecheck', 'test'],
+      _meta: { hitKeyword: 'auth', rawScore: 5, finalTier: 'opus' },
+    };
+    const lines: string[] = [];
+    logPostRoutingDecision('task-b3', routing, () => '2026-06-18T06:00:00.000Z', (l) => lines.push(l));
+    expect(lines).toHaveLength(1);
+    const payload = JSON.parse(lines[0]!.replace(/^\[ROUTING-DECISION-LOG\] /, ''));
+    expect(payload.final_tier).toBe('opus');
+  });
+
+  it('factory.ts emits the closure log AFTER applyBanditRouting (source-level guard)', () => {
+    const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
+    const applyIdx = src.indexOf('applyBanditRouting(db, routing,');
+    const logIdx = src.indexOf('logPostRoutingDecision(task.id, routing)');
+    expect(applyIdx, 'applyBanditRouting call site not found').toBeGreaterThan(-1);
+    expect(logIdx, 'logPostRoutingDecision call site not found').toBeGreaterThan(-1);
+    expect(logIdx).toBeGreaterThan(applyIdx);
   });
 });
 
