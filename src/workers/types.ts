@@ -27,6 +27,12 @@ export interface SpawnOpts {
    * default profile (the `--profile` flag is suppressed in that case).
    */
   authProfile?: string;
+  /**
+   * Sprint-level Langfuse trace ID forwarded from the orchestrator-level SpawnOpts.
+   * Passed to claudeChildEnv() which injects it as LANGFUSE_PARENT_TRACE_ID into
+   * the child process env. Source env takes precedence — see claudeChildEnv().
+   */
+  parentTraceId?: string;
 }
 
 export interface SpawnHandle {

@@ -528,3 +528,62 @@ test('rate-limit: sprint auto-resumes when resetAt has passed', async () => {
     h.env.cleanup();
   }
 });
+
+test('SprintManager: passes parentTraceId in SpawnOpts on dispatch', async () => {
+  const adapter = new MockAdapter({ exitCode: 0 });
+  const h = makeManager({ adapter });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1'] });
+    await h.manager.tick(rec.id);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(adapter.spawned.length >= 1, 'task should have been dispatched');
+    const parentTraceId = adapter.spawned[0]?.opts.parentTraceId;
+    assert.ok(typeof parentTraceId === 'string' && parentTraceId.length > 0, 'parentTraceId should be a non-empty string');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('SprintManager: all tasks in one sprint share the same parentTraceId', async () => {
+  const adapter = new MockAdapter({ exitCode: 0, controllable: true });
+  const h = makeManager({ adapter });
+  try {
+    const rec = h.manager.startSprint({ mode: 'normal', goal: 'g', newTaskBriefs: ['t1', 't2'] });
+    // First tick dispatches first pending task
+    await h.manager.tick(rec.id);
+    // Resolve first task so second can be dispatched
+    adapter.finishAll();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.manager.tick(rec.id);
+    adapter.finishAll();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(adapter.spawned.length >= 2, 'both tasks should have been dispatched');
+    const id1 = adapter.spawned[0]?.opts.parentTraceId;
+    const id2 = adapter.spawned[1]?.opts.parentTraceId;
+    assert.ok(typeof id1 === 'string' && id1.length > 0, 'first task has parentTraceId');
+    assert.ok(typeof id2 === 'string' && id2.length > 0, 'second task has parentTraceId');
+    assert.equal(id1, id2, 'both tasks in the same sprint share parentTraceId');
+  } finally {
+    h.env.cleanup();
+  }
+});
+
+test('SprintManager: different sprints get different parentTraceIds', async () => {
+  const adapter = new MockAdapter({ exitCode: 0 });
+  const h = makeManager({ adapter });
+  try {
+    const s1 = h.manager.startSprint({ mode: 'normal', goal: 'g1', newTaskBriefs: ['t1'] });
+    const s2 = h.manager.startSprint({ mode: 'normal', goal: 'g2', newTaskBriefs: ['t2'] });
+    await h.manager.tick(s1.id);
+    await h.manager.tick(s2.id);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(adapter.spawned.length >= 2, 'tasks from both sprints dispatched');
+    const id1 = adapter.spawned.find((s) => s.taskId === s1.tasks[0])?.opts.parentTraceId;
+    const id2 = adapter.spawned.find((s) => s.taskId === s2.tasks[0])?.opts.parentTraceId;
+    assert.ok(typeof id1 === 'string' && id1.length > 0, 'sprint 1 has parentTraceId');
+    assert.ok(typeof id2 === 'string' && id2.length > 0, 'sprint 2 has parentTraceId');
+    assert.notEqual(id1, id2, 'different sprints have different parentTraceIds');
+  } finally {
+    h.env.cleanup();
+  }
+});
