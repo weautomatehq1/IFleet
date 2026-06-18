@@ -102,7 +102,7 @@ const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus'];
 // Inverse lookup: given a model string, return the tier it represents.
 // Used to keep the reviewer at the same tier as the architect *after* the
 // rule override and opus cap have run — see classifyTask below.
-function modelToTier(model: string): Tier | undefined {
+export function modelToTier(model: string): Tier | undefined {
   for (const tier of TIER_ORDER) {
     if (TIERS[tier] === model) return tier;
   }

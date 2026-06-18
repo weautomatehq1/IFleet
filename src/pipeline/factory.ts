@@ -7,7 +7,7 @@ import type { Octokit } from '@octokit/rest';
 import { buildShadowObservations } from '../agents/bandit/observations.js';
 import { KNOWN_MODEL_IDS } from '../agents/bandit/known-arms.js';
 import { resolveRoutingModel } from '../agents/bandit/live.js';
-import { classifyTask } from '../classifier/index.js';
+import { classifyTask, modelToTier } from '../classifier/index.js';
 import { writeRoutingDecisionLog } from '../orchestrator/closure-log.js';
 import {
   decodeBridgeBrief,
@@ -265,11 +265,6 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 
     const workerPool = buildWorkerPool(worker, pool);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
-    if (routing._meta) {
-      writeRoutingDecisionLog({ task_id: task.id, hit_keyword: routing._meta.hitKeyword,
-        final_tier: routing._meta.finalTier, raw_score: routing._meta.rawScore,
-        decided_at: new Date().toISOString() });
-    }
     // M6-T3 + AUDIT-IFleet-406c8c3e: shadow-log every role AND apply the gated
     // BANDIT_LIVE flip (a no-op while the flag is OFF — see applyBanditRouting).
     // `setRoutingDecision` runs AFTER the flip so the persisted RoutingDecision
@@ -280,6 +275,11 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
       opts.taskStore.setRoutingDecision(task.id, routing);
     }
+    // B3 (20260618 audit): write the closure log AFTER applyBanditRouting so
+    // final_tier reflects the model that actually runs. applyBanditRouting
+    // mutates routing[role].model but NOT routing._meta.finalTier — derive
+    // the tier from the post-bandit architect.model.
+    logPostRoutingDecision(task.id, routing);
     const abortController = new AbortController();
 
     const issues: IssueCommenter = createIssueCommenter(opts.octokit, resolved.owner, resolved.name);
@@ -315,6 +315,44 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
   };
 
   return { factory, rebuildPool };
+}
+
+// ---------------------------------------------------------------------------
+// Routing-decision closure log — emitted AFTER applyBanditRouting so the
+// recorded final_tier reflects the model that actually runs (B3 from the
+// 20260618-0600-codex-bugs audit).
+// ---------------------------------------------------------------------------
+
+/**
+ * Emit one [ROUTING-DECISION-LOG] line for the task using the post-bandit
+ * routing decision. No-op when `routing._meta` is absent.
+ *
+ * `final_tier` is derived from `routing.architect.model` rather than read
+ * straight from `routing._meta.finalTier`: when `BANDIT_LIVE=1` the bandit
+ * mutates the per-role model in place but leaves `_meta.finalTier` at the
+ * classifier's original pick, so reading `_meta.finalTier` would log the
+ * pre-override tier and downstream analytics would lie.
+ *
+ * `now` and `sink` are injectable for test determinism.
+ */
+export function logPostRoutingDecision(
+  taskId: string,
+  routing: RoutingDecision,
+  now: () => string = () => new Date().toISOString(),
+  sink?: (line: string) => void,
+): void {
+  if (!routing._meta) return;
+  const finalTier = modelToTier(routing.architect.model) ?? routing._meta.finalTier;
+  writeRoutingDecisionLog(
+    {
+      task_id: taskId,
+      hit_keyword: routing._meta.hitKeyword,
+      final_tier: finalTier,
+      raw_score: routing._meta.rawScore,
+      decided_at: now(),
+    },
+    sink,
+  );
 }
 
 // ---------------------------------------------------------------------------
