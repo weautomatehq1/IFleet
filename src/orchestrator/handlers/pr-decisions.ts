@@ -14,6 +14,8 @@ import { decodeBridgeBrief } from '../pipeline-bridge.js';
 import type { PipelineEvent, PrOpener } from '../../pipeline/types.js';
 import { StateStore } from '../store.js';
 import { TaskStore } from '../../queue/store.js';
+import { banditLiveEnabled } from '../../agents/bandit/live.js';
+import { recordOutcome } from '../../agents/bandit/circuit-breaker.js';
 import { ControlPlaneApprovalGate } from '../approval-gate.js';
 import type { SprintId, TaskId } from '../types.js';
 import type { QueuedTask } from '../../contracts/task.js';
@@ -432,6 +434,17 @@ export function recordPrDecisionMerged(
   } catch (err) {
     console.warn('[daemon] insertPrDecisionWithFingerprint(merged) failed:', err);
   }
+  if (banditLiveEnabled()) {
+    try {
+      const db = store.getDb();
+      const row = db
+        .prepare(`SELECT shadow_model FROM routing_shadow_log WHERE task_id = ? ORDER BY decided_at DESC LIMIT 1`)
+        .get(task.id) as { shadow_model: string } | undefined;
+      if (row?.shadow_model) recordOutcome(db, row.shadow_model, true);
+    } catch (err) {
+      console.warn('[daemon] recordOutcome(merged) failed:', err);
+    }
+  }
 }
 
 export function recordPrDecisionRejected(
@@ -453,6 +466,17 @@ export function recordPrDecisionRejected(
     });
   } catch (err) {
     console.warn('[daemon] insertPrDecisionWithFingerprint(rejected) failed:', err);
+  }
+  if (banditLiveEnabled()) {
+    try {
+      const db = store.getDb();
+      const row = db
+        .prepare(`SELECT shadow_model FROM routing_shadow_log WHERE task_id = ? ORDER BY decided_at DESC LIMIT 1`)
+        .get(task.id) as { shadow_model: string } | undefined;
+      if (row?.shadow_model) recordOutcome(db, row.shadow_model, false);
+    } catch (err) {
+      console.warn('[daemon] recordOutcome(rejected) failed:', err);
+    }
   }
 }
 

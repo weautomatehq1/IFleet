@@ -10,6 +10,7 @@ import {
   getArmState,
   getCBCooldown,
   getCBThreshold,
+  isArmEligible,
   onAssignment,
   recordOutcome,
 } from '../circuit-breaker.js';
@@ -181,5 +182,16 @@ describe('circuit-breaker — 5 documented behaviors', () => {
     // Same trip → counter still climbs (consecutive failures across the
     // probe attempt are still "consecutive" — the success reset never happened).
     expect(refailed.consecutiveFailures).toBeGreaterThanOrEqual(DEFAULT_CB_THRESHOLD + 1);
+  });
+});
+
+describe('circuit-breaker — integration: end-to-end trip via DB layer', () => {
+  it('5 consecutive recordOutcome(false) calls → isArmEligible returns false', () => {
+    const db = makeDb();
+    const arm = 'claude-sonnet-4-6';
+    for (let i = 0; i < 5; i++) {
+      recordOutcome(db, arm, false);
+    }
+    expect(isArmEligible(db, arm)).toBe(false);
   });
 });
