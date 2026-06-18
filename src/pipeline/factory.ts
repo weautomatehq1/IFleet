@@ -234,7 +234,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     pool = createAccountPool(workers);
   }
 
-  const factory: PipelineRunnerFactory = async (_taskId, brief, _spawnOpts): Promise<PipelineRunBootstrap> => {
+  const factory: PipelineRunnerFactory = async (_taskId, brief, spawnOpts): Promise<PipelineRunBootstrap> => {
     const task = decodeBridgeBrief(brief);
     if (!task) throw new Error('brief is not a structured QueuedTask payload');
 
@@ -263,7 +263,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
     const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot);
 
-    const workerPool = buildWorkerPool(worker, pool);
+    const workerPool = buildWorkerPool(worker, pool, spawnOpts.parentTraceId);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
     // M6-T3 + AUDIT-IFleet-406c8c3e: shadow-log every role AND apply the gated
     // BANDIT_LIVE flip (a no-op while the flag is OFF — see applyBanditRouting).
@@ -422,6 +422,7 @@ export function applyBanditRouting(
 export function buildWorkerPool(
   workerConfig: WorkerConfig,
   accountPool?: AccountPool,
+  parentTraceId?: string,
 ): WorkerPool {
   const adapter = getActivePipelineAdapter();
 
@@ -457,6 +458,7 @@ export function buildWorkerPool(
         systemPrompt: opts.systemPrompt,
         authProfile: workerConfig.authProfile,
         trustedBrief,
+        parentTraceId: parentTraceId ?? opts.parentTraceId,
       });
 
       const eventLoop = (async () => {
