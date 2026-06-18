@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import type { SpawnOptions } from 'node:child_process';
 import type { SpawnLike } from '../spawn-runner.ts';
 
 export interface FakeChildOptions {
@@ -24,6 +25,8 @@ export interface FakeChildOptions {
 interface SpawnCall {
   command: string;
   args: readonly string[];
+  /** Env passed to the child process. Populated from the SpawnOptions.env field. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface FakeSpawn {
@@ -33,8 +36,8 @@ export interface FakeSpawn {
 
 export function createFakeSpawn(opts: FakeChildOptions): FakeSpawn {
   const calls: SpawnCall[] = [];
-  const spawnFn: SpawnLike = ((command: string, args: readonly string[]) => {
-    calls.push({ command, args });
+  const spawnFn: SpawnLike = ((command: string, args: readonly string[], options: SpawnOptions) => {
+    calls.push({ command, args, env: options?.env as NodeJS.ProcessEnv | undefined });
     return createFakeChild(opts) as unknown as ReturnType<SpawnLike>;
   }) as SpawnLike;
   return { spawn: spawnFn, calls };

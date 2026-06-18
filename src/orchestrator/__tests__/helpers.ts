@@ -81,7 +81,7 @@ export interface MockAdapterOptions {
 }
 
 export class MockAdapter implements WorkerAdapter {
-  spawned: Array<{ taskId: TaskId; brief: string }> = [];
+  spawned: Array<{ taskId: TaskId; brief: string; opts: SpawnOpts }> = [];
   resolvers: Array<(result: SpawnResult) => void> = [];
   cancelled: TaskId[] = [];
   private readonly opts: MockAdapterOptions;
@@ -90,10 +90,9 @@ export class MockAdapter implements WorkerAdapter {
     this.opts = opts;
   }
 
-  async spawn(taskId: TaskId, brief: string, _opts: SpawnOpts): Promise<SpawnHandle> {
-    void _opts;
+  async spawn(taskId: TaskId, brief: string, spawnOpts: SpawnOpts): Promise<SpawnHandle> {
     if (this.opts.throwOnSpawn) throw this.opts.throwOnSpawn;
-    this.spawned.push({ taskId, brief });
+    this.spawned.push({ taskId, brief, opts: spawnOpts });
     let resolver: (result: SpawnResult) => void = () => undefined;
     const done = new Promise<SpawnResult>((resolve) => {
       resolver = resolve;

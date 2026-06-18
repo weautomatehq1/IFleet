@@ -29,6 +29,13 @@ export interface ClaudeChildEnvOptions {
    * prompt-injection exfiltration vector (AUDIT-IFleet-b2c3d4e5).
    */
   includeApiKey?: boolean;
+  /**
+   * Sprint-level Langfuse trace ID to inject into the child env as
+   * LANGFUSE_PARENT_TRACE_ID so all role spawns attach to one trace tree.
+   * Ignored when LANGFUSE_PARENT_TRACE_ID is already present in `source`
+   * (preserves manual debugging overrides).
+   */
+  parentTraceId?: string;
 }
 
 export function claudeChildEnv(
@@ -43,6 +50,16 @@ export function claudeChildEnv(
   if (opts.includeApiKey) {
     const apiKey = source['ANTHROPIC_API_KEY'];
     if (typeof apiKey === 'string') out['ANTHROPIC_API_KEY'] = apiKey;
+  }
+  // Propagate the sprint-level Langfuse trace ID so all role spawns land under
+  // one trace tree. Source-env value takes precedence to preserve manual overrides.
+  const sourceTraceId = source['LANGFUSE_PARENT_TRACE_ID'];
+  const effectiveTraceId =
+    typeof sourceTraceId === 'string' && sourceTraceId !== ''
+      ? sourceTraceId
+      : opts.parentTraceId;
+  if (typeof effectiveTraceId === 'string' && effectiveTraceId !== '') {
+    out['LANGFUSE_PARENT_TRACE_ID'] = effectiveTraceId;
   }
   return out;
 }

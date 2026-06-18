@@ -134,6 +134,16 @@ export class SprintManager {
    *  One-shot per sprint so the event isn't repeated on every task completion
    *  after the cap is first exceeded. Resets implicitly on process restart. */
   private readonly budgetSkipLogged = new Set<SprintId>();
+  /**
+   * Per-sprint Langfuse parent trace ID. Generated lazily on the first
+   * dispatch for a sprint and reused for all subsequent task spawns so
+   * every role (architect, editor, verifier, reviewer, doctor) lands under
+   * a single sprint-level trace tree. If the orchestrator process already
+   * has LANGFUSE_PARENT_TRACE_ID set (manual debugging), claudeChildEnv()
+   * will use that value instead — this map just ensures the auto-generated
+   * ID is consistent across all tasks in the same sprint.
+   */
+  private readonly sprintTraceIds = new Map<SprintId, string>();
 
   constructor(opts: SprintManagerOptions) {
     this.store = opts.store;
@@ -398,7 +408,14 @@ export class SprintManager {
       payload: { attempt: newAttempts },
     });
     try {
-      const handle = await this.adapter.spawn(task.id, brief, {});
+      // Lazy-init per-sprint trace ID: all task spawns in the same sprint share
+      // one parent trace so Langfuse groups architect/editor/reviewer under it.
+      let parentTraceId = this.sprintTraceIds.get(task.sprintId);
+      if (!parentTraceId) {
+        parentTraceId = nanoid(21);
+        this.sprintTraceIds.set(task.sprintId, parentTraceId);
+      }
+      const handle = await this.adapter.spawn(task.id, brief, { parentTraceId });
       this.running.set(task.id, {
         taskId: task.id,
         sprintId: task.sprintId,

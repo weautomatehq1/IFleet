@@ -89,6 +89,15 @@ export interface SpawnOpts {
    * Optional + backwards-compatible — pipeline callers can adopt incrementally.
    */
   agentName?: string;
+  /**
+   * Sprint-level Langfuse trace ID set by SprintManager. Injected into the
+   * child subprocess env as LANGFUSE_PARENT_TRACE_ID so all role spawns
+   * (architect, editor, verifier, reviewer, doctor, drift, bandit) attach
+   * to a single sprint trace tree. If LANGFUSE_PARENT_TRACE_ID is already
+   * present in the orchestrator process env (manual debugging), that value
+   * takes precedence over this field — see claudeChildEnv().
+   */
+  parentTraceId?: string;
 }
 
 export interface SpawnHandle {
