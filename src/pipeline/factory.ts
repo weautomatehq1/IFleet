@@ -265,11 +265,6 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
 
     const workerPool = buildWorkerPool(worker, pool);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
-    if (routing._meta) {
-      writeRoutingDecisionLog({ task_id: task.id, hit_keyword: routing._meta.hitKeyword,
-        final_tier: routing._meta.finalTier, raw_score: routing._meta.rawScore,
-        decided_at: new Date().toISOString() });
-    }
     // M6-T3 + AUDIT-IFleet-406c8c3e: shadow-log every role AND apply the gated
     // BANDIT_LIVE flip (a no-op while the flag is OFF — see applyBanditRouting).
     // `setRoutingDecision` runs AFTER the flip so the persisted RoutingDecision
@@ -279,6 +274,13 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       const db = opts.taskStore.getDb();
       applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
       opts.taskStore.setRoutingDecision(task.id, routing);
+    }
+    // Log AFTER applyBanditRouting so final_tier reflects any bandit override
+    // (AUDIT-IFleet-dca269af: was logged before the flip, recording pre-override tier).
+    if (routing._meta) {
+      writeRoutingDecisionLog({ task_id: task.id, hit_keyword: routing._meta.hitKeyword,
+        final_tier: routing._meta.finalTier, raw_score: routing._meta.rawScore,
+        decided_at: new Date().toISOString() });
     }
     const abortController = new AbortController();
 
