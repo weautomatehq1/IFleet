@@ -15,7 +15,12 @@
 // planner pure makes the OFF path provably untouched and the ON path easy to
 // unit-test from literal fixtures.
 
+import { createHash } from 'node:crypto';
+
 import type { DriftCandidate, DriftScanResult } from './types.js';
+
+/** Standard GitHub label every drift-PR carries so reviewers can filter. */
+export const DRIFT_AUDIT_LABEL = 'audit:drift';
 
 /**
  * One candidate-PR plan, anchored to a single source-of-truth repo. The
@@ -35,6 +40,21 @@ export interface DriftPrPlan {
   title: string;
   /** PR body: a checklist of the drifted symbols and their target repos. */
   body: string;
+  /**
+   * GitHub labels the emitter MUST apply when opening the PR. Always
+   * includes `audit:drift` so reviewers can filter the drift-detector
+   * output stream away from human work.
+   */
+  labels: string[];
+  /**
+   * Per-source-file-SHA idempotency key. `sha256(sourceFileSHA +
+   * driftSignature)` where `sourceFileSHA` identifies the canonical-repo
+   * files this plan rewrites, and `driftSignature` identifies the symbol
+   * set + majority signatures the plan brings peers to. Re-emitting the
+   * same key is a no-op: the cron persists keys it has already handed to
+   * the emitter and skips them on the next run.
+   */
+  idempotencyKey: string;
 }
 
 /**
@@ -77,6 +97,8 @@ export function planDriftPrs(result: DriftScanResult): DriftPrPlan[] {
       targetRepos,
       title: `drift: align ${candidates.length} symbol(s) to ${sourceRepo}`,
       body: buildBody(sourceRepo, candidates, targetRepos),
+      labels: [DRIFT_AUDIT_LABEL],
+      idempotencyKey: computeIdempotencyKey(sourceRepo, candidates),
     });
   }
 
@@ -104,4 +126,61 @@ function buildBody(
     lines.push(`- [ ] ${c.driftKind} on \`${c.name}\` (${c.kind}) → ${outliers}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Stable hex SHA over the source-of-truth files this plan rewrites: the
+ * sourceRepo plus the sorted unique file paths the majority signature
+ * lives in (`groups[0].paths`). We don't have real git blob SHAs at the
+ * planner layer (the KG projection drops them) so this is a structural
+ * proxy — same files → same SHA across runs. Used as one half of the
+ * per-plan idempotency key.
+ */
+export function computeSourceFileSha(
+  sourceRepo: string,
+  candidates: DriftCandidate[],
+): string {
+  const paths = new Set<string>();
+  for (const c of candidates) {
+    for (const p of c.groups[0]?.paths ?? []) paths.add(p);
+  }
+  const sorted = Array.from(paths).sort();
+  return createHash('sha256')
+    .update(`${sourceRepo}\n${sorted.join('\n')}`)
+    .digest('hex');
+}
+
+/**
+ * Stable hex SHA over the drift signature this plan addresses: the set of
+ * (symbolKey, driftKind, majority signature) tuples, sorted by symbolKey.
+ * Two scans that flag the same symbols at the same majority signature
+ * produce the same driftSignature, even if the candidates are sliced in a
+ * different order.
+ */
+export function computeDriftSignature(candidates: DriftCandidate[]): string {
+  const rows = candidates
+    .map((c) => {
+      const majoritySig = c.groups[0]?.signature ?? '';
+      return `${c.symbolKey}\t${c.driftKind}\t${majoritySig}`;
+    })
+    .sort();
+  return createHash('sha256').update(rows.join('\n')).digest('hex');
+}
+
+/**
+ * Per-source-file-SHA idempotency key for one plan. `sha256(sourceFileSHA
+ * + driftSignature)`. The drift-scan cron persists keys it has already
+ * handed to the emitter; a re-run that produces the same drift skips
+ * re-emission so the same PR is never opened twice. Deterministic across
+ * identical scans — used by both the planner and the idempotency store.
+ */
+export function computeIdempotencyKey(
+  sourceRepo: string,
+  candidates: DriftCandidate[],
+): string {
+  const sourceFileSha = computeSourceFileSha(sourceRepo, candidates);
+  const driftSignature = computeDriftSignature(candidates);
+  return createHash('sha256')
+    .update(`${sourceFileSha}${driftSignature}`)
+    .digest('hex');
 }
