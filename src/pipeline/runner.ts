@@ -252,10 +252,6 @@ export class DefaultPipelineRunner implements PipelineRunner {
     // entering the verifier+doctor loop. Fills the historically-dead
     // `verifying` enum slot so the audit timeline distinguishes
     // "editor finished, verifier is checking" from "still waiting for editor".
-    // TODO(https://github.com/weautomatehq1/IFleet/issues/308): reset
-    // verifying→reopened on doctor-cap failure. Until that lands, a stuck
-    // finding sits in `verifying` — same orphan, more accurate label than
-    // `fixing`.
     maybeMarkAuditFindingVerifying(input);
 
     // Verify + doctor cycles (max 2 doctor invocations per task)
@@ -271,6 +267,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
         console.warn(
           `[runner] doctor_retry_limit_exceeded taskId=${input.task.id} doctorAttempts=${doctorAttempts} cap=${doctorCap}`,
         );
+        maybeMarkAuditFindingReopened(input);
         return failed(attempts, 'doctor retry limit exceeded');
       }
 
@@ -524,6 +521,44 @@ function maybeMarkAuditFindingVerifying(input: PipelineInput): void {
     (err) => {
       console.warn(
         `[pipeline] dbUpdateFindingStatus(verifying) failed for ${findingId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    },
+  );
+}
+
+/**
+ * Reset an audit-fix task's finding from `verifying` → `reopened` when the
+ * doctor-cap is exhausted. Prevents the finding from being orphaned in the
+ * `verifying` state after pipeline failure (issue #308). Best-effort: a file
+ * or DB failure only affects the audit timeline; the pipeline itself continues
+ * regardless.
+ */
+function maybeMarkAuditFindingReopened(input: PipelineInput): void {
+  if (!input.repoRoot) return;
+  const findingId = extractAuditFindingId(input.task.body);
+  if (!findingId) return;
+  try {
+    const updated = setFindingsStatus(
+      resolveAuditIndexPath(input.repoRoot),
+      [findingId],
+      'reopened',
+    );
+    if (updated > 0) {
+      console.warn(`[pipeline] audit finding ${findingId} → reopened (doctor-cap exhausted)`);
+    }
+  } catch (err) {
+    console.warn(
+      `[pipeline] audit-fix reopened-flip failed for ${findingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  void dbUpdateFindingStatus(findingId, 'reopened', { refuseFromTerminal: true }).catch(
+    (err) => {
+      console.warn(
+        `[pipeline] dbUpdateFindingStatus(reopened) failed for ${findingId}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
