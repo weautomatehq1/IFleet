@@ -43,7 +43,7 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
         command: binary,
         args,
         cwd: opts.workingDir,
-        env: claudeChildEnv(),
+        env: claudeChildEnv(process.env, { parentTraceId: opts.parentTraceId }),
         signal: opts.signal,
         spawnImpl: adapterOpts.spawnImpl,
         parseLine: (line, emit) => {

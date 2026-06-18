@@ -57,6 +57,7 @@ export function createClaudeCliAdapter(opts: ClaudeCliAdapterOptions = {}): Work
         brief,
         model,
         workingDir,
+        parentTraceId: spawnOpts.parentTraceId,
       };
       const profile = workerCfg?.authProfile;
       if (profile !== undefined && profile !== '' && profile !== 'default') {

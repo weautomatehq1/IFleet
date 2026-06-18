@@ -233,3 +233,41 @@ test('claude-cli adapter: self-registers on import under the canonical name', ()
   const adapter = resolveAdapter(CLAUDE_CLI_ADAPTER_NAME);
   assert.equal(typeof adapter.spawn, 'function');
 });
+
+test('claude-cli adapter: LANGFUSE_PARENT_TRACE_ID injected from parentTraceId SpawnOpts', async () => {
+  const fake = createFakeSpawn({ stdoutLines: [initLine, resultLine] });
+  const adapter = createClaudeCliAdapter({ inner: { spawnImpl: fake.spawn } });
+  const handle = await adapter.spawn('t-trace-1' as TaskId, 'brief', { parentTraceId: 'sprint-trace-abc123' });
+  await handle.done;
+  const call = fake.calls[0];
+  assert.ok(call, 'spawn was called');
+  assert.equal(
+    call.env?.['LANGFUSE_PARENT_TRACE_ID'],
+    'sprint-trace-abc123',
+    'child env should contain the sprint trace ID',
+  );
+});
+
+test('claude-cli adapter: pre-existing LANGFUSE_PARENT_TRACE_ID in process.env is preserved over parentTraceId', async () => {
+  const fake = createFakeSpawn({ stdoutLines: [initLine, resultLine] });
+  const adapter = createClaudeCliAdapter({ inner: { spawnImpl: fake.spawn } });
+  const savedValue = process.env['LANGFUSE_PARENT_TRACE_ID'];
+  process.env['LANGFUSE_PARENT_TRACE_ID'] = 'existing-debug-trace-id';
+  try {
+    const handle = await adapter.spawn('t-trace-2' as TaskId, 'brief', { parentTraceId: 'sprint-generated-id' });
+    await handle.done;
+    const call = fake.calls[0];
+    assert.ok(call, 'spawn was called');
+    assert.equal(
+      call.env?.['LANGFUSE_PARENT_TRACE_ID'],
+      'existing-debug-trace-id',
+      'pre-existing env value should win over parentTraceId',
+    );
+  } finally {
+    if (savedValue === undefined) {
+      delete process.env['LANGFUSE_PARENT_TRACE_ID'];
+    } else {
+      process.env['LANGFUSE_PARENT_TRACE_ID'] = savedValue;
+    }
+  }
+});
