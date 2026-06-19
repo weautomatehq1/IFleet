@@ -238,7 +238,7 @@ export class GitHubQueue implements QueueAdapter {
         per_page: 100,
       });
       for (const issue of issues) {
-        const labelNames = (issue.labels as ReadonlyArray<string | { name?: string | null }>)
+        const labelNames = ((issue.labels ?? []) as ReadonlyArray<string | { name?: string | null }>)
           .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
           .filter((n) => n.length > 0);
         if (!labelNames.includes(LABEL_IFLEET_COOLDOWN)) continue;
