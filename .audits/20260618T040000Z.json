@@ -1,0 +1,60 @@
+{
+  "audit_id": "audit-20260618T040000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-06-18T04:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-f1a2b3c4",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Unused eslint-disable-next-line directives for no-console in proposer files",
+      "detail": "Five eslint-disable-next-line directives suppress the no-console rule before console.warn() and console.error() calls. The ESLint config already allows console.warn and console.error via the allow list, so these directives are redundant and ESLint flags them as unused. Files: candidate-gen.ts:370, context-loader.ts:229, dedupe.ts:165, scorer.ts:192, scorer.ts:197.",
+      "file_globs": [
+        "src/agents/proposer/candidate-gen.ts",
+        "src/agents/proposer/context-loader.ts",
+        "src/agents/proposer/dedupe.ts",
+        "src/agents/proposer/scorer.ts"
+      ],
+      "fix_sketch": "Remove the unused // eslint-disable-next-line no-console comment lines. Done via pnpm lint --fix.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-18T04:00:00Z",
+      "closed_at": "2026-06-18T04:15:00Z",
+      "closing_pr": "audit/nightly-2026-06-18"
+    },
+    {
+      "id": "AUDIT-IFleet-d4e5f6a7",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Unused eslint-disable directives for @typescript-eslint/no-explicit-any in test files",
+      "detail": "Five eslint-disable-next-line directives in test files suppress the no-explicit-any rule, but the test-file override config already turns off that rule for all test files. Files: build-cards.test.ts:221, approval-gate.test.ts:104, 124, 138, 152.",
+      "file_globs": [
+        "src/learning/reviewer-prefs/__tests__/build-cards.test.ts",
+        "src/orchestrator/__tests__/approval-gate.test.ts"
+      ],
+      "fix_sketch": "Remove the redundant eslint-disable-next-line comment lines. Done via pnpm lint --fix.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-18T04:00:00Z",
+      "closed_at": "2026-06-18T04:15:00Z",
+      "closing_pr": "audit/nightly-2026-06-18"
+    },
+    {
+      "id": "AUDIT-IFleet-b8c9d0e1",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Missing explicit return type annotation on bucketBySignature in compare.ts",
+      "detail": "The function bucketBySignature at compare.ts:167 was missing an explicit return type annotation. The ESLint rule @typescript-eslint/explicit-function-return-type is configured as warn for src/ files. The function returns Array<{signature: string|null; repos: string[]; paths: string[]}> from Array.from(buckets.values()).",
+      "file_globs": [
+        "src/agents/drift-detector/compare.ts"
+      ],
+      "fix_sketch": "Added return type annotation: Array<{ signature: string | null; repos: string[]; paths: string[] }>",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-18T04:00:00Z",
+      "closed_at": "2026-06-18T04:15:00Z",
+      "closing_pr": "audit/nightly-2026-06-18"
+    }
+  ]
+}

@@ -218,7 +218,7 @@ describe('buildReviewerCards (DB-backed)', () => {
       fingerprint: 'c'.repeat(64),
     });
     // Mutate the old row's created_at directly — `recordPrDecision` stamps now().
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const db = (store as any).db;
     db.prepare(`UPDATE pr_decisions SET created_at = @t WHERE pr_number = 999`).run({ t: old });
 

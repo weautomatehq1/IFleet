@@ -151,6 +151,11 @@ describe('makeProductionFactory — M6-T3 shadow wiring', () => {
     execFileSync('git', ['init', '-q', '-b', 'main', repoRoot], { env });
     execFileSync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com'], { env });
     execFileSync('git', ['-C', repoRoot, 'config', 'user.name', 'test'], { env });
+    // Disable signing for this throwaway repo — the global ~/.gitconfig has
+    // commit.gpgsign=true wired to an environment-runner signing server that
+    // is not available in all CI / cloud environments. Per-repo config overrides
+    // the global setting without touching ~/.gitconfig or system config.
+    execFileSync('git', ['-C', repoRoot, 'config', 'commit.gpgsign', 'false'], { env });
     execFileSync('git', ['-C', repoRoot, 'commit', '--allow-empty', '-q', '-m', 'init'], { env });
     return repoRoot;
   }

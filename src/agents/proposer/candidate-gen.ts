@@ -367,6 +367,6 @@ function reason(err: unknown): string {
 }
 
 function defaultWarn(line: string): void {
-  // eslint-disable-next-line no-console
+   
   console.warn(line);
 }

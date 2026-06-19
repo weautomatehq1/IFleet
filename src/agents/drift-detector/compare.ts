@@ -164,7 +164,7 @@ function classifySymbol(
   return out;
 }
 
-function bucketBySignature(obsList: readonly SymbolObservation[]) {
+function bucketBySignature(obsList: readonly SymbolObservation[]): Array<{ signature: string | null; repos: string[]; paths: string[] }> {
   const buckets = new Map<string, { signature: string | null; repos: string[]; paths: string[] }>();
   for (const obs of obsList) {
     // Map key uses a sentinel for null so we don't collide with the
