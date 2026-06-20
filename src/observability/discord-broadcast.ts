@@ -114,7 +114,6 @@ export function broadcastIFleet(msg: string): void {
   const state = getState(url);
   const now = Date.now();
   const delay = Math.max(0, state.lastSentAt + MIN_INTERVAL_MS - now);
-  state.lastSentAt = now + delay;
 
   if (state.pendingCount >= MAX_QUEUE_DEPTH) {
     if (_outbox) {
@@ -136,6 +135,7 @@ export function broadcastIFleet(msg: string): void {
     return;
   }
 
+  state.lastSentAt = now + delay;
   state.pendingCount++;
 
   if (_outbox) {

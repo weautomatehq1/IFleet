@@ -70,6 +70,11 @@ export class UnifiedQueueAdapter {
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {
+    const current = this.store.getById(task.id);
+    if (current?.state === 'blocked') {
+      console.warn(`[unified-queue] markFailed skipped for ${task.id} — task already blocked/cancelled`);
+      return;
+    }
     this.store.updateState(task.id, 'failed', { reason, completedAt: Date.now() });
     try {
       await this.sourceFor(task).markFailed(task, reason);
