@@ -101,7 +101,6 @@ describe('recordProposalDecision (kind: proposal)', () => {
       proposalId: 'prop-1',
       decision: 'approved',
       decidedBy: 'user-123',
-       
       pool: pool as any,
     });
     assert.equal(result.updated, true);

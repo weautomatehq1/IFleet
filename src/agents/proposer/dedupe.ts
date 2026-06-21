@@ -162,6 +162,5 @@ function reason(err: unknown): string {
 }
 
 function defaultWarn(line: string): void {
-   
   console.warn(line);
 }

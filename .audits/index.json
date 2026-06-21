@@ -1,12 +1,12 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-17T12:50:00Z",
-  "open_findings": 0,
-  "fixed_this_run": 8,
+  "last_updated": "2026-06-21T04:09:00Z",
+  "open_findings": 4,
+  "fixed_this_run": 6,
   "by_severity": {
-    "CRITICAL": 0,
-    "IMPORTANT": 0,
-    "COSMETIC": 0
+    "CRITICAL": 3,
+    "IMPORTANT": 2,
+    "COSMETIC": 1
   },
   "findings": [
     {
@@ -611,6 +611,153 @@
       "opened_at": "2026-06-18T04:00:00Z",
       "closed_at": "2026-06-18T04:15:00Z",
       "closing_pr": "audit/nightly-2026-06-18"
+    },
+    {
+      "id": "AUDIT-IFleet-sandbox-git-checkout",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "git checkout -- <sha> passes sha as pathspec, not revision",
+      "detail": "In DockerSandboxRunner.cloneFromSha, git checkout was called with '--' before the sha, making git interpret it as a pathspec rather than a commit ref. This causes the checkout to fail and the verifier reports an install error for every cloneFromSha invocation.",
+      "file_globs": ["src/agents/verifier/sandbox.ts"],
+      "fix_sketch": "Remove '--' from the git checkout args so sha is treated as a revision.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": "2026-06-21T04:09:00Z",
+      "closing_pr": "audit/nightly-2026-06-21"
+    },
+    {
+      "id": "AUDIT-IFleet-factory-hardcoded-main",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "setupWorktree always branches from hardcoded 'main' instead of resolved.defaultBranch",
+      "detail": "The factory correctly resolves resolved.defaultBranch per repo but setupWorktree passed the literal string 'main' to git worktree add. For any repo whose default branch is not 'main', every worktree was created off the wrong base and PRs were opened against the wrong branch.",
+      "file_globs": ["src/pipeline/factory.ts"],
+      "fix_sketch": "Add defaultBranch parameter to setupWorktree, pass resolved.defaultBranch at the call site.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": "2026-06-21T04:09:00Z",
+      "closing_pr": "audit/nightly-2026-06-21"
+    },
+    {
+      "id": "AUDIT-IFleet-codex-ts-extensions",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "codex.ts uses .ts extension in import paths — fails under compiled .js output",
+      "detail": "Lines 4 and 11 of codex.ts imported with .ts extensions inconsistent with the rest of the codebase (.js). Under compiled .js output Node ESM resolution requires .js extensions; these imports fail at runtime outside of tsx/ts-node.",
+      "file_globs": ["src/workers/codex.ts"],
+      "fix_sketch": "Change .ts extensions to .js.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": "2026-06-21T04:09:00Z",
+      "closing_pr": "audit/nightly-2026-06-21"
+    },
+    {
+      "id": "AUDIT-IFleet-manager-null-exit-code",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "spawnCapture maps null exit code (signal-killed child) to 0, masking SIGKILL termination",
+      "detail": "When a child process is killed by signal, Node fires close with code === null. The expression code ?? 0 converts this to exit code 0, making runGit believe the command succeeded when it was actually killed.",
+      "file_globs": ["src/repos/manager.ts"],
+      "fix_sketch": "Change to code ?? -1.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": "2026-06-21T04:09:00Z",
+      "closing_pr": "audit/nightly-2026-06-21"
+    },
+    {
+      "id": "AUDIT-IFleet-costs-dead-trycatch",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Dead try/catch around mkdir({ recursive: true }) swallows real I/O errors",
+      "detail": "costs.ts wrapped fs.mkdir in try/catch to handle EEXIST, but mkdir with recursive:true is already idempotent. The empty catch masked genuine errors (EACCES, disk full) causing cost records to be silently dropped.",
+      "file_globs": ["src/utils/costs.ts"],
+      "fix_sketch": "Remove the try/catch entirely.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": "2026-06-21T04:09:00Z",
+      "closing_pr": "audit/nightly-2026-06-21"
+    },
+    {
+      "id": "AUDIT-IFleet-trailing-whitespace-0621",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Trailing whitespace in 6 source and test files",
+      "detail": "Several proposer files and test files had trailing whitespace on blank lines inside function bodies.",
+      "file_globs": [
+        "src/agents/proposer/scorer.ts",
+        "src/agents/proposer/context-loader.ts",
+        "src/agents/proposer/candidate-gen.ts",
+        "src/agents/proposer/dedupe.ts",
+        "src/orchestrator/__tests__/approval-gate.test.ts",
+        "src/learning/reviewer-prefs/__tests__/build-cards.test.ts"
+      ],
+      "fix_sketch": "Strip trailing whitespace.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": "2026-06-21T04:09:00Z",
+      "closing_pr": "audit/nightly-2026-06-21"
+    },
+    {
+      "id": "AUDIT-IFleet-sprint-dispatch-race",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "SprintManager.dispatch registers running task AFTER spawn — concurrent cancel misses it",
+      "detail": "this.running.set(task.id) is called after this.adapter.spawn() resolves. A concurrent cancelSprint in the gap between spawn resolve and running.set misses the entry; the worker process runs uncancelled.",
+      "file_globs": ["src/orchestrator/sprint.ts"],
+      "fix_sketch": "Pre-register the slot in this.running before calling spawn.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-workers-zero-boot",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "WorkerRegistry silently boots with zero workers on config parse failure",
+      "detail": "If workers.json is invalid, loadFromDisk sets this.workers = [] and logs a warning. The daemon boots and accepts commands but all tasks stall silently with no alert beyond console.warn.",
+      "file_globs": ["src/orchestrator/workers.ts"],
+      "fix_sketch": "Distinguish file-not-found (acceptable) from file-exists-but-invalid (should throw or emit an observable alert).",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-goal-length-unbounded",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "sprint_goal.goal has no upper length bound at the HMAC control-plane level",
+      "detail": "The HMAC-POST path validates goal is non-empty but not its length. A 64 KB goal is stored, propagated through the queue, and passed as a CLI argument to claude — potentially hitting ARG_MAX or inflating token costs.",
+      "file_globs": ["src/queue/control-plane.ts"],
+      "fix_sketch": "Add MAX_GOAL_LEN = 4000 constant and validate in parseCommand; return 400 if exceeded.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-bandit-boost-zero",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "gammaSample boost path silently returns 0 when rng() returns exactly 0",
+      "detail": "In the shape<1 boost-and-rescale path, rng() returning exactly 0 produces Math.pow(0, 1/shape) = 0. Both betaSample x and y can become 0, triggering the denom===0 guard which returns 0.5 — a wrong posterior sample. Probability is near-zero for random RNG but non-zero for deterministic test seeds.",
+      "file_globs": ["src/agents/bandit/thompson.ts"],
+      "fix_sketch": "Guard the boost value: if (boost === 0) retry or skip rescaling.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-06-21T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
     }
   ]
 }

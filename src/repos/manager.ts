@@ -242,7 +242,7 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
       }
     });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    child.on('close', (code) => resolve({ code: code ?? -1, stdout, stderr }));
   });
 }
 
