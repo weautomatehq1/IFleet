@@ -95,7 +95,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorOutput> {
 
   const diagnosis = parseDiagnosis(result.output);
 
-  if (input.fingerprintsPath && fingerprint) {
+  if (result.ok && input.fingerprintsPath && fingerprint) {
     persistFingerprint(input.fingerprintsPath, fingerprint.hash, fingerprint.tag);
   }
 

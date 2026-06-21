@@ -93,7 +93,7 @@ export async function runRollupCycle(opts: RollupCycleOpts): Promise<{ posted: b
   const model = opts.haikuModel ?? DEFAULT_HAIKU_MODEL;
   const summary = (await opts.claude.run(buildRollupPrompt(merged), model)).trim();
   const body = summary ? truncate(summary, maxChars) : formatRollupFallback(merged, maxChars);
-  await opts.discord.post(`☀️ **Morning brief**\n${body}`);
+  await opts.discord.post(summary ? `☀️ **Morning brief**\n${body}` : body);
   return { posted: true };
 }
 

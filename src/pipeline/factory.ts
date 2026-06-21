@@ -261,7 +261,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     // issue never share a worktree path (AUDIT-IFleet-957ddf9e).
     const worktreeKey = task.issueNumber > 0 ? `${task.issueNumber}-${task.id.slice(-6)}` : task.id;
     const branchName = titleToBranchName(task.issueNumber > 0 ? task.issueNumber : task.id, task.title);
-    const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot);
+    const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot, resolved.defaultBranch);
 
     const workerPool = buildWorkerPool(worker, pool, spawnOpts.parentTraceId);
     const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
@@ -601,6 +601,7 @@ async function setupWorktree(
   branchName: string,
   worktreesDir: string,
   repoRoot: string,
+  defaultBranch: string = 'main',
 ): Promise<string> {
   const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
   mkdirSync(worktreesDir, { recursive: true });
@@ -611,7 +612,7 @@ async function setupWorktree(
   }
 
   await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
-  await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, 'main'], { cwd: repoRoot });
+  await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, defaultBranch], { cwd: repoRoot });
 
   // Symlink the worktree's node_modules to the host repo's tree. Two
   // assumptions ride on this:

@@ -214,7 +214,7 @@ export function parseGateOutput(raw: string): GateDecision {
 }
 
 function stripFences(text: string): string {
-  return text.replace(/^```[a-zA-Z0-9]*\s*/g, '').replace(/```\s*$/g, '');
+  return text.replace(/^```[a-zA-Z0-9]*\s*$/gm, '').trim();
 }
 
 export function parseVerdict(raw: string): ReviewerVerdict {

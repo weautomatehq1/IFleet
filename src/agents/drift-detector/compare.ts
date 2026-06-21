@@ -147,7 +147,6 @@ function classifySymbol(
         absentGroup.repos.length > presentGroup.repos.length
           ? [absentGroup, presentGroup]
           : [presentGroup, absentGroup];
-      const majority = ordered[0]!;
       const minority = ordered[1]!;
       out.push({
         symbolKey,
@@ -157,7 +156,6 @@ function classifySymbol(
         groups: ordered,
         outlierRepos: minority.repos,
       });
-      void majority; // referenced via ordered[0] above; pinned for clarity.
     }
   }
 

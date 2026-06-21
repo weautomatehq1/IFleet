@@ -198,7 +198,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     }
     const checkoutRes = await this.runCommand(
       'git',
-      ['-C', tempDir, 'checkout', '--quiet', '--', sha],
+      ['-C', tempDir, 'checkout', '--quiet', sha],
       { timeoutMs: 60_000 },
     );
     if (checkoutRes.exitCode !== 0) {

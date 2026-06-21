@@ -137,7 +137,7 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       });
     },
     onCancel: async (taskId, reason) => {
-      store.updateState(taskId, 'failed', { reason: reason ?? 'cancelled' });
+      store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });
     },
     // verify / force_pr require the in-process verifier + orchestrator wiring
     // that only the daemon owns. If they reach this public entry, log loudly
