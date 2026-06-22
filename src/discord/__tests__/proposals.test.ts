@@ -161,7 +161,7 @@ describe('postProposalsForApproval', () => {
     expect(insertedRows).toHaveLength(0);
   });
 
-  it('skips DB insert when channel.send rejects (no orphan rows)', async () => {
+  it('inserts DB row before send — row persists if send rejects, posted count excludes failures', async () => {
     const channel: FakeChannel = {
       send: vi
         .fn()
@@ -178,7 +178,10 @@ describe('postProposalsForApproval', () => {
 
     expect(posted).toBe(1);
     expect(channel.send).toHaveBeenCalledTimes(2);
-    expect(insertedRows).toHaveLength(1);
-    expect(insertedRows[0]?.id).toBe('ok-id');
+    // Both rows inserted before send — DB row for failed send persists (by design,
+    // prevents the worse outcome of an orphan Discord message with no DB backing row).
+    expect(insertedRows).toHaveLength(2);
+    expect(insertedRows[0]?.id).toBe('fail-id');
+    expect(insertedRows[1]?.id).toBe('ok-id');
   });
 });
