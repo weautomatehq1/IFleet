@@ -57,7 +57,10 @@ export async function startDiscordBot(bootstrap: DiscordBootstrap): Promise<() =
   };
 
   const onSigterm = (): void => {
-    void shutdown().then(() => process.exit(0));
+    shutdown().then(() => process.exit(0)).catch((err) => {
+      console.error('[discord] shutdown error:', err);
+      process.exit(1);
+    });
   };
   process.once('SIGTERM', onSigterm);
   process.once('SIGINT', onSigterm);

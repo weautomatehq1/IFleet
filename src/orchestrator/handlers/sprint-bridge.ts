@@ -76,6 +76,7 @@ export async function runTickLoop(
 ): Promise<void> {
   let lastPausedAt = false;
   while (isRunning()) {
+    let task: Awaited<ReturnType<typeof adapter.pickNext>> = null;
     try {
       // Honour the fleet PAUSED flag — same flag the smoke runner cron
       // checks at the top of main(). Long-running tasks already in flight
@@ -93,7 +94,7 @@ export async function runTickLoop(
         console.warn('[daemon] fleet resumed — pickups re-enabled');
         lastPausedAt = false;
       }
-      const task = await adapter.pickNext();
+      task = await adapter.pickNext();
       if (task) {
         const brief = encodeBridgeBrief(task);
         const sprintRec = orchestrator.submitSprint({
@@ -123,7 +124,7 @@ export async function runTickLoop(
     } catch (err) {
       console.warn('[daemon] tick failed:', err);
     }
-    await sleep(tickMs);
+    if (!task) await sleep(tickMs);
   }
 }
 

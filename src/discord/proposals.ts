@@ -167,17 +167,6 @@ export async function postProposalsForApproval(
   let posted = 0;
   for (const candidate of live) {
     const proposalId = generateId();
-    try {
-      await channel.send({
-        content: formatMessage(candidate),
-        components: [buildButtonRow(proposalId)],
-      });
-    } catch (err) {
-      warn(
-        `[proposals] post failed for ${proposalId}: ${err instanceof Error ? err.message : String(err)} — row NOT inserted`,
-      );
-      continue;
-    }
     await insertProposal({
       id: proposalId,
       repo_id: cfg.repoId,
@@ -188,6 +177,17 @@ export async function postProposalsForApproval(
       estimated_difficulty: candidate.estimated_difficulty,
       embedding: null,
     });
+    try {
+      await channel.send({
+        content: formatMessage(candidate),
+        components: [buildButtonRow(proposalId)],
+      });
+    } catch (err) {
+      warn(
+        `[proposals] post failed for ${proposalId}: ${err instanceof Error ? err.message : String(err)} — DB row inserted, Discord message missing`,
+      );
+      continue;
+    }
     posted += 1;
   }
   return posted;

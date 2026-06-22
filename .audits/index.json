@@ -1,14 +1,25 @@
 {
-  "last_updated": "2026-06-20T04:11:00Z",
-  "open_count": 3,
-  "fixed_count": 9,
-  "audits": ["20260620T041100Z.json"],
-  "open_findings": [
+  "last_updated": "2026-06-22T04:14:50Z",
+  "open_count": 0,
+  "fixed_count": 21,
+  "audits": ["20260622T041450Z.json", "20260620T041100Z.json"],
+  "open_findings": [],
+  "fixed_findings": [
+    "AUDIT-IFleet-approval-gate-ts-ext",
+    "AUDIT-IFleet-proposals-store-rowcount-null",
+    "AUDIT-IFleet-discord-alert-swallows-4xx",
+    "AUDIT-IFleet-proposals-send-before-insert",
+    "AUDIT-IFleet-sprint-bridge-always-sleep",
+    "AUDIT-IFleet-dashboard-no-limit",
+    "AUDIT-IFleet-audit-ritual-execsync-block",
+    "AUDIT-IFleet-message-create-no-trycatch",
+    "AUDIT-IFleet-shutdown-void-rejection",
+    "AUDIT-IFleet-auto-approve-dead-branch",
+    "AUDIT-IFleet-dashboard-aborted-state",
+    "AUDIT-IFleet-scorer-trailing-whitespace",
     "AUDIT-IFleet-embed-cosine-padding",
     "AUDIT-IFleet-github-drain-loop-order",
-    "AUDIT-IFleet-standup-readall-blocking"
-  ],
-  "fixed_findings": [
+    "AUDIT-IFleet-standup-readall-blocking",
     "AUDIT-IFleet-sandbox-checkout-pathspec",
     "AUDIT-IFleet-server-cancel-wrong-state",
     "AUDIT-IFleet-factory-worktree-hardcoded-main",

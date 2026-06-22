@@ -189,11 +189,9 @@ function reason(err: unknown): string {
 }
 
 function defaultWarn(line: string): void {
-   
   console.warn(line);
 }
 
 function defaultTelemetry(line: string): void {
-   
   console.error(line);
 }

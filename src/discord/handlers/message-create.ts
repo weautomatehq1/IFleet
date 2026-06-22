@@ -52,16 +52,23 @@ export async function handleMessageCreate(
     userLabel: message.author.username ?? message.author.id,
   };
 
-  await controlPlane.postCommand({
-    type: 'sprint_goal',
-    goal: brief,
-    repo: route.repo,
-    source,
-    // Idempotency: a duplicate Discord message (network retry / bot restart
-    // re-delivery) will hash to the same key and the unified store will
-    // dedup via the UNIQUE idempotency_key index.
-    idempotencyKey: `discord:${message.channelId}:${message.id}`,
-  });
+  try {
+    await controlPlane.postCommand({
+      type: 'sprint_goal',
+      goal: brief,
+      repo: route.repo,
+      source,
+      // Idempotency: a duplicate Discord message (network retry / bot restart
+      // re-delivery) will hash to the same key and the unified store will
+      // dedup via the UNIQUE idempotency_key index.
+      idempotencyKey: `discord:${message.channelId}:${message.id}`,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`[discord] control plane error: ${msg}`);
+    await message.reply(`⚠️ Control plane unavailable — task not queued. (${msg})`).catch(() => {});
+    return { kind: 'ignored', reason: `control-plane error: ${msg}` };
+  }
 
   return { kind: 'posted', commandType: 'sprint_goal' };
 }

@@ -152,8 +152,7 @@ export async function reconcileMergedPRs(repos: string[]): Promise<void> {
 
       if (process.env['IFLEET_KG_DATABASE_URL']) {
         try {
-          execSync(`npx tsx scripts/sync-audit-findings.ts ${indexPath}`, {
-            stdio: 'inherit',
+          await execFileAsync('npx', ['tsx', 'scripts/sync-audit-findings.ts', indexPath], {
             cwd: resolveRepoPath('IFleet'),
           });
         } catch (syncErr) {

@@ -117,7 +117,7 @@ export async function recordProposalDecision(
       RETURNING id`,
     [input.proposalId, input.decision, input.decidedBy, decidedAt],
   );
-  if (result.rowCount === 1) return { updated: true };
+  if ((result.rowCount ?? 0) === 1) return { updated: true };
 
   // Row didn't update — either it doesn't exist, or it's already decided.
   const existing = await pool.query<{ decision: ProposalDecision | null }>(
@@ -177,7 +177,7 @@ export async function setResultingTaskId(
       WHERE id = $1`,
     [proposalId, taskId],
   );
-  return { updated: result.rowCount === 1 };
+  return { updated: (result.rowCount ?? 0) === 1 };
 }
 
 /**
@@ -207,7 +207,7 @@ export async function setResultingPrOutcome(
       WHERE id = $1`,
     [proposalId, prUrl, outcome],
   );
-  return { updated: result.rowCount === 1 };
+  return { updated: (result.rowCount ?? 0) === 1 };
 }
 
 /**
