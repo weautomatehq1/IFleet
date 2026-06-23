@@ -11,19 +11,19 @@ describe('formatBytes', () => {
   });
 
   it('formats 1024 bytes', () => {
-    expect(formatBytes(1024)).toBe('1.0 KB');
+    expect(formatBytes(1024)).toBe('1.0 KiB');
   });
 
   it('formats 1536 bytes', () => {
-    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(1536)).toBe('1.5 KiB');
   });
 
   it('formats 1048576 bytes', () => {
-    expect(formatBytes(1048576)).toBe('1.0 MB');
+    expect(formatBytes(1048576)).toBe('1.0 MiB');
   });
 
   it('formats 1073741824 bytes', () => {
-    expect(formatBytes(1073741824)).toBe('1.0 GB');
+    expect(formatBytes(1073741824)).toBe('1.0 GiB');
   });
 
   it('throws RangeError for negative input', () => {

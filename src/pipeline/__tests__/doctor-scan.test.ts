@@ -54,7 +54,7 @@ afterEach(() => {
 describe('hasNotableEvents', () => {
   it('returns true on failures, errors, or rate limit pressure', () => {
     expect(hasNotableEvents(fakeEvents(['task.failed']))).toBe(true);
-    expect(hasNotableEvents(fakeEvents(['worker.rateLimit']))).toBe(true);
+    expect(hasNotableEvents(fakeEvents(['ratelimit.observed']))).toBe(true);
     expect(hasNotableEvents(fakeEvents(['error']))).toBe(true);
   });
 

@@ -99,10 +99,11 @@ export class DiscordOutbox {
    */
   markAttemptFailed(id: number, error: string, maxAttempts = 5): void {
     const now = Date.now();
-    // Only transition rows that are currently 'sent' (owned by the fast path).
-    // Guards against the drain job re-claiming a row between markSent() and
-    // this call, which would otherwise revert a successfully-drained row back
-    // to 'pending' and trigger a second delivery attempt.
+    // Guard: skip rows already dead-lettered ('failed') — they're out of the
+    // retry loop. Allow both 'pending' (drain failure path) and 'sent'
+    // (fast-path failure re-pend: broadcastIFleet marks rows 'sent' before the
+    // async send fires, then calls back here on error to put them back in the
+    // retry queue). Closed AUDIT-IFleet-0d22c6e7.
     this.db
       .prepare(
         `UPDATE discord_outbox
@@ -110,7 +111,7 @@ export class DiscordOutbox {
                 last_error = @error,
                 last_attempt_at = @now,
                 state = CASE WHEN attempts + 1 >= @maxAttempts THEN 'failed' ELSE 'pending' END
-          WHERE id = @id AND state = 'sent'`,
+          WHERE id = @id AND state != 'failed'`,
       )
       .run({ error, now, maxAttempts, id });
   }
