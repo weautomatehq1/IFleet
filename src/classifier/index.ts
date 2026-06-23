@@ -1,15 +1,15 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { fileURLToPath } from 'url';
-import type { RoutingDecision, SprintMode, WorkerSpec, Provider, VerifyKind } from '../pipeline/types.ts';
-import { parseLabels } from '../queue/labels.ts';
-import { detectExplicitMode } from './modes.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { RoutingDecision, SprintMode, WorkerSpec, Provider, VerifyKind } from '../pipeline/types.js';
+import { parseLabels } from '../queue/labels.js';
+import { detectExplicitMode } from './modes.js';
 import {
   autoRouteMode,
   isBelowConfidenceThreshold,
   type AutoRouterDecision,
   type AutoRouterOptions,
-} from './auto-router.ts';
+} from './auto-router.js';
 
 type Tier = 'haiku' | 'sonnet' | 'opus';
 

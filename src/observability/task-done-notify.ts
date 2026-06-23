@@ -39,12 +39,21 @@ export function buildSummaryArgs(prompt: string): string[] {
 function runClaude(claudePath: string, prompt: string): Promise<string> {
   return new Promise((resolve) => {
     let out = '';
+    let errOut = '';
     const proc = spawn(claudePath, buildSummaryArgs(prompt), {
       env: claudeChildEnv(),
     });
     proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
-    proc.stderr.on('data', () => {});
-    proc.on('close', () => resolve(out.trim()));
+    proc.stderr.on('data', (d: Buffer) => { errOut += d.toString(); });
+    proc.on('close', (code) => {
+      if (errOut) console.warn('[task-done-notify] claude stderr:', errOut.trim());
+      if (code !== 0) {
+        console.warn('[task-done-notify] claude exited with code', code);
+        resolve('');
+      } else {
+        resolve(out.trim());
+      }
+    });
     proc.on('error', () => resolve(''));
   });
 }

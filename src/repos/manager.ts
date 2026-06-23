@@ -242,7 +242,14 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
       }
     });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    // null means the process was killed by a signal — treat as non-zero exit
+    // so callers see a failure rather than a spurious success.
+    child.on('close', (code, signal) => {
+      if (code === null) {
+        console.warn(`[repos] git ${args[0]} killed by signal ${signal ?? 'unknown'}`);
+      }
+      resolve({ code: code ?? 1, stdout, stderr });
+    });
   });
 }
 
@@ -265,5 +272,7 @@ export function redactToken(input: string): string {
   if (!input) return input;
   return input
     .replace(/bearer\s+[^\s"'`]+/gi, 'bearer ***')
-    .replace(/x-access-token:[^@]+@/gi, 'x-access-token:***@');
+    .replace(/x-access-token:[^@]+@/gi, 'x-access-token:***@')
+    .replace(/ghp_[A-Za-z0-9]+/g, 'ghp_***')
+    .replace(/github_pat_[A-Za-z0-9_]+/g, 'github_pat_***');
 }

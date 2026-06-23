@@ -289,10 +289,14 @@ export function shortTitle(task: QueuedTask): string {
 }
 
 export function taskEmbed(task: QueuedTask): EmbedBuilder {
-  const source =
-    task.source.kind === 'github'
-      ? `GitHub · ${task.source.repo}#${task.source.issueNumber}`
-      : `Discord · <@${task.source.userId}>`;
+  let source: string;
+  if (task.source.kind === 'github') {
+    source = `GitHub · ${task.source.repo}#${task.source.issueNumber}`;
+  } else if (task.source.kind === 'discord') {
+    source = `Discord · <@${task.source.userId}>`;
+  } else {
+    source = `Unknown source`;
+  }
   return new EmbedBuilder()
     .setTitle(`${STATUS_BADGE.picked} ${shortTitle(task)}`)
     .setDescription(truncate(task.brief, 1500))

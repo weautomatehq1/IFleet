@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runStreaming, type SpawnLike } from './spawn-runner.ts';
+import { runStreaming, type SpawnLike } from './spawn-runner.js';
 import {
   categorizeRateLimitError,
   type SpawnHandle,
@@ -9,7 +9,7 @@ import {
   type WorkerAdapter,
   type WorkerEvent,
   type WorkerResult,
-} from './types.ts';
+} from './types.js';
 
 // Process-env *allowlist* for the `codex` subprocess. Without this the child
 // inherited the full parent `process.env` (GITHUB_TOKEN, DISCORD_BOT_TOKEN,
@@ -126,13 +126,15 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
         return { ok: true, text, sessionId: threadId, durationMs };
       };
 
-      const handle = runStreaming({
-        command: binary,
-        args,
-        cwd: opts.workingDir,
-        env: codexChildEnv(process.env, { includeApiKey: adapterOpts.includeApiKey ?? false }),
-        signal: opts.signal,
-        spawnImpl: adapterOpts.spawnImpl,
+      let handle: ReturnType<typeof runStreaming>;
+      try {
+        handle = runStreaming({
+          command: binary,
+          args,
+          cwd: opts.workingDir,
+          env: codexChildEnv(process.env, { includeApiKey: adapterOpts.includeApiKey ?? false }),
+          signal: opts.signal,
+          spawnImpl: adapterOpts.spawnImpl,
         parseLine: (line, emit) => {
           const evt = safeJsonParse(line);
           if (evt === undefined) return;
@@ -164,7 +166,11 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
           if (!sawRateLimit && !sawError) return undefined;
           return classifyResult(endedAt - startedAt);
         },
-      });
+        });
+      } catch (err) {
+        try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+        throw err;
+      }
 
       return {
         pid: handle.pid,

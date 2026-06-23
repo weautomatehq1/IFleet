@@ -110,8 +110,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const handleExit = (): void => {
     process.exit(0);
   };
-  process.on('SIGINT', handleExit);
-  process.on('SIGTERM', handleExit);
+  process.once('SIGINT', handleExit);
+  process.once('SIGTERM', handleExit);
 
   for await (const event of log.tail(args.sprintId, { fromTs: args.fromTs })) {
     if (args.json) {

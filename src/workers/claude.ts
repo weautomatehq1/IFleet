@@ -65,14 +65,20 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
         },
         finalize: ({ startedAt, endedAt, sessionId: capturedSessionId, stderrTail }) => {
           if (stderrTail) console.warn('[claude] stderr tail:', stderrTail.slice(0, 500));
+          const durationMs = endedAt - startedAt;
+          const text = finalText !== '' ? finalText : textBuffer;
+          const resolvedSessionId = capturedSessionId !== '' ? capturedSessionId : sessionId;
+          if (rateLimited) {
+            const result: WorkerResult = {
+              ok: false, text, sessionId: resolvedSessionId,
+              totalCostUsd, inputTokens, outputTokens, durationMs, rateLimited: true,
+            };
+            if (rateLimitResetsAt !== undefined) result.rateLimitResetsAt = rateLimitResetsAt;
+            return result;
+          }
           return {
-            ok: true,
-            text: finalText !== '' ? finalText : textBuffer,
-            sessionId: capturedSessionId !== '' ? capturedSessionId : sessionId,
-            totalCostUsd,
-            inputTokens,
-            outputTokens,
-            durationMs: endedAt - startedAt,
+            ok: true, text, sessionId: resolvedSessionId,
+            totalCostUsd, inputTokens, outputTokens, durationMs,
           };
         },
         // A 429 makes the CLI exit non-zero AFTER emitting a rate-limit event.

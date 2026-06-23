@@ -29,7 +29,9 @@ export function isVagueBrief(body: string): boolean {
   if (!body) return true;
   if (body.length < VAGUE_BODY_MIN_LEN) return true;
   if (!ACCEPTANCE_HEADER.test(body)) return true;
-  const questionMarks = (body.match(/\?/g) ?? []).length;
+  // Count only standalone ? characters (not ?. optional-chaining or ?? nullish-coalescing)
+  // so code snippets in the brief don't falsely trigger the vague heuristic.
+  const questionMarks = (body.match(/\?(?![.?])/g) ?? []).length;
   if (questionMarks > VAGUE_MAX_QUESTION_MARKS) return true;
   return false;
 }

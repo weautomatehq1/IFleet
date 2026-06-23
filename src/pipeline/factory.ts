@@ -573,6 +573,9 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
       ]);
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
+      if (!match?.[1]) {
+        console.warn(`[pr] could not extract PR number from gh output: ${url}`);
+      }
       const number = match?.[1] ? parseInt(match[1], 10) : 0;
       // Best-effort reviewer request — never throws. A failed review request
       // must not fail an otherwise-successful PR.

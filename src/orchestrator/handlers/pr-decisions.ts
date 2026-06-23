@@ -144,11 +144,9 @@ export function wrapFactoryWithVerifierContext(
       } catch { /* missing worktree → resolver returns null, verifier skips */ }
       if (headSha) {
         try {
-          // baseRef='main' is safe: production worktrees are always created from main
-          // by buildWorkerPool (factory.ts:324 `git worktree add ... main`). AUDIT-IFleet-0c47bae9.
           const fp = await computeStructuralFingerprint({
             repoRoot: bootstrap.input.worktreePath,
-            baseRef: 'main',
+            baseRef: bootstrap.input.baseBranch ?? 'main',
             headRef: headSha,
           });
           registry.setFingerprint(taskId, fp.sha256);

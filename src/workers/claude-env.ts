@@ -74,9 +74,11 @@ export const BRIEF_DATA_MARKER_CLOSE = 'USER_BRIEF_END>>>';
  * single `-p` argument to `claude`.
  */
 export function wrapBriefAsData(instruction: string, brief: string): string {
-  // Scrub any literal close-marker the user typed so a brief can't fake the
-  // end-of-data sentinel and resume the instruction layer.
-  const sanitized = brief.replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
+  // Scrub both markers from user content: the close-marker can fake the
+  // end-of-data sentinel, and the open-marker can fake a new data block.
+  const sanitized = brief
+    .replaceAll(BRIEF_DATA_MARKER_OPEN, 'USER_BRIEF_BEGIN (escaped)')
+    .replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
   return [
     instruction.trim(),
     '',
@@ -100,6 +102,8 @@ export function wrapBriefAsData(instruction: string, brief: string): string {
  * instruction layer; only the block between the markers is data.
  */
 export function quoteAsUserData(brief: string): string {
-  const sanitized = brief.replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
+  const sanitized = brief
+    .replaceAll(BRIEF_DATA_MARKER_OPEN, 'USER_BRIEF_BEGIN (escaped)')
+    .replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
   return [BRIEF_DATA_MARKER_OPEN, sanitized, BRIEF_DATA_MARKER_CLOSE].join('\n');
 }

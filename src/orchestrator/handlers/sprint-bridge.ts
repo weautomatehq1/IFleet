@@ -119,6 +119,8 @@ export async function runTickLoop(
           unifiedToSprintId,
           verifierCtx,
         );
+        // Task found — immediately try for the next queued task without sleeping.
+        continue;
       }
     } catch (err) {
       console.warn('[daemon] tick failed:', err);

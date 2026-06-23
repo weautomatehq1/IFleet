@@ -190,7 +190,12 @@ function sendNow(url: string, msg: string): void {
           'Content-Length': Buffer.byteLength(body),
         },
       },
-      (res) => { res.resume(); },
+      (res) => {
+        res.resume();
+        if (res.statusCode !== undefined && (res.statusCode < 200 || res.statusCode >= 300)) {
+          console.warn(`[broadcast] webhook POST returned HTTP ${res.statusCode}`);
+        }
+      },
     );
     req.on('error', (err) => {
       console.warn(`[broadcast] webhook POST errored: ${err.message}`);

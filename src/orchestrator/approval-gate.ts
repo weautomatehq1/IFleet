@@ -16,8 +16,8 @@ import type { ApprovalGate } from '../pipeline/types.js';
 import {
   recordProposalDecision as recordProposalDecisionInDb,
   type RecordDecisionResult,
-} from './goal-proposals-store.ts';
-import type { ProposalDecision } from '../agents/proposer/types.ts';
+} from './goal-proposals-store.js';
+import type { ProposalDecision } from '../agents/proposer/types.js';
 
 type Verdict = 'approve' | 'reject' | 'cancel';
 
@@ -44,6 +44,14 @@ export class ControlPlaneApprovalGate implements ApprovalGate {
     if (opts.abortSignal.aborted) return false;
 
     return new Promise<boolean>((resolve) => {
+      // Clear any pre-existing pending entry so its timer doesn't fire after
+      // the new entry takes over.
+      const prior = this.pending.get(opts.taskId);
+      if (prior) {
+        clearTimeout(prior.timer);
+        opts.abortSignal.removeEventListener('abort', prior.onAbort);
+      }
+
       const settle = (verdict: Verdict): void => {
         const entry = this.pending.get(opts.taskId);
         if (!entry) return;

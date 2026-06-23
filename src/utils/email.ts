@@ -12,7 +12,7 @@ export interface EmailResult {
   id: string;
 }
 
-const DEFAULT_FROM = 'IFleet <onboarding@resend.dev>';
+const DEFAULT_FROM = process.env['IFLEET_EMAIL_FROM'] ?? 'IFleet <onboarding@resend.dev>';
 
 let _resend: Resend | null = null;
 function getResend(): Resend {

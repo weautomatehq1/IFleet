@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createClaudeAdapter, type ClaudeAdapterOptions } from '../claude.ts';
-import type { SpawnOpts as WorkerSpawnOpts, WorkerEvent } from '../types.ts';
+import { createClaudeAdapter, type ClaudeAdapterOptions } from '../claude.js';
+import type { SpawnOpts as WorkerSpawnOpts, WorkerEvent } from '../types.js';
 import type {
   SpawnHandle,
   SpawnOpts,
@@ -9,9 +9,9 @@ import type {
   TaskId,
   WorkerAdapter,
   WorkerConfig,
-} from '../../orchestrator/types.ts';
-import { startTrace } from '../../observability/langfuse.ts';
-import { registerAdapter } from './registry.ts';
+} from '../../orchestrator/types.js';
+import { startTrace } from '../../observability/langfuse.js';
+import { registerAdapter } from './registry.js';
 
 /**
  * The `claude-cli` backend wraps the existing Claude Code CLI spawn primitive

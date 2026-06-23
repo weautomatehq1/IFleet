@@ -162,7 +162,6 @@ function extractTopFrames(log: string, max: number): string[] {
     if (m) {
       frames.push(`at ${m[1]} (${m[2]})`);
       if (frames.length >= max) break;
-      continue;
     }
     const bareM = /^\s*at\s+(?:.*?\/)?([^/\s:]+)(?::\d+)?(?::\d+)?\s*$/.exec(raw);
     if (bareM) {

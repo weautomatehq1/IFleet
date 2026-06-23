@@ -116,7 +116,6 @@ export function shouldRunDailyRollup(
 
 export function buildScanPrompt(events: ReadonlyArray<Event>): string {
   const lines = events
-    .slice(-DEFAULT_SCAN_EVENT_WINDOW)
     .map((e) => `[${new Date(e.ts).toISOString()}] ${e.kind} task=${e.taskId ?? '-'} worker=${e.workerId ?? '-'}`);
   return [
     'You are IFleet\'s on-call doctor. Look at these recent orchestrator events',
@@ -134,8 +133,7 @@ export function hasNotableEvents(events: ReadonlyArray<Event>): boolean {
     (e) =>
       e.kind === 'task.failed' ||
       e.kind === 'error' ||
-      e.kind === 'worker.rateLimit' ||
-      e.kind === 'rateLimit',
+      e.kind === 'ratelimit.observed',
   );
 }
 
@@ -166,6 +164,6 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-// Used by LearningEntry type tests indirectly — keep the import alive when
-// downstream consumers tree-shake this file.
+// Re-exported so callers can reference the LearningEntry type without importing
+// from the doctor module directly.
 export type { LearningEntry };

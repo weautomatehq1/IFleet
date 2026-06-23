@@ -36,8 +36,8 @@ export async function handleReactionAdd(
     }
   }
 
-  const emoji = reaction.emoji.name;
-  if (emoji !== APPROVE_EMOJI && emoji !== REJECT_EMOJI) return;
+  const emoji = reaction.emoji.name; // null for custom emoji without a name
+  if (!emoji || (emoji !== APPROVE_EMOJI && emoji !== REJECT_EMOJI)) return;
 
   const channelId = reaction.message.channelId;
   const messageId = reaction.message.id;

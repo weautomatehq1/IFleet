@@ -59,7 +59,7 @@ function formatPrBody(input: FormatInput): string {
     : null;
   const lines = [
     `## Technical`,
-    `- Task: \`${input.task.id}\` — ${input.task.title}`,
+    `- Task: \`${input.task.id}\` — ${input.task.title.replace(/`/g, '\\`')}`,
     ...(issueUrl ? [`- Source: ${issueUrl}`] : []),
     `- Editor: \`${input.editorSpec.workerId}\` (${input.editorSpec.provider}/${input.editorSpec.model})`,
     `- Reviewer: \`${input.reviewerSpec.workerId}\` (${input.reviewerSpec.provider}/${input.reviewerSpec.model})`,

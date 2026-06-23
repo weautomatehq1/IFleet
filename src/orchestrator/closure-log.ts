@@ -19,7 +19,7 @@ export interface RoutingDecisionLogEntry {
 
 export function writeRoutingDecisionLog(
   entry: RoutingDecisionLogEntry,
-  sink: (line: string) => void = (l) => console.error(l),
+  sink: (line: string) => void = (l) => console.warn(l),
 ): void {
   sink(`[ROUTING-DECISION-LOG] ${JSON.stringify(entry)}`);
 }

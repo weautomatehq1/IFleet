@@ -104,11 +104,16 @@ export function detectExplicitMode(input: {
   return undefined;
 }
 
-// Sanity invariant — keeps prompts under the 500-char budget the issue brief
-// specifies. Runs once at module load; cheap and fails loud.
+// Sanity invariant — keeps prompts under the 500-char budget so they fit
+// within the 2000-char HAIKU_MAX_OUTPUT_CHARS classifier window alongside
+// the task title. See docs/MODEL-ROUTING.md §Mode overrides.
+// Runs once at module load; cheap and fails loud.
 for (const [mode, prompt] of Object.entries(PROMPTS)) {
   if (prompt.length >= 500) {
-    throw new Error(`mode prompt ${mode} exceeds 500 chars (${prompt.length})`);
+    throw new Error(
+      `mode prompt ${mode} exceeds 500 chars (${prompt.length}); ` +
+      `trim it to leave room for the task title in the classifier window`,
+    );
   }
 }
 

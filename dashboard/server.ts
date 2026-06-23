@@ -288,9 +288,5 @@ if (invokedDirectly) {
   server.listen(PORT, HOST, () => {
     // eslint-disable-next-line no-console
     console.log(`[dashboard] http://${HOST}:${PORT}`);
-    // eslint-disable-next-line no-console
-    console.log(`[dashboard] tasksDb=${TASKS_DB}`);
-    // eslint-disable-next-line no-console
-    console.log(`[dashboard] stateDb=${STATE_DB}`);
   });
 }

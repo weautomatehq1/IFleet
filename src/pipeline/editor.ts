@@ -91,7 +91,9 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   try {
     await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
   } catch (err) {
-    console.warn('[pipeline] editor: git commit failed:', err);
+    throw new Error(
+      `[pipeline] editor: git commit failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 

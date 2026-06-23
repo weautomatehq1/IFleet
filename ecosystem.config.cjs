@@ -50,7 +50,10 @@ if (fs.existsSync(envFile)) {
       const eq = line.indexOf('=');
       if (eq > 0) {
         const key = line.slice(0, eq).trim();
-        const val = line.slice(eq + 1).trim();
+        // Strip inline comments, then strip surrounding quotes so that
+        // `SECRET="abc123"` stores `abc123` (not `"abc123"`).
+        let val = line.slice(eq + 1).replace(/#.*$/, '').trim();
+        val = val.replace(/^(['"])(.*)\1$/, '$2');
         if (key) dotEnv[key] = val;
       }
     });
@@ -137,7 +140,7 @@ module.exports = {
         ...baseEnv,
         IFLEET_ROLE: 'mcp',
         MCP_DEFAULT_REPO: process.env.MCP_DEFAULT_REPO ?? 'weautomatehq1/IFleet',
-        GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? '',
       },
       out_file: `${logDir}/ifleet-mcp-out.log`,
       error_file: `${logDir}/ifleet-mcp-error.log`,
@@ -271,8 +274,9 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 4000,
       stop_exit_codes: [2],
-      // 3am ET nightly — well clear of the 4am UTC nightly audit and 9am
-      // standup. Cron is in PM2's local TZ (server typically UTC).
+      // 7am UTC nightly (3am ET/EDT in summer, 2am EST in winter). Well clear
+      // of the 4am UTC nightly audit and 9am standup. Cron uses the PM2
+      // process timezone (server typically UTC).
       cron_restart: '0 7 * * *',
       watch: false,
       env: {

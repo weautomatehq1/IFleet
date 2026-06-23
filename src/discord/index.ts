@@ -30,7 +30,11 @@ export interface DiscordBootstrap {
 /** Programmatic entry — production wires router + T5 lookup here. */
 export async function startDiscordBot(bootstrap: DiscordBootstrap): Promise<() => Promise<void>> {
   const token = requireEnv('DISCORD_BOT_TOKEN');
-  const url = process.env['CONTROL_PLANE_URL'] ?? 'http://localhost:3001/control';
+  const rawUrl = process.env['CONTROL_PLANE_URL'];
+  if (!rawUrl) {
+    console.warn('[discord] CONTROL_PLANE_URL not set — falling back to http://localhost:3001/control');
+  }
+  const url = rawUrl ?? 'http://localhost:3001/control';
   const secret = requireEnv('IFLEET_HMAC_SECRET');
 
   const controlPlane = new HmacControlPlaneClient({ url, secret });
@@ -62,7 +66,12 @@ export async function startDiscordBot(bootstrap: DiscordBootstrap): Promise<() =
   process.once('SIGTERM', onSigterm);
   process.once('SIGINT', onSigterm);
 
-  return shutdown;
+  const stop = async (): Promise<void> => {
+    process.off('SIGTERM', onSigterm);
+    process.off('SIGINT', onSigterm);
+    await shutdown();
+  };
+  return stop;
 }
 
 

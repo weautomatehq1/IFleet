@@ -99,6 +99,10 @@ export class DiscordOutbox {
    */
   markAttemptFailed(id: number, error: string, maxAttempts = 5): void {
     const now = Date.now();
+    // Only transition rows that are currently 'sent' (owned by the fast path).
+    // Guards against the drain job re-claiming a row between markSent() and
+    // this call, which would otherwise revert a successfully-drained row back
+    // to 'pending' and trigger a second delivery attempt.
     this.db
       .prepare(
         `UPDATE discord_outbox
@@ -106,7 +110,7 @@ export class DiscordOutbox {
                 last_error = @error,
                 last_attempt_at = @now,
                 state = CASE WHEN attempts + 1 >= @maxAttempts THEN 'failed' ELSE 'pending' END
-          WHERE id = @id`,
+          WHERE id = @id AND state = 'sent'`,
       )
       .run({ error, now, maxAttempts, id });
   }

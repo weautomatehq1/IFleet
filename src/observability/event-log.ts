@@ -158,6 +158,11 @@ async function* tailFile(file: string, opts: TailOptions): AsyncIterable<Event> 
     }
   } finally {
     closed = true;
+    // Wake the inner loop so the pending Promise resolves and the loop
+    // exits cleanly before we close the handle and watcher. Without this,
+    // an early consumer break leaves the generator stuck awaiting forever,
+    // leaking the FSWatcher and FileHandle until GC.
+    wake();
     watcher?.close();
     if (handle) await handle.close();
   }
