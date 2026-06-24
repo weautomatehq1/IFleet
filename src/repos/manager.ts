@@ -223,7 +223,7 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
     let stdout = '';
     let stderr = '';
     let settled = false;
-    const settle = (fn: () => void) => {
+    const settle = (fn: () => void): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
