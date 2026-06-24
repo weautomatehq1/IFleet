@@ -80,36 +80,37 @@ interface BudgetRow {
 }
 
 export function listActiveSprints(stateDb: Database.Database) {
+  const terminalList = [...TERMINAL_SPRINT_KINDS].map((k) => `'${k}'`).join(', ');
   const rows = stateDb
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
+        WHERE json_extract(state_json, '$.kind') NOT IN (${terminalList})
+           OR json_extract(state_json, '$.kind') IS NULL
         ORDER BY updated_at DESC`,
     )
     .all() as SprintRow[];
-  return rows
-    .map((r) => {
-      let kind = 'unknown';
-      let state: unknown = null;
-      try {
-        state = JSON.parse(r.state_json);
-        if (state && typeof state === 'object' && 'kind' in state) {
-          kind = String((state as { kind: unknown }).kind ?? 'unknown');
-        }
-      } catch {
-        // leave kind = unknown
+  return rows.map((r) => {
+    let kind = 'unknown';
+    let state: unknown = null;
+    try {
+      state = JSON.parse(r.state_json);
+      if (state && typeof state === 'object' && 'kind' in state) {
+        kind = String((state as { kind: unknown }).kind ?? 'unknown');
       }
-      return {
-        id: r.id,
-        mode: r.mode,
-        goal: r.goal,
-        kind,
-        state,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      };
-    })
-    .filter((s) => !TERMINAL_SPRINT_KINDS.has(s.kind));
+    } catch {
+      // leave kind = unknown
+    }
+    return {
+      id: r.id,
+      mode: r.mode,
+      goal: r.goal,
+      kind,
+      state,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  });
 }
 
 export function listTaskQueue(tasksDb: Database.Database, limit = 50) {

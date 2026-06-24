@@ -210,6 +210,8 @@ export class GitRepoManager implements RepoManager {
 // helpers
 // -----------------------------------------------------------------------------
 
+const GIT_SPAWN_TIMEOUT_MS = Number(process.env['IFLEET_GIT_TIMEOUT_MS'] ?? 120_000);
+
 async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     // Strip GIT_* vars so a parent pre-push hook's GIT_DIR/GIT_WORK_TREE
@@ -220,14 +222,27 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      settle(() =>
+        reject(new Error(`git ${args[0] ?? ''} timed out after ${GIT_SPAWN_TIMEOUT_MS}ms`)),
+      );
+    }, GIT_SPAWN_TIMEOUT_MS);
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf8');
     });
     child.stderr.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf8');
     });
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    child.on('error', (err) => settle(() => reject(err)));
+    child.on('close', (code) => settle(() => resolve({ code: code ?? 0, stdout, stderr })));
   });
 }
 

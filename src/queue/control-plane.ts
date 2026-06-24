@@ -174,6 +174,8 @@ export function createControlPlane(opts: ControlPlaneOptions): ControlPlane {
     stop: () =>
       new Promise<void>((resolve, reject) => {
         nonceStore.destroy();
+        // Drain keep-alive connections so close() resolves promptly.
+        server.closeAllConnections?.();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };

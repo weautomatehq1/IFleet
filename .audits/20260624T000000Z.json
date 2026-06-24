@@ -1,0 +1,58 @@
+{
+  "repo": "IFleet",
+  "audited_at": "2026-06-24T00:00:00Z",
+  "auditor": "claude-sonnet-4-6 / nightly-audit",
+  "branch": "audit/nightly-2026-06-24",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-cp-keepalive",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "HTTP control-plane stop() hangs on keep-alive connections",
+      "file": "src/queue/control-plane.ts",
+      "description": "stop() calls server.close() which stops accepting new connections but does NOT terminate existing keep-alive connections. The returned promise never resolves until all clients disconnect, causing graceful shutdown to hang indefinitely under load.",
+      "fix": "Call server.closeAllConnections?.() before server.close() to forcibly drain keep-alive sockets.",
+      "status": "open"
+    },
+    {
+      "id": "AUDIT-IFleet-dashboard-fullscan",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listActiveSprints() fetches all sprints then filters in JS",
+      "file": "dashboard/server.ts",
+      "description": "listActiveSprints() runs SELECT * on the sprints table ordered by updated_at and then filters terminal states (completed/failed/cancelled) in JavaScript. As sprints accumulate this causes an unbounded full-table scan on every dashboard request.",
+      "fix": "Add a WHERE clause filtering on state_json to exclude terminal states at the SQL layer.",
+      "status": "open"
+    },
+    {
+      "id": "AUDIT-IFleet-git-timeout",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "spawnCapture() in repos/manager.ts has no timeout",
+      "file": "src/repos/manager.ts",
+      "description": "spawnCapture() wraps child_process.spawn() with no timeout. A stalled git operation (clone, fetch, push) will hang the calling task worker indefinitely, blocking the slot and eventually exhausting the worker pool.",
+      "fix": "Add AbortController + setTimeout to kill the child after a configurable grace period (default 120s).",
+      "status": "open"
+    },
+    {
+      "id": "AUDIT-IFleet-import-ext",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "spawn-runner.ts imports types.ts instead of types.js",
+      "file": "src/workers/spawn-runner.ts",
+      "description": "Line 3 uses './types.ts' as the import specifier. All other imports in the ESM codebase use '.js' extensions as required by Node ESM resolution. The .ts extension works only because tsx rewrites it at runtime but it is inconsistent and will break if the file is ever compiled.",
+      "fix": "Change import specifier from './types.ts' to './types.js'.",
+      "status": "open"
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "open": 4,
+    "fixed_this_run": 0,
+    "by_severity": {
+      "CRITICAL": 0,
+      "IMPORTANT": 3,
+      "COSMETIC": 1
+    }
+  }
+}

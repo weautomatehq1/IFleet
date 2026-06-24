@@ -1,11 +1,55 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-06-03T21:55:56Z",
+  "last_updated": "2026-06-24T00:00:00Z",
   "open_findings": 0,
   "by_severity": {
     "CRITICAL": 0,
     "IMPORTANT": 0,
     "COSMETIC": 0
   },
-  "findings": []
+  "nightly_audits": [
+    "20260624T000000Z.json"
+  ],
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-cp-keepalive",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "HTTP control-plane stop() hangs on keep-alive connections",
+      "file": "src/queue/control-plane.ts",
+      "status": "fixed",
+      "closed_at": "2026-06-24T00:00:00Z",
+      "fix_pr_branch": "audit/nightly-2026-06-24"
+    },
+    {
+      "id": "AUDIT-IFleet-dashboard-fullscan",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listActiveSprints() fetches all sprints then filters in JS",
+      "file": "dashboard/server.ts",
+      "status": "fixed",
+      "closed_at": "2026-06-24T00:00:00Z",
+      "fix_pr_branch": "audit/nightly-2026-06-24"
+    },
+    {
+      "id": "AUDIT-IFleet-git-timeout",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "spawnCapture() in repos/manager.ts has no timeout",
+      "file": "src/repos/manager.ts",
+      "status": "fixed",
+      "closed_at": "2026-06-24T00:00:00Z",
+      "fix_pr_branch": "audit/nightly-2026-06-24"
+    },
+    {
+      "id": "AUDIT-IFleet-import-ext",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "spawn-runner.ts imports types.ts instead of types.js",
+      "file": "src/workers/spawn-runner.ts",
+      "status": "fixed",
+      "closed_at": "2026-06-24T00:00:00Z",
+      "fix_pr_branch": "audit/nightly-2026-06-24"
+    }
+  ]
 }
