@@ -52,12 +52,17 @@ export class UnifiedQueueAdapter {
   }
 
   async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
-    const current = this.store.getById(task.id);
-    if (current?.state === 'failed') {
-      console.warn(`[unified-queue] markCompleted skipped for ${task.id} — task already failed (concurrent cancel)`);
+    // Atomic conditional update: only succeeds if state is still 'in_flight'.
+    // Prevents TOCTOU where a concurrent cancel moves the task to 'blocked'
+    // between a separate getById read and this updateState write.
+    const updated = this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() }, 'in_flight');
+    if (!updated) {
+      const current = this.store.getById(task.id);
+      console.warn(
+        `[unified-queue] markCompleted: no-op for ${task.id} — state is ${current?.state ?? 'not found'} (expected in_flight)`,
+      );
       return;
     }
-    this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() });
     try {
       await this.sourceFor(task).markCompleted(task, prUrl, totalTokens);
     } catch (err) {

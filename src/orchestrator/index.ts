@@ -357,7 +357,7 @@ export class Orchestrator {
     } catch (err) {
       console.warn(
         `[orchestrator] dispatchToDiscord failed for task ${taskId} / ${event.kind}: ${
-          err instanceof Error ? err.message : String(err)
+          err instanceof Error ? (err.stack ?? err.message) : JSON.stringify(err)
         }`,
       );
     }

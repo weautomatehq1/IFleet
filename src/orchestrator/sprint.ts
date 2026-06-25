@@ -314,6 +314,15 @@ export class SprintManager {
     const freshTasks = sprint.tasks
       .map((id) => this.store.loadTask(id))
       .filter((t): t is TaskRecord => Boolean(t));
+    // Guard: if any tasks could not be loaded (corrupt state_json), do not
+    // advance the sprint to a terminal state — that would silently discard
+    // unprocessed work. store.ts already logs console.error for each corrupt row.
+    if (freshTasks.length < sprint.tasks.length) {
+      console.error(
+        `[sprint] tick: ${sprint.tasks.length - freshTasks.length} task(s) failed to load for sprint ${sprintId} — skipping terminal check`,
+      );
+      return;
+    }
     const allTerminal = freshTasks.every(
       (t) =>
         t.state.kind === 'completed' || t.state.kind === 'failed' || t.state.kind === 'cancelled',

@@ -291,7 +291,7 @@ export class StateStore {
     try {
       state = JSON.parse(row.state_json) as SprintRecord['state'];
     } catch (err) {
-      console.warn(`loadSprint: corrupt state_json for sprint ${row.id}: ${String(err)}`);
+      console.error(`loadSprint: corrupt state_json for sprint ${row.id}: ${String(err)}`);
       return undefined;
     }
     const taskRows = this.db
@@ -317,7 +317,7 @@ export class StateStore {
     try {
       state = JSON.parse(row.state_json) as TaskRecord['state'];
     } catch (err) {
-      console.warn(`loadTask: corrupt state_json for task ${row.id}: ${String(err)}`);
+      console.error(`loadTask: corrupt state_json for task ${row.id}: ${String(err)}`);
       return undefined;
     }
     const base: TaskRecord = {
