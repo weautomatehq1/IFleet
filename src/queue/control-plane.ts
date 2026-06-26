@@ -221,12 +221,14 @@ async function handleRequest(
 
   const ts = Number.parseInt(timestamp, 10);
   if (!Number.isFinite(ts)) {
+    console.warn('[control-plane] auth rejected: invalid timestamp format');
     res.statusCode = 401;
     res.end('invalid timestamp');
     return;
   }
   const skew = Math.abs(Math.floor(Date.now() / 1000) - ts);
   if (skew > maxSkew) {
+    console.warn(`[control-plane] auth rejected: timestamp skew ${skew}s exceeds max ${maxSkew}s`);
     res.statusCode = 401;
     res.end('timestamp out of range');
     return;
@@ -242,6 +244,7 @@ async function handleRequest(
   }
 
   if (!verifyPayload({ timestamp, nonce, body }, opts.hmacSecret, signature)) {
+    console.warn('[control-plane] auth rejected: HMAC signature mismatch');
     res.statusCode = 401;
     res.end('bad signature');
     return;
@@ -343,6 +346,10 @@ export function parseCommand(body: string): ControlCommand {
     case 'sprint_goal': {
       if (typeof parsed.goal !== 'string' || parsed.goal.trim().length === 0) {
         throw new Error('sprint_goal requires goal');
+      }
+      const MAX_GOAL_LEN = 10_000;
+      if (parsed.goal.length > MAX_GOAL_LEN) {
+        throw new Error('sprint_goal: goal exceeds maximum length');
       }
       // Accept Discord audit fields either flat (legacy) or nested under
       // `source` (current client contract — DiscordCommandSource). Nested

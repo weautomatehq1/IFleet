@@ -72,6 +72,11 @@ export class DiscordOutbox {
   }
 
   enqueue(channel: string, payload: string): number {
+    try {
+      JSON.parse(payload);
+    } catch {
+      throw new Error(`discord-outbox enqueue: payload is not valid JSON (channel=${channel})`);
+    }
     const res = this.db
       .prepare(
         `INSERT INTO discord_outbox (channel, payload, state, created_at)

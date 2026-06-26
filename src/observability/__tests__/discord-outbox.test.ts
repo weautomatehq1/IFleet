@@ -40,9 +40,13 @@ describe('DiscordOutbox', () => {
     });
 
     it('returns distinct ids for successive inserts', () => {
-      const id1 = outbox.enqueue('broadcast', 'a');
-      const id2 = outbox.enqueue('broadcast', 'b');
+      const id1 = outbox.enqueue('broadcast', '{"n":1}');
+      const id2 = outbox.enqueue('broadcast', '{"n":2}');
       expect(id2).toBeGreaterThan(id1);
+    });
+
+    it('throws on invalid JSON payload', () => {
+      expect(() => outbox.enqueue('broadcast', 'not-json')).toThrow('not valid JSON');
     });
   });
 
@@ -72,7 +76,7 @@ describe('DiscordOutbox', () => {
     });
 
     it('does not re-drain an already-sent row', async () => {
-      outbox.enqueue('broadcast', 'msg');
+      outbox.enqueue('broadcast', '{"content":"msg"}');
       const sender = vi.fn().mockResolvedValue(undefined);
       await outbox.drainOnce({ send: sender });
       const result2 = await outbox.drainOnce({ send: sender });
@@ -87,7 +91,7 @@ describe('DiscordOutbox', () => {
 
   describe('drainOnce — sender throws', () => {
     it('keeps row pending with attempts+1 and records last_error', async () => {
-      const id = outbox.enqueue('broadcast', 'msg');
+      const id = outbox.enqueue('broadcast', '{"content":"msg"}');
       const sender = vi.fn().mockRejectedValue(new Error('network error'));
 
       const result = await outbox.drainOnce({ send: sender, maxAttempts: 5 });
@@ -105,7 +109,7 @@ describe('DiscordOutbox', () => {
     });
 
     it('dead-letters the row after maxAttempts total failures', async () => {
-      const id = outbox.enqueue('broadcast', 'msg');
+      const id = outbox.enqueue('broadcast', '{"content":"msg"}');
       const sender = vi.fn().mockRejectedValue(new Error('timeout'));
 
       for (let i = 0; i < 5; i++) {
@@ -121,7 +125,7 @@ describe('DiscordOutbox', () => {
     });
 
     it('returns failed=1 on the drain that exhausts maxAttempts', async () => {
-      outbox.enqueue('broadcast', 'msg');
+      outbox.enqueue('broadcast', '{"content":"msg"}');
       const sender = vi.fn().mockRejectedValue(new Error('err'));
 
       let lastResult = { sent: 0, retried: 0, failed: 0 };
@@ -138,7 +142,7 @@ describe('DiscordOutbox', () => {
 
   describe('drainOnce — batch', () => {
     it('processes at most `batch` rows per call', async () => {
-      for (let i = 0; i < 5; i++) outbox.enqueue('broadcast', `msg-${i}`);
+      for (let i = 0; i < 5; i++) outbox.enqueue('broadcast', `{"n":${i}}`);
       const sender = vi.fn().mockResolvedValue(undefined);
       const result = await outbox.drainOnce({ send: sender, batch: 3 });
       expect(result.sent).toBe(3);
@@ -172,7 +176,7 @@ describe('DiscordOutbox', () => {
     });
 
     it('does not include sent or pending rows', async () => {
-      outbox.enqueue('broadcast', 'pending-msg');
+      outbox.enqueue('broadcast', '{"content":"pending"}');
       const sender = vi.fn().mockResolvedValue(undefined);
       await outbox.drainOnce({ send: sender });
       expect(outbox.deadLetterEntries()).toEqual([]);
