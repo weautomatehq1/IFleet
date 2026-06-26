@@ -1,8 +1,8 @@
 {
-  "last_updated": "2026-06-20T04:11:00Z",
+  "last_updated": "2026-06-26T04:10:00Z",
   "open_count": 3,
-  "fixed_count": 9,
-  "audits": ["20260620T041100Z.json"],
+  "fixed_count": 10,
+  "audits": ["20260620T041100Z.json", "20260626T040848Z.json"],
   "open_findings": [
     "AUDIT-IFleet-embed-cosine-padding",
     "AUDIT-IFleet-github-drain-loop-order",
@@ -17,6 +17,7 @@
     "AUDIT-IFleet-broadcast-lastsentat-pre-drop",
     "AUDIT-IFleet-stripfences-no-multiline",
     "AUDIT-IFleet-markfailed-no-blocked-guard",
-    "AUDIT-IFleet-compare-void-majority"
+    "AUDIT-IFleet-compare-void-majority",
+    "AUDIT-IFleet-50b815fe"
   ]
 }

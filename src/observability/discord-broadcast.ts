@@ -123,10 +123,14 @@ export function broadcastIFleet(msg: string): void {
       // alias; the drain resolves it back to DISCORD_IFLEET_WEBHOOK at send
       // time. Closes AUDIT-IFleet-b97d9070. (No fast-path send on this overflow
       // branch, so the row legitimately stays `pending` for the drain to own.)
-      _outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated }));
-      console.warn(
-        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — message persisted to outbox for drain`,
-      );
+      try {
+        _outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated }));
+        console.warn(
+          `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — message persisted to outbox for drain`,
+        );
+      } catch (err) {
+        console.warn('[broadcast] outbox.enqueue failed (overflow path) — dropping message:', err);
+      }
     } else {
       console.warn(
         `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
@@ -144,16 +148,25 @@ export function broadcastIFleet(msg: string): void {
     // in the SQLite outbox. The `channel` column ('broadcast') is the stable
     // alias; the drain job resolves it back to DISCORD_IFLEET_WEBHOOK at send
     // time. Closes AUDIT-IFleet-b97d9070.
-    const rowId = outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated }));
-    // Exactly-once: claim the row OUT of `pending` (single atomic UPDATE)
-    // BEFORE the fast-path send fires, so the 30s drain (WHERE state='pending')
-    // can never re-select and re-deliver a message the fast path already owns.
-    // On send success the row stays `sent`; on failure we transition it back to
-    // `pending` via markAttemptFailed so the drain retries it (and resolves the
-    // URL from env). enqueue + markSent run in the same synchronous tick, so no
-    // drain cycle can interleave and observe the row while it is `pending`.
-    // Closes AUDIT-IFleet-0d22c6e7.
-    outbox.markSent(rowId);
+    let rowId: number | undefined;
+    try {
+      rowId = outbox.enqueue(BROADCAST_CHANNEL, JSON.stringify({ content: truncated }));
+      // Exactly-once: claim the row OUT of `pending` (single atomic UPDATE)
+      // BEFORE the fast-path send fires, so the 30s drain (WHERE state='pending')
+      // can never re-select and re-deliver a message the fast path already owns.
+      // On send success the row stays `sent`; on failure we transition it back to
+      // `pending` via markAttemptFailed so the drain retries it (and resolves the
+      // URL from env). enqueue + markSent run in the same synchronous tick, so no
+      // drain cycle can interleave and observe the row while it is `pending`.
+      // Closes AUDIT-IFleet-0d22c6e7.
+      outbox.markSent(rowId);
+    } catch (err) {
+      console.warn('[broadcast] outbox enqueue/markSent failed — falling back to fire-and-forget send:', err);
+      state.pendingCount--;
+      sendNow(url, truncated);
+      return;
+    }
+    const capturedRowId = rowId;
     setTimeout(() => {
       state.pendingCount--;
       void sendNowAsync(url, truncated).then(
@@ -161,7 +174,7 @@ export function broadcastIFleet(msg: string): void {
           // Row already claimed as `sent` at enqueue time — nothing to do.
         },
         (err: unknown) =>
-          outbox.markAttemptFailed(rowId, err instanceof Error ? err.message : String(err)),
+          outbox.markAttemptFailed(capturedRowId, err instanceof Error ? err.message : String(err)),
       );
     }, delay).unref();
   } else {
