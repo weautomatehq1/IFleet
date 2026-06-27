@@ -668,6 +668,53 @@ export class TaskStore {
     }));
   }
 
+  /** Fetch PR decisions across all repos, newest first. Replaces the `as-any` cast in build-cards.ts. */
+  listAllPrDecisions(opts: { windowMs?: number; limit?: number; repo?: string } = {}): PrDecision[] {
+    const { windowMs, limit = 50000, repo } = opts;
+    const conditions: string[] = [];
+    const params: Record<string, unknown> = { limit };
+    if (windowMs !== undefined) {
+      conditions.push('created_at > @since');
+      params.since = Date.now() - windowMs;
+    }
+    if (repo !== undefined) {
+      conditions.push('repo = @repo');
+      params.repo = repo;
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = this.db
+      .prepare(
+        `SELECT id, task_id, repo, pr_number, verdict, reviewer_login, merged_at,
+                created_at, fingerprint
+           FROM pr_decisions
+           ${where}
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT @limit`,
+      )
+      .all(params) as Array<{
+        id: string;
+        task_id: string;
+        repo: string;
+        pr_number: number;
+        verdict: string;
+        reviewer_login: string | null;
+        merged_at: number | null;
+        created_at: number;
+        fingerprint: string | null;
+      }>;
+    return rows.map((r) => ({
+      id: r.id,
+      taskId: r.task_id,
+      repo: r.repo,
+      prNumber: r.pr_number,
+      verdict: r.verdict as PrVerdict,
+      reviewerLogin: r.reviewer_login,
+      mergedAt: r.merged_at,
+      createdAt: r.created_at,
+      fingerprint: r.fingerprint,
+    }));
+  }
+
   /**
    * Idempotently seed a stub task row for a synthetic `backfill:<url>` task_id.
    * The `pr_decisions` table has an FK onto `tasks.id`, so the backfill script

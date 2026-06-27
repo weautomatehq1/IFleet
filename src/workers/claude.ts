@@ -225,7 +225,7 @@ function parseClaudeEvent(
     return;
   }
 
-  if (type === 'assistant' && evt.message?.content) {
+  if (type === 'assistant' && Array.isArray(evt.message?.content)) {
     for (const block of evt.message.content) {
       if (block.type === 'text' && typeof block.text === 'string') {
         onTextDelta(block.text);

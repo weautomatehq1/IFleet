@@ -192,6 +192,7 @@ function sendNow(url: string, msg: string): void {
       },
       (res) => { res.resume(); },
     );
+    req.setTimeout(8_000, () => req.destroy());
     req.on('error', (err) => {
       console.warn(`[broadcast] webhook POST errored: ${err.message}`);
     });
@@ -230,6 +231,7 @@ function sendNowAsync(url: string, msg: string): Promise<void> {
           }
         },
       );
+      req.setTimeout(8_000, () => req.destroy());
       req.on('error', reject);
       req.write(body);
       req.end();

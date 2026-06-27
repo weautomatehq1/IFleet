@@ -120,7 +120,7 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
       // ignore
     }
     const graceMs = opts.killGraceMs ?? 5000;
-    await delay(graceMs);
+    await Promise.race([delay(graceMs), new Promise<void>(r => child.once('close', r))]);
     if (child.exitCode === null && child.signalCode === null) {
       try {
         child.kill('SIGKILL');

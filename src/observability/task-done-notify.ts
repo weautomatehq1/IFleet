@@ -65,6 +65,7 @@ function postWebhook(webhookUrl: string, content: string): Promise<void> {
       },
       (res) => { res.resume(); res.on('end', resolve); },
     );
+    req.setTimeout(10_000, () => req.destroy());
     req.on('error', () => resolve());
     req.write(body);
     req.end();
