@@ -10,9 +10,11 @@ const mockHttpRequest = vi.fn();
 const mockReqWrite = vi.fn();
 const mockReqEnd = vi.fn();
 const mockReqOn = vi.fn();
+const mockReqSetTimeout = vi.fn();
+const mockReqDestroy = vi.fn();
 
-function makeFakeReq(): { write: typeof mockReqWrite; end: typeof mockReqEnd; on: typeof mockReqOn } {
-  return { write: mockReqWrite, end: mockReqEnd, on: mockReqOn };
+function makeFakeReq(): { write: typeof mockReqWrite; end: typeof mockReqEnd; on: typeof mockReqOn; setTimeout: typeof mockReqSetTimeout; destroy: typeof mockReqDestroy } {
+  return { write: mockReqWrite, end: mockReqEnd, on: mockReqOn, setTimeout: mockReqSetTimeout, destroy: mockReqDestroy };
 }
 
 vi.mock('node:https', () => ({

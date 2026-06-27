@@ -12,6 +12,8 @@ function makeHttpsMock(_statusCode = 200) {
     write: vi.fn(),
     end: vi.fn(),
     on: vi.fn(),
+    setTimeout: vi.fn(),
+    destroy: vi.fn(),
   };
   vi.mocked(https.request).mockImplementation((_opts, cb) => {
     (cb as (r: typeof res) => void)(res);
