@@ -1,23 +1,51 @@
 {
-  "last_updated": "2026-06-26T04:10:00Z",
-  "open_count": 3,
-  "fixed_count": 10,
-  "audits": ["20260620T041100Z.json", "20260626T040848Z.json"],
-  "open_findings": [
-    "AUDIT-IFleet-embed-cosine-padding",
-    "AUDIT-IFleet-github-drain-loop-order",
-    "AUDIT-IFleet-standup-readall-blocking"
+  "last_updated": "2026-06-28T04:06:32Z",
+  "open_count": 6,
+  "fixed_count": 12,
+  "audits": [
+    "2026-05-31T04:10:52Z.json",
+    "2026-06-07T041244Z.json",
+    "20260602T041140Z.json",
+    "20260613T041834Z.json",
+    "20260618T040000Z.json",
+    "2026-06-28T040632Z.json"
   ],
-  "fixed_findings": [
-    "AUDIT-IFleet-sandbox-checkout-pathspec",
-    "AUDIT-IFleet-server-cancel-wrong-state",
-    "AUDIT-IFleet-factory-worktree-hardcoded-main",
-    "AUDIT-IFleet-doctor-scan-double-morning-brief",
-    "AUDIT-IFleet-doctor-fingerprint-on-failure",
-    "AUDIT-IFleet-broadcast-lastsentat-pre-drop",
-    "AUDIT-IFleet-stripfences-no-multiline",
-    "AUDIT-IFleet-markfailed-no-blocked-guard",
-    "AUDIT-IFleet-compare-void-majority",
-    "AUDIT-IFleet-50b815fe"
+  "open_findings": [
+    {
+      "id": "AUDIT-IFleet-ff8faf70",
+      "severity": "IMPORTANT",
+      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
+      "file_globs": ["src/utils/costs.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-2fdb1535",
+      "severity": "IMPORTANT",
+      "title": "sprint_goal missing required fields return 500 instead of 4xx",
+      "file_globs": ["src/queue/control-plane.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-634a726e",
+      "severity": "IMPORTANT",
+      "title": "Git auth token exposed via process args visible to local ps",
+      "file_globs": ["src/repos/manager.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-d2de0aca",
+      "severity": "IMPORTANT",
+      "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
+      "file_globs": ["src/agents/verifier/sandbox.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-84860186",
+      "severity": "IMPORTANT",
+      "title": "Inconsistent module import extensions across the codebase (partial fix applied)",
+      "file_globs": ["src/**/*.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-202b928c",
+      "severity": "IMPORTANT",
+      "title": "TaskStore insert never persists the attempts column it relies on",
+      "file_globs": ["src/queue/store.ts"]
+    }
   ]
 }

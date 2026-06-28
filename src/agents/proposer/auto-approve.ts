@@ -72,10 +72,6 @@ export function resolveAutoApproveThreshold(cfg: ProposerConfig): number {
 
 /** Format the `decided_by` audit string for the auto path. */
 export function formatAutoBanditDecidedBy(threshold: number): string {
-  // Strip a single trailing zero on integer-valued thresholds so the audit
-  // string reads `auto-bandit-1` rather than `auto-bandit-1.0`; otherwise
-  // preserve the float for traceability (e.g. `auto-bandit-0.85`).
-  if (Number.isInteger(threshold)) return `auto-bandit-${threshold}`;
   return `auto-bandit-${threshold}`;
 }
 

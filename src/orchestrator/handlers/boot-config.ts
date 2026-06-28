@@ -134,6 +134,12 @@ export function buildRepoResolver(
   for (const route of router.list()) {
     if (byRepo.has(route.repo)) continue;
     if (!reposMap[route.repo]) continue;
+    if (!route.repo.includes('/')) {
+      console.error(
+        `[boot-config] channels.json repo must be owner/name format, got: ${route.repo} — skipping`,
+      );
+      continue;
+    }
     const [owner, name] = route.repo.split('/', 2) as [string, string];
     byRepo.set(route.repo, {
       repoId: route.repo,

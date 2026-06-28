@@ -15,8 +15,8 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isSprintMode, type SprintMode } from './modes.ts';
-import { claudeChildEnv, quoteAsUserData } from '../workers/claude-env.ts';
+import { isSprintMode, type SprintMode } from './modes.js';
+import { claudeChildEnv, quoteAsUserData } from '../workers/claude-env.js';
 
 export type Risk = 'low' | 'med' | 'high';
 
