@@ -68,6 +68,14 @@ export class InvariantRunner {
    * Empty array = clean run, no rules, or all rules passed.
    */
   async run(input: InvariantRunInput): Promise<VerifierFailure[]> {
+    // Reject slugs that contain path traversal sequences. repoSlug is
+    // user-supplied (from task.repo) and goes directly into a path join;
+    // a slug like '../../tmp/evil' would escape the invariants directory
+    // and potentially import an attacker-controlled arch.ts into the daemon.
+    if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(input.repoSlug) || /^[/\\]/.test(input.repoSlug)) {
+      console.error(`[invariants] rejected unsafe repoSlug: ${JSON.stringify(input.repoSlug)}`);
+      return [];
+    }
     const root = input.invariantsRoot ?? process.cwd();
     const dir = join(root, '.ifleet', 'invariants', input.repoSlug);
     if (!existsSync(dir)) return [];

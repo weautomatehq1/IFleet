@@ -653,12 +653,16 @@ function augmentTaskWithVetoReasons(
 
 function extractSummary(plan: string): string {
   // Architect prompt ends with a one-paragraph plain-English summary.
-  // Best effort: take the last non-empty paragraph.
+  // Best effort: take the last non-empty paragraph, capped at 1000 chars to
+  // prevent the full plan landing in Discord/PR body when the architect omits
+  // blank-line separation.
+  const MAX_SUMMARY = 1000;
   const paragraphs = plan
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
-  return paragraphs.length > 0 ? (paragraphs[paragraphs.length - 1] ?? '') : plan;
+  const raw = paragraphs.length > 0 ? (paragraphs[paragraphs.length - 1] ?? '') : plan;
+  return raw.length > MAX_SUMMARY ? raw.slice(0, MAX_SUMMARY) + '…' : raw;
 }
 
 function formatReviewSummary(verdict: 'approve' | 'request_changes', concerns: string[]): string {

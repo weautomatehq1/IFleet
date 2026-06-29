@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptions } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { WorkerCrashError, type WorkerEvent, type WorkerResult } from './types.ts';
+import { WorkerCrashError, type WorkerEvent, type WorkerResult } from './types.js';
 
 export interface RunnerOptions {
   command: string;

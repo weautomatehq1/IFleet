@@ -500,9 +500,20 @@ function postDiscordAlert(webhookUrl: string, content: string): Promise<void> {
     const req = request(
       { hostname: url.hostname, path: url.pathname + url.search, method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
-      (res) => { res.resume(); res.on('end', resolve); },
+      (res) => {
+        res.resume();
+        res.on('end', () => {
+          if ((res.statusCode ?? 200) >= 400) {
+            console.warn(`[orchestrator] discord alert returned HTTP ${res.statusCode}`);
+          }
+          resolve();
+        });
+      },
     );
-    req.on('error', () => resolve()); // never let Discord failures propagate
+    req.on('error', (err: Error) => {
+      console.warn('[orchestrator] discord alert failed:', err.message);
+      resolve();
+    });
     req.write(body);
     req.end();
   });

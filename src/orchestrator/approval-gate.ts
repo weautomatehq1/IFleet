@@ -16,8 +16,8 @@ import type { ApprovalGate } from '../pipeline/types.js';
 import {
   recordProposalDecision as recordProposalDecisionInDb,
   type RecordDecisionResult,
-} from './goal-proposals-store.ts';
-import type { ProposalDecision } from '../agents/proposer/types.ts';
+} from './goal-proposals-store.js';
+import type { ProposalDecision } from '../agents/proposer/types.js';
 
 type Verdict = 'approve' | 'reject' | 'cancel';
 

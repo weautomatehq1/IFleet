@@ -87,7 +87,8 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
     .then(() => false)
     .catch(() => true);
   if (!hasChanges) return;
-  const subject = taskTitle ? `feat: ${taskTitle.slice(0, 72)}` : 'chore: editor changes';
+  const safeTitle = taskTitle ? taskTitle.replace(/[\r\n]+/g, ' ').trim() : '';
+  const subject = safeTitle ? `feat: ${safeTitle.slice(0, 72)}` : 'chore: editor changes';
   try {
     await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
   } catch (err) {

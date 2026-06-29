@@ -125,16 +125,13 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       // Daemon's tick loop picks from the store; no-op here.
     },
     onApprove: async (taskId) => {
-      const task = store.getById(taskId);
-      if (!task) return;
-      // Approvals are resolved in the daemon process (ApprovalGate). The
-      // public control-plane only records the verdict in stateMeta — the
-      // daemon's in-process control-plane is what actually unblocks the
-      // architect.
-      store.updateState(taskId, task.state ?? 'in_flight', {
-        ...(task.stateMeta ?? {}),
-        approvedAt: Date.now(),
-      });
+      // approve requires the in-process ControlPlaneApprovalGate that only the
+      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
+      // does NOT unblock the waiting architect — the daemon gate never sees it.
+      // Log loudly so mis-routed approvals are visible rather than silently lost.
+      console.error(
+        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      );
     },
     onCancel: async (taskId, reason) => {
       store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });

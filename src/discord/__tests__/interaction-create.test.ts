@@ -552,8 +552,9 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
     restoreEnv();
   });
 
-  it('accepts proposal button when channel id and approver id match (env fallback)', async () => {
+  it('accepts proposal button when channel id and approver id match (explicit approver list)', async () => {
     process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    process.env['IFLEET_PROPOSALS_APPROVER_IDS'] = '111';
     proposalStoreState.getProposalForShip = vi.fn(async () => ({
       id: 'p-1',
       repo_id: 'weautomatehq1/IFleet',
@@ -564,6 +565,15 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
     const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
     await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/✔ Approved/));
+    restoreEnv();
+  });
+
+  it('denies proposal button when IFLEET_PROPOSALS_APPROVER_IDS is unset', async () => {
+    process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    delete process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
+    const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
+    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/not authorised/i));
     restoreEnv();
   });
 
@@ -580,6 +590,7 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
 describe('M5.2-T1: Approve → /ship enqueue', () => {
   const PROPOSALS = '9999000099990000';
   const APPROVER = '111';
+
 
   function router(): ChannelRouter {
     return {
@@ -634,6 +645,7 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
 
   beforeEach(() => {
     process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    process.env['IFLEET_PROPOSALS_APPROVER_IDS'] = APPROVER;
     proposalStoreState.getProposalForShip = vi.fn(async () => ({
       id: 'p-99',
       repo_id: 'weautomatehq1/IFleet',
@@ -716,6 +728,7 @@ describe('AUDIT-IFleet-50b49e86: first-write-wins guard — handler side', () =>
   const PROPOSALS = '9999000099990000';
   const APPROVER = '111';
 
+
   function router(): ChannelRouter {
     return {
       resolve: () => null,
@@ -753,6 +766,7 @@ describe('AUDIT-IFleet-50b49e86: first-write-wins guard — handler side', () =>
 
   beforeEach(() => {
     process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
+    process.env['IFLEET_PROPOSALS_APPROVER_IDS'] = APPROVER;
     proposalStoreState.getProposalForShip = vi.fn(async () => ({
       id: 'p-dupe',
       repo_id: 'weautomatehq1/IFleet',
@@ -764,6 +778,7 @@ describe('AUDIT-IFleet-50b49e86: first-write-wins guard — handler side', () =>
 
   afterEach(() => {
     delete process.env['IFLEET_PROPOSALS_CHANNEL_ID'];
+    delete process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
     vi.mocked(recordProposalDecision).mockRestore();
   });
 

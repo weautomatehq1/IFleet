@@ -28,11 +28,7 @@ export async function appendCostRecord(repoRoot: string, record: CostRecord): Pr
   const omcDir = join(repoRoot, '.omc');
   const costFile = join(omcDir, 'costs.json');
 
-  try {
-    await fs.mkdir(omcDir, { recursive: true });
-  } catch {
-    // Directory might already exist
-  }
+  await fs.mkdir(omcDir, { recursive: true });
 
   const line = JSON.stringify(record) + '\n';
   await fs.appendFile(costFile, line, 'utf-8');

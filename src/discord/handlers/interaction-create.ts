@@ -397,13 +397,14 @@ async function handleButton(
       return;
     }
     const rawAllow = process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
-    const explicitAllow = rawAllow
-      ? rawAllow.split(',').map((s) => s.trim()).filter(Boolean)
-      : null;
-    const fallbackAllow = explicitAllow
-      ? null
-      : Array.from(new Set(deps.router.list().flatMap((r) => r.allowedUserIds)));
-    const allow = explicitAllow ?? fallbackAllow ?? [];
+    if (!rawAllow) {
+      console.warn(
+        '[interaction-create] IFLEET_PROPOSALS_APPROVER_IDS is unset — denying proposal action (set this env var to allow approvers)',
+      );
+      await interaction.editReply(`You are not authorised for this action.`);
+      return;
+    }
+    const allow = rawAllow.split(',').map((s) => s.trim()).filter(Boolean);
     if (!allow.includes(interaction.user.id)) {
       await interaction.editReply(`You are not authorised for this action.`);
       return;
