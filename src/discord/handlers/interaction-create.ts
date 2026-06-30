@@ -24,6 +24,7 @@ import {
   setFindingsStatus,
   synthesizeAuditBrief,
   type AuditIndex,
+  type AuditStatus,
 } from '../audit-runner.js';
 import {
   dbReadIndex,
@@ -270,6 +271,10 @@ async function handleAuditFix(
     return;
   }
 
+  // Capture original statuses before marking 'fixing' so failed-dispatch
+  // findings are reverted to their exact prior state (open or reopened).
+  const originalStatus = new Map(targets.map((f) => [f.id, f.status]));
+
   // Mark fixing BEFORE dispatch (intent survives a mid-loop crash). Update
   // both the local file and Supabase so the two stores don't drift; Supabase
   // failures are logged but don't block dispatch (the local file is the
@@ -317,14 +322,25 @@ async function handleAuditFix(
   }
 
   // Revert anything that failed to queue so it stays visible to /audit-fix.
+  // Group by original status so 'reopened' findings don't lose that state.
   if (failed.length > 0) {
-    setFindingsStatus(indexPath, failed, 'open');
+    const revertGroups = new Map<AuditStatus, string[]>();
     for (const id of failed) {
+      const orig = (originalStatus.get(id) ?? 'open') as AuditStatus;
+      const group = revertGroups.get(orig);
+      if (group) group.push(id);
+      else revertGroups.set(orig, [id]);
+    }
+    for (const [status, ids] of revertGroups) {
+      setFindingsStatus(indexPath, ids, status);
+    }
+    for (const id of failed) {
+      const orig = (originalStatus.get(id) ?? 'open') as AuditStatus;
       try {
-        await dbUpdateFindingStatus(id, 'open');
+        await dbUpdateFindingStatus(id, orig);
       } catch (err) {
         console.error(
-          `[audit-sync] dbUpdateFindingStatus(open) failed for ${id}: ${
+          `[audit-sync] dbUpdateFindingStatus(${orig}) failed for ${id}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
