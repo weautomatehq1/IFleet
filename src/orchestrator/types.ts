@@ -27,7 +27,7 @@ export type SprintState =
   | { kind: 'queued' }
   | { kind: 'planning' }
   | { kind: 'running'; startedAt: number }
-  | { kind: 'paused'; at: number; reason: string }
+  | { kind: 'paused'; at: number; reason: string; startedAt?: number }
   | { kind: 'cancelled'; reason: string; at: number }
   | { kind: 'completed'; at: number; prs: string[] }
   | { kind: 'failed'; at: number; error: string };
