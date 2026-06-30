@@ -513,6 +513,7 @@ export class SprintManager {
       kind: 'paused',
       at: this.now(),
       reason: `budget limit $${limit.toFixed(2)} reached (spent $${spentUsd.toFixed(2)})`,
+      startedAt: sprint.state.startedAt,
     });
     this.emit({
       ts: this.now(),
@@ -549,6 +550,7 @@ export class SprintManager {
       kind: 'paused',
       at: now,
       reason: `rate cap reached, waiting until ${new Date(resetAt).toISOString()}`,
+      startedAt: sprint.state.startedAt,
     });
     this.emit({
       ts: now,
@@ -701,7 +703,8 @@ export class SprintManager {
     if (sprint.state.kind !== 'paused') {
       throw new Error(`cannot resume sprint in state ${sprint.state.kind}`);
     }
-    const updated = this.transition(id, { kind: 'running', startedAt: this.now() });
+    const startedAt = sprint.state.startedAt ?? this.now();
+    const updated = this.transition(id, { kind: 'running', startedAt });
     this.emit({
       ts: this.now(),
       sprintId: id,
