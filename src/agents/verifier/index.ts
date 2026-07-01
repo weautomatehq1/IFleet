@@ -53,6 +53,9 @@ export class VerifierAgent {
 
   constructor(opts: VerifierAgentOptions) {
     this.emit = opts.emit;
+    if (!opts.sandbox) {
+      console.warn('[verifier] StubSandboxRunner in use — all verification runs will pass unconditionally. Inject a real SandboxRunner for production.');
+    }
     this.sandbox = opts.sandbox ?? new StubSandboxRunner({ now: opts.now });
     this.now = opts.now ?? Date.now;
   }

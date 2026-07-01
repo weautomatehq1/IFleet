@@ -1,7 +1,7 @@
 {
   "last_updated": "2026-07-01T04:00:00Z",
-  "open_count": 7,
-  "fixed_count": 17,
+  "open_count": 22,
+  "fixed_count": 20,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -50,10 +50,100 @@
       "file_globs": ["src/queue/store.ts"]
     },
     {
-      "id": "AUDIT-IFleet-744141b9",
+      "id": "AUDIT-IFleet-56e677cf",
       "severity": "IMPORTANT",
-      "title": "invariants.ts runCommand() accumulates output without byte cap — OOM risk on large semgrep scans",
-      "file_globs": ["src/agents/verifier/invariants.ts"]
+      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
+      "file_globs": ["src/pipeline/runner.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-6dbc02a1",
+      "severity": "IMPORTANT",
+      "title": "defaultHaikuCall passes full prompt (including user brief) as argv — visible in ps aux",
+      "file_globs": ["src/classifier/auto-router.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-1a2eb5fd",
+      "severity": "IMPORTANT",
+      "title": "control-plane.ts parseCommand places no length cap on reason, userId, userLabel, or idempotencyKey",
+      "file_globs": ["src/queue/control-plane.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-5a520b9e",
+      "severity": "IMPORTANT",
+      "title": "issue-commenter.ts lastCommentId mutable closure races if comment() called before waitForApproval resolves",
+      "file_globs": ["src/queue/issue-commenter.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-ff177eeb",
+      "severity": "IMPORTANT",
+      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
+      "file_globs": ["src/queue/github.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-8485d061",
+      "severity": "IMPORTANT",
+      "title": "DockerSandboxRunner falls back to in-worktree execution without requiring IFLEET_ALLOW_SANDBOX_FALLBACK",
+      "file_globs": ["src/agents/verifier/sandbox.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-d7687cda",
+      "severity": "IMPORTANT",
+      "title": "runner.ts logCosts only called on pr_opened path — failed/cancelled runs never record costs",
+      "file_globs": ["src/pipeline/runner.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-fde51222",
+      "severity": "IMPORTANT",
+      "title": "audit-store.ts TERMINAL_SQL_LIST string interpolation is structurally fragile",
+      "file_globs": ["src/audit/audit-store.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-35755878",
+      "severity": "IMPORTANT",
+      "title": "queue/store.ts recoverStale reads IFLEET_MAX_ATTEMPTS env on every call rather than once at construction",
+      "file_globs": ["src/queue/store.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-3b3ab72a",
+      "severity": "IMPORTANT",
+      "title": "workers/claude.ts passes full brief as -p argv — visible in ps aux for all pipeline phases",
+      "file_globs": ["src/workers/claude.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-f820fdb9",
+      "severity": "COSMETIC",
+      "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
+      "file_globs": ["src/pipeline/reviewer.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-a103ab2c",
+      "severity": "COSMETIC",
+      "title": "spawn-runner.ts cancel() does not short-circuit the SIGTERM grace period if process already exited",
+      "file_globs": ["src/workers/spawn-runner.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-4de85929",
+      "severity": "COSMETIC",
+      "title": "auto-router in-memory cache never expires — stale routing decisions persist across sprint submissions",
+      "file_globs": ["src/classifier/auto-router.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-20559453",
+      "severity": "COSMETIC",
+      "title": "contracts/hmac.ts verifyPayload has redundant length check after timingSafeEqual",
+      "file_globs": ["src/contracts/hmac.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-2896b739",
+      "severity": "COSMETIC",
+      "title": "server.ts deferringDiscordOut.postTaskCreated always returns empty threadId string without warning",
+      "file_globs": ["src/server.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-14ec04e8",
+      "severity": "COSMETIC",
+      "title": "audit-store.ts dbReadIndex returns null for both DB unreachable and zero-row cases without distinguishing them",
+      "file_globs": ["src/audit/audit-store.ts"]
     },
     {
       "id": "AUDIT-IFleet-02454a89",

@@ -168,7 +168,11 @@ export function recordOutcome(
 
   if (success) {
     state.consecutiveFailures = 0;
-    if (state.status === 'probing' || state.status === 'disabled') {
+    if (state.status === 'probing') {
+      // Probe succeeded → re-enable the arm. A bare success against a
+      // `disabled` arm should NOT bypass the probe gate — the arm stays
+      // disabled until onAssignment drains the cooldown to 0 and the arm
+      // transitions to `probing` first.
       state.status = 'active';
       state.assignmentsRemaining = 0;
     }
