@@ -1,0 +1,50 @@
+{
+  "audit_id": "audit-20260701T040000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-07-01T04:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-744141b9",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "invariants.ts runCommand() accumulates output without byte cap — OOM risk on large semgrep scans",
+      "detail": "InvariantRunner.runCommand() pushes all stdout/stderr chunks into an unbounded array with no size limit. A large semgrep scan against a big codebase will accumulate the full output in memory before the process exits. sandbox.ts has a matching runCommand() that caps at 1MB and appends '[output truncated]' — invariants.ts must mirror that guard to prevent the long-running daemon from OOM-crashing on pathological scans.",
+      "file_globs": ["src/agents/verifier/invariants.ts"],
+      "fix_sketch": "Add totalBytes counter and cap = 1_000_000 sentinel matching sandbox.ts lines 419-432. In onData: skip push once cap is reached; append '[output truncated]' in the close handler when truncated is true.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-01T04:00:00Z",
+      "closed_at": "2026-07-01T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-01"
+    },
+    {
+      "id": "AUDIT-IFleet-ffc083a5",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "scorer.ts maybeEmbedSprint() uses void cfg; dead expression to suppress unused-parameter lint warning",
+      "detail": "The cfg parameter in the private maybeEmbedSprint() function is declared for future use (cfg.embeddingModel) but is currently unused. Rather than the idiomatic TypeScript convention of prefixing unused parameters with '_', the code uses a void cfg; no-op statement. Renaming the parameter to _cfg and removing the void statement is cleaner and more immediately communicative.",
+      "file_globs": ["src/agents/proposer/scorer.ts"],
+      "fix_sketch": "In maybeEmbedSprint(), rename parameter cfg: ProposerConfig to _cfg: ProposerConfig and remove the void cfg; statement. Update the comment to reference _cfg.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-01T04:00:00Z",
+      "closed_at": "2026-07-01T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-01"
+    },
+    {
+      "id": "AUDIT-IFleet-02454a89",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "budget.ts enforceBudget declared async but contains no await — misleading signature",
+      "detail": "enforceBudget() is declared as an async function but the body contains no await expression — it filters, sorts, and slices synchronously. The async keyword adds an implicit Promise wrapper and makes the function appear to do I/O or deferred work. Removing async would require updating the ProposerStages interface return type in index.ts (currently Promise<DedupedCandidate[]>); noted here for completeness but deferred to avoid cross-file cascade.",
+      "file_globs": ["src/agents/proposer/budget.ts", "src/agents/proposer/index.ts"],
+      "fix_sketch": "Remove async from enforceBudget, change return type to DedupedCandidate[], and update the enforceBudget? field in ProposerStages interface in index.ts to match. All callers await it so behaviour is identical.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-07-01T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}

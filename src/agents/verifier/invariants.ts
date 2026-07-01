@@ -167,8 +167,19 @@ export class InvariantRunner {
       };
       const child = this.spawnFn(cmd, args, spawnOpts);
       const chunks: Buffer[] = [];
+      let totalBytes = 0;
+      const cap = 1_000_000;
+      let truncated = false;
       const onData = (data: Buffer): void => {
+        if (truncated) return;
+        if (totalBytes + data.length > cap) {
+          chunks.push(data.subarray(0, cap - totalBytes));
+          totalBytes = cap;
+          truncated = true;
+          return;
+        }
         chunks.push(data);
+        totalBytes += data.length;
       };
       child.stdout?.on('data', onData);
       child.stderr?.on('data', onData);
@@ -187,7 +198,9 @@ export class InvariantRunner {
       });
       child.on('close', (code) => {
         clearTimeout(timer);
-        resolve({ exitCode: code, output: Buffer.concat(chunks).toString('utf8'), timedOut });
+        let output = Buffer.concat(chunks).toString('utf8');
+        if (truncated) output += '\n[output truncated]';
+        resolve({ exitCode: code, output, timedOut });
       });
     });
   }

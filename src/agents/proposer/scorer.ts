@@ -139,7 +139,7 @@ export async function scoreCandidates(
 
 async function maybeEmbedSprint(
   ctx: ProposerContext,
-  cfg: ProposerConfig,
+  _cfg: ProposerConfig,
   deps: ScorerDeps,
   warn: (line: string) => void,
 ): Promise<number[] | null> {
@@ -152,7 +152,7 @@ async function maybeEmbedSprint(
     warn(`proposer/scorer: embedding provider unavailable for SPRINT alignment (${reason(err)})`);
     return null;
   }
-  void cfg; // cfg.embeddingModel is reserved for future per-call overrides.
+  // _cfg.embeddingModel is reserved for future per-call overrides.
   try {
     const truncated = sprintText.length > 8000 ? sprintText.slice(0, 8000) : sprintText;
     const out = await client.embedBatch([truncated]);

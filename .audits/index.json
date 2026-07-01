@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-06-30T00:00:00Z",
-  "open_count": 6,
-  "fixed_count": 15,
+  "last_updated": "2026-07-01T04:00:00Z",
+  "open_count": 7,
+  "fixed_count": 17,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -9,7 +9,8 @@
     "20260613T041834Z.json",
     "20260618T040000Z.json",
     "2026-06-28T040632Z.json",
-    "20260630T000000Z.json"
+    "20260630T000000Z.json",
+    "20260701T040000Z.json"
   ],
   "open_findings": [
     {
@@ -47,6 +48,18 @@
       "severity": "IMPORTANT",
       "title": "TaskStore insert never persists the attempts column it relies on",
       "file_globs": ["src/queue/store.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-744141b9",
+      "severity": "IMPORTANT",
+      "title": "invariants.ts runCommand() accumulates output without byte cap — OOM risk on large semgrep scans",
+      "file_globs": ["src/agents/verifier/invariants.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-02454a89",
+      "severity": "COSMETIC",
+      "title": "budget.ts enforceBudget declared async but contains no await — misleading signature",
+      "file_globs": ["src/agents/proposer/budget.ts", "src/agents/proposer/index.ts"]
     }
   ]
 }
