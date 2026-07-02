@@ -445,6 +445,7 @@ export class SprintManager {
       });
       void this.awaitHandle(task.id);
     } catch (err) {
+      this.running.delete(task.id);
       this.registry.release(workerId);
       const message = err instanceof Error ? err.message : String(err);
       console.error('[sprint] dispatch threw for task', task.id, ':', message, err instanceof Error ? err.stack : '');

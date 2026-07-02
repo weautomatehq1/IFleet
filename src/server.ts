@@ -24,7 +24,7 @@
  */
 
 import { resolve as resolvePath, join } from 'node:path';
-import { createControlPlane } from './queue/control-plane.js';
+import { createControlPlane, ControlPlaneClientError } from './queue/control-plane.js';
 import { DiscordSource } from './queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from './queue/store.js';
 import { FileChannelRouter } from './repos/router.js';
@@ -96,10 +96,10 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       // derive the idempotencyKey from messageId when it's the only one given
       // (AUDIT-IFleet-4b7622ff).
       if (!cmd.channelId || !cmd.userId || !cmd.userLabel) {
-        throw new Error('sprint_goal from server requires channelId, userId, userLabel');
+        throw new ControlPlaneClientError('sprint_goal requires channelId, userId, userLabel');
       }
       if (!cmd.messageId && !cmd.idempotencyKey) {
-        throw new Error('sprint_goal from server requires either messageId or idempotencyKey');
+        throw new ControlPlaneClientError('sprint_goal requires messageId or idempotencyKey');
       }
       const task = await discordSource.ingest(
         {
@@ -126,28 +126,23 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     },
     onApprove: async (taskId) => {
       // approve requires the in-process ControlPlaneApprovalGate that only the
-      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
-      // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      // daemon owns (pure in-memory; no DB polling). Return a 422 so callers
+      // know to route to CONTROL_PLANE_PORT 3002 instead of receiving a silent 202.
+      throw new ControlPlaneClientError(
+        `approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onCancel: async (taskId, reason) => {
       store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });
     },
-    // verify / force_pr require the in-process verifier + orchestrator wiring
-    // that only the daemon owns. If they reach this public entry, log loudly
-    // but do not throw — a throw after res.json(202) produces an unhandled
-    // exception log with no useful recovery path (AUDIT-IFleet-185399bf).
     onVerify: async (taskId) => {
-      console.error(
-        `[control-plane] verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new ControlPlaneClientError(
+        `verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onForcePr: async (taskId) => {
-      console.error(
-        `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new ControlPlaneClientError(
+        `force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onStatus: () => null,
@@ -162,8 +157,16 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     await cp.stop();
     store.close();
   };
-  process.once('SIGTERM', () => void shutdown().then(() => process.exit(0)));
-  process.once('SIGINT', () => void shutdown().then(() => process.exit(0)));
+  const handleSignal = (sig: string): void => {
+    shutdown()
+      .then(() => process.exit(0))
+      .catch((err: unknown) => {
+        console.error(`[control-plane] shutdown on ${sig} failed:`, err);
+        process.exit(1);
+      });
+  };
+  process.once('SIGTERM', () => handleSignal('SIGTERM'));
+  process.once('SIGINT', () => handleSignal('SIGINT'));
 
   return { url, port, store, stop: shutdown };
 }

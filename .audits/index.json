@@ -1,29 +1,16 @@
 {
-  "last_updated": "2026-06-30T00:00:00Z",
-  "open_count": 6,
-  "fixed_count": 15,
+  "last_updated": "2026-07-02T00:00:00Z",
+  "open_count": 2,
+  "fixed_count": 29,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
     "20260602T041140Z.json",
     "20260613T041834Z.json",
     "20260618T040000Z.json",
-    "2026-06-28T040632Z.json",
-    "20260630T000000Z.json"
+    "20260702T000000Z.json"
   ],
   "open_findings": [
-    {
-      "id": "AUDIT-IFleet-ff8faf70",
-      "severity": "IMPORTANT",
-      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
-      "file_globs": ["src/utils/costs.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-2fdb1535",
-      "severity": "IMPORTANT",
-      "title": "sprint_goal missing required fields return 500 instead of 4xx",
-      "file_globs": ["src/queue/control-plane.ts"]
-    },
     {
       "id": "AUDIT-IFleet-634a726e",
       "severity": "IMPORTANT",
@@ -31,22 +18,10 @@
       "file_globs": ["src/repos/manager.ts"]
     },
     {
-      "id": "AUDIT-IFleet-d2de0aca",
-      "severity": "IMPORTANT",
-      "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
-      "file_globs": ["src/agents/verifier/sandbox.ts"]
-    },
-    {
       "id": "AUDIT-IFleet-84860186",
       "severity": "IMPORTANT",
       "title": "Inconsistent module import extensions across the codebase (partial fix applied)",
       "file_globs": ["src/**/*.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-202b928c",
-      "severity": "IMPORTANT",
-      "title": "TaskStore insert never persists the attempts column it relies on",
-      "file_globs": ["src/queue/store.ts"]
     }
   ]
 }

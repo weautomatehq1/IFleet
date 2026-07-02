@@ -24,14 +24,24 @@ export interface CostSummary {
   grandTotalUsd: number;
 }
 
+// Per-file serialization queue so concurrent sprint completions in the same
+// process never race on the same costs.json. Key = absolute path.
+const writeQueues = new Map<string, Promise<void>>();
+
 export async function appendCostRecord(repoRoot: string, record: CostRecord): Promise<void> {
   const omcDir = join(repoRoot, '.omc');
   const costFile = join(omcDir, 'costs.json');
 
-  await fs.mkdir(omcDir, { recursive: true });
+  const doWrite = async (): Promise<void> => {
+    await fs.mkdir(omcDir, { recursive: true });
+    const line = JSON.stringify(record) + '\n';
+    await fs.appendFile(costFile, line, 'utf-8');
+  };
 
-  const line = JSON.stringify(record) + '\n';
-  await fs.appendFile(costFile, line, 'utf-8');
+  const prev = writeQueues.get(costFile) ?? Promise.resolve();
+  const next = prev.then(doWrite, doWrite);
+  writeQueues.set(costFile, next.catch(() => undefined));
+  return next;
 }
 
 export async function readCostLog(repoRoot: string): Promise<CostRecord[]> {

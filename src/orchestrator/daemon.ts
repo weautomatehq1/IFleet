@@ -7,7 +7,6 @@
 
 import { resolve as resolvePath } from 'node:path';
 import type { Client } from 'discord.js';
-import { Octokit } from '@octokit/rest';
 import { VerifierController } from '../agents/verifier/controller.js';
 import { loadReposConfig } from '../config/repos.js';
 import { registerProposerDiscordClient } from '../agents/proposer/approval-gate.js';
@@ -16,7 +15,9 @@ import { HmacControlPlaneClient } from '../discord/hmac-client.js';
 import { DiscordOutAdapter } from '../observability/discord-output.js';
 import { makeProductionFactory } from '../pipeline/factory.js';
 import { createControlPlane } from '../queue/control-plane.js';
-import { GitHubQueue } from '../queue/github.js';
+import { Octokit } from '@octokit/rest';
+import { createGitHubQueue } from '../queue/github.js';
+import type { GitHubQueue } from '../queue/github.js';
 import { GitHubIssuesSource } from '../queue/sources/github.js';
 import { DiscordSource } from '../queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
@@ -51,7 +52,8 @@ async function main(): Promise<void> {
   const hmacSecret = requireEnv('IFLEET_HMAC_SECRET');
   const discordToken = requireEnv('DISCORD_BOT_TOKEN');
   const githubToken = requireEnv('GITHUB_TOKEN');
-  const port = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
+  const portRaw = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
+  const port = Number.isFinite(portRaw) ? portRaw : DEFAULT_DAEMON_PORT;
 
   console.warn('[daemon] booting IFleet daemon');
 
@@ -98,8 +100,9 @@ async function main(): Promise<void> {
   const orchestratorStore = new StateStore();
 
   // -------- Sources + unified adapter --------
-  const githubQueue = new GitHubQueue(new Octokit({ auth: githubToken }), {
+  const githubQueue = await createGitHubQueue({
     repos: Object.values(reposMap),
+    token: githubToken,
   });
   const githubSource = new GitHubIssuesSource(githubQueue);
   const discordSource = new DiscordSource({
@@ -248,7 +251,8 @@ async function main(): Promise<void> {
   // process can exit with a non-zero code instead of masking it under exit(0).
   // AUDIT-IFleet-e96f2978.
   let shutdownErrors = 0;
-  const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  const tickRaw = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  const tickIntervalMs = Number.isFinite(tickRaw) && tickRaw > 0 ? tickRaw : DEFAULT_TICK_MS;
   void runTickLoop(
     unified,
     orchestrator,

@@ -216,6 +216,8 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
   };
 }
 
+const MAX_LINE_BUF_BYTES = 1_048_576; // 1 MiB — guard against runaway newline-free output
+
 function attachLineReader(stream: NodeJS.ReadableStream, onLine: (line: string) => void): void {
   let buf = '';
   stream.setEncoding('utf8');
@@ -223,9 +225,13 @@ function attachLineReader(stream: NodeJS.ReadableStream, onLine: (line: string) 
     buf += chunk;
     let idx: number;
     while ((idx = buf.indexOf('\n')) !== -1) {
-      const line = buf.slice(0, idx).replace(/\r$/, '');
+      onLine(buf.slice(0, idx).replace(/\r$/, ''));
       buf = buf.slice(idx + 1);
-      onLine(line);
+    }
+    // No newline found but buffer exceeds cap: emit in chunks to prevent OOM.
+    while (buf.length > MAX_LINE_BUF_BYTES) {
+      onLine(buf.slice(0, MAX_LINE_BUF_BYTES));
+      buf = buf.slice(MAX_LINE_BUF_BYTES);
     }
   });
   stream.on('end', () => {

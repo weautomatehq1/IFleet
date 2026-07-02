@@ -1,0 +1,170 @@
+{
+  "audit_id": "audit-20260702T000000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-07-02T00:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-a7bc3d9e",
+      "severity": "CRITICAL",
+      "category": "correctness",
+      "title": "Daemon instantiated GitHubQueue directly, bypassing the throttle plugin",
+      "detail": "daemon.ts used `new Octokit({ auth: token })` and `new GitHubQueue(octokit, ...)` directly instead of the `createGitHubQueue` factory. The factory wires @octokit/plugin-throttling which handles GitHub rate-limit headers (X-RateLimit-Remaining / Retry-After). Without it, bursts of API calls hit 429s and crash the daemon. The `octokit` variable used by makeProductionFactory still needs its own Octokit instance — this is separate from the queue's Octokit.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts",
+        "src/queue/github.ts"
+      ],
+      "fix_sketch": "Import `createGitHubQueue` from `../queue/github.js` and replace `new GitHubQueue(new Octokit(...), ...)` with `await createGitHubQueue({ repos: ..., token: githubToken })`. Keep a separate `new Octokit({ auth: githubToken })` instance for the production factory (makeProductionFactory). Re-add `import type { GitHubQueue }` for the legacyQueueShim signature.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-f8e1c054",
+      "severity": "CRITICAL",
+      "category": "correctness",
+      "title": "Sprint hangs forever if store.saveTask throws after running.set()",
+      "detail": "In SprintManager.dispatch(), `this.running.set(task.id, ...)` was called before `store.saveTask('running', ...)`. If saveTask threw (e.g. SQLite locked), the catch block called `registry.release(workerId)` but never `this.running.delete(task.id)`. The task ID stayed in `this.running` forever — the next tick skipped it as already in-flight, causing a permanent silent hang with no retry.",
+      "file_globs": [
+        "src/orchestrator/sprint.ts"
+      ],
+      "fix_sketch": "Add `this.running.delete(task.id)` as the first statement in the catch block of dispatch(), before `registry.release(workerId)`, so a saveTask failure leaves no stale entry in the running map.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-185399bf",
+      "severity": "CRITICAL",
+      "category": "correctness",
+      "title": "Public control-plane returns 202 OK for daemon-only routes (approve, verify, force_pr)",
+      "detail": "server.ts `onApprove`, `onVerify`, and `onForcePr` only called `console.error(...)` and returned void. The dispatch() call in control-plane.ts then sent `{ statusCode: 202, ok: true }`. An operator routing `/approve`, `[Verify retry]`, or `[Force-PR]` to port 3001 (public) instead of 3002 (daemon) received a success response but the task was never unblocked. The stale comment claimed 'do not throw — a throw after res.json(202) produces an unhandled exception' but dispatch is awaited before the 202 is sent, so throwing is safe.",
+      "file_globs": [
+        "src/server.ts",
+        "src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "Change onApprove/onVerify/onForcePr to throw `new ControlPlaneClientError(...)`. Update the dispatch() catch block in control-plane.ts to detect ControlPlaneClientError and return 422 (same pattern as sprint_goal path). This ensures callers get a proper error response directing them to port 3002.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-8c4e5b2d",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "recoverStale NaN bug: Math.max(1, NaN) = NaN silently skips all recovery",
+      "detail": "store.ts recoverStale() parsed IFLEET_MAX_ATTEMPTS with `Math.max(1, Number(env ?? 5))`. If the env var was set to a non-numeric string, Number() returns NaN and Math.max(1, NaN) = NaN. SQLite treats NaN as NULL when bound to a parameterized query; NULL comparisons (`attempts >= NULL`, `attempts < NULL`) are UNKNOWN in SQL — no rows match. All stale in_flight tasks stayed permanently stuck and no recovery occurred, with zero log output indicating failure.",
+      "file_globs": [
+        "src/queue/store.ts"
+      ],
+      "fix_sketch": "Replace with: `const envAttempts = Number(env ?? ''); const maxAttempts = Number.isFinite(envAttempts) && envAttempts >= 1 ? Math.floor(envAttempts) : 5;` This falls back to 5 for missing or non-numeric values without ever producing NaN.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-7f3a901c",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "requireEnv rejects legitimate env values '0' and 'false' as missing",
+      "detail": "utils/env.ts requireEnv() used `if (!v)` which is falsy — it throws for `undefined`, `\"\"`, `\"0\"`, and `\"false\"`. A future env var legitimately set to `\"0\"` or `\"false\"` (e.g. IFLEET_PLAN_ONLY=false) would cause a startup crash with a misleading 'missing required env var' error instead of using the provided value.",
+      "file_globs": [
+        "src/utils/env.ts"
+      ],
+      "fix_sketch": "Change to `if (v === undefined || v === '')` to correctly reject only truly absent or empty-string values while accepting '0', 'false', and other valid string values.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-d6e82b45",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "server.ts SIGTERM/SIGINT handlers swallow shutdown() rejection, leaving process hung",
+      "detail": "server.ts used `void shutdown().then(() => process.exit(0))`. If shutdown() rejected (e.g. cp.stop() threw), the `.then` callback never ran, process.exit was never called, and the process hung indefinitely — PM2 would wait for it forever, blocking restarts. The rejection was silently swallowed because the void-cast promise had no .catch().",
+      "file_globs": [
+        "src/server.ts"
+      ],
+      "fix_sketch": "Add a `.catch` handler that logs the error and calls `process.exit(1)` so shutdown failures always terminate the process with a non-zero exit code.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-2c9f4a17",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "daemon.ts uses bare Number() on port/tick env vars without NaN guard",
+      "detail": "daemon.ts parsed `CONTROL_PLANE_PORT` and `IFLEET_DAEMON_TICK_MS` with bare `Number(...)`. If either env var was set to a non-numeric value, Number() returns NaN. The daemon would then listen on port NaN (Node.js coerces this to port 0, picking a random ephemeral port — not 3002) and tick every NaN ms (setTimeout treats NaN as 0, triggering a hot-loop). Neither failure produced an error log.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Add `Number.isFinite()` guards with fallback to the DEFAULT constant for both port and tick interval.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-5b1e6c83",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "idempotencyKey has no length cap in parseCommand",
+      "detail": "control-plane.ts parseCommand accepts any length for `idempotencyKey`. It is stored in the SQLite tasks table in the `idempotency_key` column. An attacker (or buggy client) can send a multi-MB key, wasting DB storage and causing the store insert to be slow. Unlike `goal` which has a 10KB cap, idempotencyKey had no limit.",
+      "file_globs": [
+        "src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "Add a MAX_IDEMPOTENCY_KEY_LEN = 512 guard and throw if exceeded, consistent with the goal cap pattern.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-e4a2f78b",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "attachLineReader in spawn-runner.ts has unbounded line buffer",
+      "detail": "spawn-runner.ts attachLineReader() buffered subprocess stdout/stderr in a string `buf` and only flushed on newlines. A subprocess that emits gigabytes without a newline (e.g. a runaway binary writing a huge blob) would grow `buf` without bound until the daemon OOM-crashed. The buffer had no cap.",
+      "file_globs": [
+        "src/workers/spawn-runner.ts"
+      ],
+      "fix_sketch": "After processing all newline-terminated lines, check if `buf.length > MAX_LINE_BUF_BYTES` (1 MiB) and emit+drain in chunks to prevent unbounded growth. The partial chunk is emitted as a synthetic line.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    },
+    {
+      "id": "AUDIT-IFleet-3d9c5e12",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Dead `void cfg` suppressor in maybeEmbedSprint (scorer.ts)",
+      "detail": "scorer.ts maybeEmbedSprint had `void cfg;` inside the function body to suppress a TypeScript unused-variable warning on the `cfg: ProposerConfig` parameter. The comment said 'cfg.embeddingModel is reserved for future per-call overrides.' Using `_cfg` as the parameter name is the conventional TypeScript pattern for intentionally unused parameters.",
+      "file_globs": [
+        "src/agents/proposer/scorer.ts"
+      ],
+      "fix_sketch": "Rename parameter from `cfg` to `_cfg` in the function signature and remove the `void cfg;` statement.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-02T00:00:00Z",
+      "closed_at": "2026-07-02T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-02"
+    }
+  ]
+}

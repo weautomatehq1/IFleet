@@ -276,6 +276,13 @@ async function handleRequest(
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ ok: true, type: command.type, ...result }));
     } catch (err) {
+      if (err instanceof ControlPlaneClientError) {
+        if (!res.headersSent) {
+          res.statusCode = 422;
+          res.end(err.message);
+        }
+        return;
+      }
       console.error('[control-plane] sprint_goal handler failed:', err);
       if (!res.headersSent) {
         res.statusCode = 500;
@@ -291,6 +298,13 @@ async function handleRequest(
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ ok: true, type: command.type, ...result }));
   } catch (err) {
+    if (err instanceof ControlPlaneClientError) {
+      if (!res.headersSent) {
+        res.statusCode = 422;
+        res.end(err.message);
+      }
+      return;
+    }
     console.error('[control-plane] dispatch failed:', err);
     if (!res.headersSent) {
       res.statusCode = 500;
@@ -370,7 +384,13 @@ export function parseCommand(body: string): ControlCommand {
       const userLabel = pickStr('userLabel');
       if (userLabel) cmd.userLabel = userLabel;
       const idempotencyKey = pickStr('idempotencyKey');
-      if (idempotencyKey) cmd.idempotencyKey = idempotencyKey;
+      if (idempotencyKey) {
+        const MAX_IDEMPOTENCY_KEY_LEN = 512;
+        if (idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LEN) {
+          throw new Error('sprint_goal: idempotencyKey exceeds maximum length');
+        }
+        cmd.idempotencyKey = idempotencyKey;
+      }
       if (typeof parsed.planOnly === 'boolean') cmd.planOnly = parsed.planOnly;
       return cmd;
     }
@@ -480,6 +500,18 @@ function headerOf(req: IncomingMessage, name: string): string | undefined {
 class PayloadTooLargeError extends Error {
   constructor() {
     super('payload too large');
+  }
+}
+
+/**
+ * Throw from onSprintGoal / dispatch hooks to surface a 422 (client error)
+ * rather than a 500 (server error). Use when the request was authenticated
+ * but semantically invalid (missing required fields, unknown taskId, etc.).
+ */
+export class ControlPlaneClientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ControlPlaneClientError';
   }
 }
 
