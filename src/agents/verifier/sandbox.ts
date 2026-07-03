@@ -232,7 +232,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     }
 
     const dockerOk = await this.probeDocker();
-    if (!dockerOk && process.env['NODE_ENV'] === 'production' && !process.env['IFLEET_ALLOW_SANDBOX_FALLBACK']) {
+    if (!dockerOk && !process.env['IFLEET_ALLOW_SANDBOX_FALLBACK']) {
       const finishedAt = this.now();
       return {
         runId,
@@ -241,7 +241,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         finishedAt,
         durationMs: finishedAt - startedAt,
         attempt: input.attempt,
-        failures: [{ kind: 'install', message: 'Docker daemon unreachable — sandbox fallback disabled in production (set IFLEET_ALLOW_SANDBOX_FALLBACK=1 to override)' }],
+        failures: [{ kind: 'install', message: 'Docker daemon unreachable — set IFLEET_ALLOW_SANDBOX_FALLBACK=1 to run in-worktree without isolation' }],
         phases: [],
       };
     }
@@ -537,7 +537,7 @@ function buildDockerArgs(
     '--network',
     needsNetwork ? 'bridge' : 'none',
     '--user',
-    'root',
+    '1000:1000',
   ];
   if (envFilePath) {
     args.push('--env-file', envFilePath);

@@ -93,6 +93,7 @@ const DEFAULT_MAX_SKEW = 5 * 60;
 const MAX_BODY_BYTES = 64 * 1024;
 const NONCE_MIN_LEN = 8;
 const NONCE_MAX_LEN = 64;
+const MAX_SHORT_FIELD_LEN = 512;
 const NONCE_TTL_PADDING_SEC = 60;
 
 /**
@@ -362,15 +363,15 @@ export function parseCommand(body: string): ControlCommand {
       const cmd: ControlCommand = { type: 'sprint_goal', goal: parsed.goal };
       if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
       const channelId = pickStr('channelId');
-      if (channelId) cmd.channelId = channelId;
+      if (channelId) cmd.channelId = channelId.slice(0, MAX_SHORT_FIELD_LEN);
       const messageId = pickStr('messageId');
-      if (messageId) cmd.messageId = messageId;
+      if (messageId) cmd.messageId = messageId.slice(0, MAX_SHORT_FIELD_LEN);
       const userId = pickStr('userId');
-      if (userId) cmd.userId = userId;
+      if (userId) cmd.userId = userId.slice(0, MAX_SHORT_FIELD_LEN);
       const userLabel = pickStr('userLabel');
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) cmd.userLabel = userLabel.slice(0, MAX_SHORT_FIELD_LEN);
       const idempotencyKey = pickStr('idempotencyKey');
-      if (idempotencyKey) cmd.idempotencyKey = idempotencyKey;
+      if (idempotencyKey) cmd.idempotencyKey = idempotencyKey.slice(0, MAX_SHORT_FIELD_LEN);
       if (typeof parsed.planOnly === 'boolean') cmd.planOnly = parsed.planOnly;
       return cmd;
     }
@@ -382,7 +383,7 @@ export function parseCommand(body: string): ControlCommand {
     case 'cancel': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('cancel requires a non-empty taskId');
       const cmd: ControlCommand = { type: 'cancel', taskId: parsed.taskId };
-      if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
+      if (typeof parsed.reason === 'string') cmd.reason = parsed.reason.slice(0, MAX_SHORT_FIELD_LEN);
       // Accept Discord audit fields either flat or nested under `source` so
       // /cancel without an explicit taskId can resolve the newest task in
       // this channel server-side (sentinel encoding in interaction-create).
@@ -392,9 +393,9 @@ export function parseCommand(body: string): ControlCommand {
         return typeof v === 'string' ? v : undefined;
       };
       const channelId = pickStr('channelId');
-      if (channelId) cmd.channelId = channelId;
+      if (channelId) cmd.channelId = channelId.slice(0, MAX_SHORT_FIELD_LEN);
       const userLabel = pickStr('userLabel');
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) cmd.userLabel = userLabel.slice(0, MAX_SHORT_FIELD_LEN);
       return cmd;
     }
     case 'status': {
@@ -412,18 +413,18 @@ export function parseCommand(body: string): ControlCommand {
     case 'force_pr': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('force_pr requires a non-empty taskId');
       const cmd: ControlCommand = { type: 'force_pr', taskId: parsed.taskId };
-      if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
+      if (typeof parsed.reason === 'string') cmd.reason = parsed.reason.slice(0, MAX_SHORT_FIELD_LEN);
       return cmd;
     }
     case 'pause': {
       const cmd: ControlCommand = { type: 'pause' };
       const source = isRecord(parsed.source) ? parsed.source : undefined;
       const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
-      if (reason) cmd.reason = reason;
+      if (reason) cmd.reason = reason.slice(0, MAX_SHORT_FIELD_LEN);
       const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
         ? String(source?.['userLabel'] ?? parsed.userLabel)
         : undefined;
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) cmd.userLabel = userLabel.slice(0, MAX_SHORT_FIELD_LEN);
       return cmd;
     }
     case 'continue': {
@@ -432,18 +433,18 @@ export function parseCommand(body: string): ControlCommand {
       const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
         ? String(source?.['userLabel'] ?? parsed.userLabel)
         : undefined;
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) cmd.userLabel = userLabel.slice(0, MAX_SHORT_FIELD_LEN);
       return cmd;
     }
     case 'stop': {
       const cmd: ControlCommand = { type: 'stop' };
       const source = isRecord(parsed.source) ? parsed.source : undefined;
       const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
-      if (reason) cmd.reason = reason;
+      if (reason) cmd.reason = reason.slice(0, MAX_SHORT_FIELD_LEN);
       const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
         ? String(source?.['userLabel'] ?? parsed.userLabel)
         : undefined;
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) cmd.userLabel = userLabel.slice(0, MAX_SHORT_FIELD_LEN);
       return cmd;
     }
     default:
