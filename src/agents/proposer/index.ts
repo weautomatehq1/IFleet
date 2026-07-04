@@ -56,7 +56,7 @@ export interface ProposerStages {
   enforceBudget?: (
     scored: DedupedCandidate[],
     cfg: ProposerConfig,
-  ) => Promise<DedupedCandidate[]>;
+  ) => DedupedCandidate[] | Promise<DedupedCandidate[]>;
   postProposalsForApproval?: (
     top: DedupedCandidate[],
     cfg: ProposerConfig,

@@ -11,10 +11,10 @@ import type { DedupedCandidate, ProposerConfig } from './types.js';
 /** Spec ceiling — never exceed this regardless of cfg.budget / cfg.hardMax. */
 const HARD_CEILING = 10;
 
-export async function enforceBudget(
+export function enforceBudget(
   candidates: DedupedCandidate[],
   cfg: ProposerConfig,
-): Promise<DedupedCandidate[]> {
+): DedupedCandidate[] {
   const kept = candidates.filter((c) => !c.dropped);
   kept.sort((a, b) => b.composite_score - a.composite_score);
   const budget = Math.max(0, Math.floor(cfg.budget));

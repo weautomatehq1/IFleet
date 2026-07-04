@@ -172,10 +172,12 @@ export interface PrDecision {
 
 export class TaskStore {
   private readonly db: Database.Database;
+  private readonly maxAttempts: number;
 
   constructor(path: string = defaultTasksDbPath()) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
+    this.maxAttempts = Math.max(1, Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5));
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
@@ -408,7 +410,7 @@ export class TaskStore {
    * pickNext() which only consumes 'pending'.
    */
   recoverStale(maxAgeMs: number = DEFAULT_STALE_MS): number {
-    const maxAttempts = Math.max(1, Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5));
+    const { maxAttempts } = this;
     const cutoff = Date.now() - maxAgeMs;
     const now = Date.now();
     // Both UPDATEs run in a single transaction so a concurrent pickNext() cannot

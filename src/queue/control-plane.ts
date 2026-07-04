@@ -94,6 +94,11 @@ const MAX_BODY_BYTES = 64 * 1024;
 const NONCE_MIN_LEN = 8;
 const NONCE_MAX_LEN = 64;
 const NONCE_TTL_PADDING_SEC = 60;
+const MAX_GOAL_LEN = 10_000;
+const MAX_ID_FIELD_LEN = 64;
+const MAX_LABEL_LEN = 256;
+const MAX_KEY_LEN = 128;
+const MAX_REASON_LEN = 1_000;
 
 /**
  * Replay-protection ledger contract. Production wires a SQLite-backed
@@ -347,7 +352,6 @@ export function parseCommand(body: string): ControlCommand {
       if (typeof parsed.goal !== 'string' || parsed.goal.trim().length === 0) {
         throw new Error('sprint_goal requires goal');
       }
-      const MAX_GOAL_LEN = 10_000;
       if (parsed.goal.length > MAX_GOAL_LEN) {
         throw new Error('sprint_goal: goal exceeds maximum length');
       }
@@ -362,15 +366,30 @@ export function parseCommand(body: string): ControlCommand {
       const cmd: ControlCommand = { type: 'sprint_goal', goal: parsed.goal };
       if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
       const channelId = pickStr('channelId');
-      if (channelId) cmd.channelId = channelId;
+      if (channelId) {
+        if (channelId.length > MAX_ID_FIELD_LEN) throw new Error('sprint_goal: channelId exceeds maximum length');
+        cmd.channelId = channelId;
+      }
       const messageId = pickStr('messageId');
-      if (messageId) cmd.messageId = messageId;
+      if (messageId) {
+        if (messageId.length > MAX_ID_FIELD_LEN) throw new Error('sprint_goal: messageId exceeds maximum length');
+        cmd.messageId = messageId;
+      }
       const userId = pickStr('userId');
-      if (userId) cmd.userId = userId;
+      if (userId) {
+        if (userId.length > MAX_ID_FIELD_LEN) throw new Error('sprint_goal: userId exceeds maximum length');
+        cmd.userId = userId;
+      }
       const userLabel = pickStr('userLabel');
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) {
+        if (userLabel.length > MAX_LABEL_LEN) throw new Error('sprint_goal: userLabel exceeds maximum length');
+        cmd.userLabel = userLabel;
+      }
       const idempotencyKey = pickStr('idempotencyKey');
-      if (idempotencyKey) cmd.idempotencyKey = idempotencyKey;
+      if (idempotencyKey) {
+        if (idempotencyKey.length > MAX_KEY_LEN) throw new Error('sprint_goal: idempotencyKey exceeds maximum length');
+        cmd.idempotencyKey = idempotencyKey;
+      }
       if (typeof parsed.planOnly === 'boolean') cmd.planOnly = parsed.planOnly;
       return cmd;
     }
@@ -382,7 +401,10 @@ export function parseCommand(body: string): ControlCommand {
     case 'cancel': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('cancel requires a non-empty taskId');
       const cmd: ControlCommand = { type: 'cancel', taskId: parsed.taskId };
-      if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
+      if (typeof parsed.reason === 'string') {
+        if (parsed.reason.length > MAX_REASON_LEN) throw new Error('cancel: reason exceeds maximum length');
+        cmd.reason = parsed.reason;
+      }
       // Accept Discord audit fields either flat or nested under `source` so
       // /cancel without an explicit taskId can resolve the newest task in
       // this channel server-side (sentinel encoding in interaction-create).
@@ -392,9 +414,15 @@ export function parseCommand(body: string): ControlCommand {
         return typeof v === 'string' ? v : undefined;
       };
       const channelId = pickStr('channelId');
-      if (channelId) cmd.channelId = channelId;
+      if (channelId) {
+        if (channelId.length > MAX_ID_FIELD_LEN) throw new Error('cancel: channelId exceeds maximum length');
+        cmd.channelId = channelId;
+      }
       const userLabel = pickStr('userLabel');
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) {
+        if (userLabel.length > MAX_LABEL_LEN) throw new Error('cancel: userLabel exceeds maximum length');
+        cmd.userLabel = userLabel;
+      }
       return cmd;
     }
     case 'status': {
@@ -412,18 +440,27 @@ export function parseCommand(body: string): ControlCommand {
     case 'force_pr': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('force_pr requires a non-empty taskId');
       const cmd: ControlCommand = { type: 'force_pr', taskId: parsed.taskId };
-      if (typeof parsed.reason === 'string') cmd.reason = parsed.reason;
+      if (typeof parsed.reason === 'string') {
+        if (parsed.reason.length > MAX_REASON_LEN) throw new Error('force_pr: reason exceeds maximum length');
+        cmd.reason = parsed.reason;
+      }
       return cmd;
     }
     case 'pause': {
       const cmd: ControlCommand = { type: 'pause' };
       const source = isRecord(parsed.source) ? parsed.source : undefined;
       const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
-      if (reason) cmd.reason = reason;
+      if (reason) {
+        if (reason.length > MAX_REASON_LEN) throw new Error('pause: reason exceeds maximum length');
+        cmd.reason = reason;
+      }
       const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
         ? String(source?.['userLabel'] ?? parsed.userLabel)
         : undefined;
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) {
+        if (userLabel.length > MAX_LABEL_LEN) throw new Error('pause: userLabel exceeds maximum length');
+        cmd.userLabel = userLabel;
+      }
       return cmd;
     }
     case 'continue': {
@@ -432,18 +469,27 @@ export function parseCommand(body: string): ControlCommand {
       const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
         ? String(source?.['userLabel'] ?? parsed.userLabel)
         : undefined;
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) {
+        if (userLabel.length > MAX_LABEL_LEN) throw new Error('continue: userLabel exceeds maximum length');
+        cmd.userLabel = userLabel;
+      }
       return cmd;
     }
     case 'stop': {
       const cmd: ControlCommand = { type: 'stop' };
       const source = isRecord(parsed.source) ? parsed.source : undefined;
       const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
-      if (reason) cmd.reason = reason;
+      if (reason) {
+        if (reason.length > MAX_REASON_LEN) throw new Error('stop: reason exceeds maximum length');
+        cmd.reason = reason;
+      }
       const userLabel = typeof (source?.['userLabel'] ?? parsed.userLabel) === 'string'
         ? String(source?.['userLabel'] ?? parsed.userLabel)
         : undefined;
-      if (userLabel) cmd.userLabel = userLabel;
+      if (userLabel) {
+        if (userLabel.length > MAX_LABEL_LEN) throw new Error('stop: userLabel exceeds maximum length');
+        cmd.userLabel = userLabel;
+      }
       return cmd;
     }
     default:
