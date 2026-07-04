@@ -142,6 +142,7 @@ describe('DockerSandboxRunner', () => {
     const dir = makeWorktree({
       scripts: { build: 'echo build', typecheck: 'echo tc', lint: 'echo lint', test: 'echo test' },
     });
+    process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = '1';
     try {
       const plan = new Map([
         ['info', { exit: 1 }], // docker info fails → fallback
@@ -157,6 +158,7 @@ describe('DockerSandboxRunner', () => {
       expect(result.banner).toContain('sandbox: unavailable');
       expect(result.phases?.length ?? 0).toBeGreaterThanOrEqual(5);
     } finally {
+      delete process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -165,6 +167,7 @@ describe('DockerSandboxRunner', () => {
     const dir = makeWorktree({
       scripts: { build: 'echo build', typecheck: 'echo tc', lint: 'echo lint' },
     });
+    process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = '1';
     try {
       const plan = new Map([
         ['info', { exit: 1 }],
@@ -181,6 +184,7 @@ describe('DockerSandboxRunner', () => {
       const testPhase = result.phases?.find((p) => p.kind === 'test');
       expect(testPhase?.skipped).toBe(true);
     } finally {
+      delete process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -189,6 +193,7 @@ describe('DockerSandboxRunner', () => {
     const dir = makeWorktree({
       scripts: { build: 'echo', typecheck: 'tsc', lint: 'eslint', test: 'vitest' },
     });
+    process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = '1';
     try {
       const plan = new Map<string, { exit: number; stdout?: string; stderr?: string }>([
         ['info', { exit: 1 }],
@@ -203,6 +208,7 @@ describe('DockerSandboxRunner', () => {
       // lint and test should not be in the phases since we broke on typecheck
       expect(result.phases?.some((p) => p.kind === 'test' && !p.skipped)).toBeFalsy();
     } finally {
+      delete process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
       rmSync(dir, { recursive: true, force: true });
     }
   });

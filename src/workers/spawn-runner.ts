@@ -1,5 +1,4 @@
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptions } from 'node:child_process';
-import { setTimeout as delay } from 'node:timers/promises';
 import { WorkerCrashError, type WorkerEvent, type WorkerResult } from './types.js';
 
 export interface RunnerOptions {
@@ -110,24 +109,37 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
   });
 
   let cancelling = false;
-  const cancel = async (): Promise<void> => {
-    if (cancelling) return;
+  const cancel = (): Promise<void> => {
+    if (cancelling) return Promise.resolve();
     cancelling = true;
-    if (child.exitCode !== null || child.signalCode !== null) return;
+    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
     try {
       child.kill('SIGTERM');
     } catch {
       // ignore
     }
     const graceMs = opts.killGraceMs ?? 5000;
-    await delay(graceMs);
-    if (child.exitCode === null && child.signalCode === null) {
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // ignore
-      }
-    }
+    return new Promise<void>((resolve) => {
+      let resolved = false;
+      const done = (): void => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // ignore
+          }
+        }
+        done();
+      }, graceMs);
+      child.once('close', done);
+    });
   };
 
   if (opts.signal) {

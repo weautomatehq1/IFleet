@@ -43,8 +43,7 @@ export function verifyPayload(
   const provided = raw.length === expected.length ? raw : Buffer.alloc(expected.length);
   // A zero-length expected means the HMAC function failed — reject immediately.
   if (expected.length === 0) return false;
-  const matches = timingSafeEqual(expected, provided);
   // A mis-sized provided buffer was padded to zeros above; those always fail
-  // the comparison. Return false explicitly to avoid returning a padding match.
-  return matches && raw.length === expected.length;
+  // timingSafeEqual, so no separate length check is needed.
+  return timingSafeEqual(expected, provided);
 }

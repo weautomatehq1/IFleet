@@ -39,6 +39,14 @@ const NO_CHANGES_NEEDED_RE = /(^|\n)\s*NO_CHANGES_NEEDED\s*($|\n)/;
 export class DefaultPipelineRunner implements PipelineRunner {
   async run(input: PipelineInput): Promise<PipelineResult> {
     const attempts: AttemptRecord[] = [];
+    try {
+      return await this._runPipeline(input, attempts);
+    } finally {
+      await logCosts(input, attempts);
+    }
+  }
+
+  private async _runPipeline(input: PipelineInput, attempts: AttemptRecord[]): Promise<PipelineResult> {
     const baseBranch = input.baseBranch ?? 'main';
     const reviewerMaxRounds = input.reviewerMaxRounds ?? DEFAULT_REVIEWER_MAX_ROUNDS;
     const approver = input.approver ?? '@monstersebas1';
@@ -446,7 +454,6 @@ export class DefaultPipelineRunner implements PipelineRunner {
       reviewSummary,
       ...(totalTokens !== undefined && { totalTokens }),
     };
-    await logCosts(input, attempts);
     return result;
   }
 }
@@ -568,7 +575,7 @@ function maybeMarkAuditFindingReopened(input: PipelineInput): void {
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
   if (!input.repoRoot) return;
-  const sprintId = input.sprintId ?? input.task.id;
+  const sprintId = input.sprintId ?? 'unaffiliated';
   const roleSpec: Record<string, { model: string; provider: string }> = {
     architect: input.routing.architect,
     editor: input.routing.editor,
