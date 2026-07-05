@@ -39,6 +39,16 @@ const NO_CHANGES_NEEDED_RE = /(^|\n)\s*NO_CHANGES_NEEDED\s*($|\n)/;
 export class DefaultPipelineRunner implements PipelineRunner {
   async run(input: PipelineInput): Promise<PipelineResult> {
     const attempts: AttemptRecord[] = [];
+    try {
+      return await this._run(input, attempts);
+    } finally {
+      await logCosts(input, attempts).catch((err: unknown) => {
+        console.warn('[pipeline] logCosts threw:', err instanceof Error ? err.message : String(err));
+      });
+    }
+  }
+
+  private async _run(input: PipelineInput, attempts: AttemptRecord[]): Promise<PipelineResult> {
     const baseBranch = input.baseBranch ?? 'main';
     const reviewerMaxRounds = input.reviewerMaxRounds ?? DEFAULT_REVIEWER_MAX_ROUNDS;
     const approver = input.approver ?? '@monstersebas1';
@@ -446,7 +456,6 @@ export class DefaultPipelineRunner implements PipelineRunner {
       reviewSummary,
       ...(totalTokens !== undefined && { totalTokens }),
     };
-    await logCosts(input, attempts);
     return result;
   }
 }

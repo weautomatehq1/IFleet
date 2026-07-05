@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-07-01T04:00:00Z",
-  "open_count": 22,
-  "fixed_count": 20,
+  "last_updated": "2026-07-04T04:00:00Z",
+  "open_count": 20,
+  "fixed_count": 24,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -10,7 +10,8 @@
     "20260618T040000Z.json",
     "2026-06-28T040632Z.json",
     "20260630T000000Z.json",
-    "20260701T040000Z.json"
+    "20260701T040000Z.json",
+    "20260704T040000Z.json"
   ],
   "open_findings": [
     {
@@ -62,12 +63,6 @@
       "file_globs": ["src/classifier/auto-router.ts"]
     },
     {
-      "id": "AUDIT-IFleet-1a2eb5fd",
-      "severity": "IMPORTANT",
-      "title": "control-plane.ts parseCommand places no length cap on reason, userId, userLabel, or idempotencyKey",
-      "file_globs": ["src/queue/control-plane.ts"]
-    },
-    {
       "id": "AUDIT-IFleet-5a520b9e",
       "severity": "IMPORTANT",
       "title": "issue-commenter.ts lastCommentId mutable closure races if comment() called before waitForApproval resolves",
@@ -86,22 +81,10 @@
       "file_globs": ["src/agents/verifier/sandbox.ts"]
     },
     {
-      "id": "AUDIT-IFleet-d7687cda",
-      "severity": "IMPORTANT",
-      "title": "runner.ts logCosts only called on pr_opened path — failed/cancelled runs never record costs",
-      "file_globs": ["src/pipeline/runner.ts"]
-    },
-    {
       "id": "AUDIT-IFleet-fde51222",
       "severity": "IMPORTANT",
       "title": "audit-store.ts TERMINAL_SQL_LIST string interpolation is structurally fragile",
       "file_globs": ["src/audit/audit-store.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-35755878",
-      "severity": "IMPORTANT",
-      "title": "queue/store.ts recoverStale reads IFLEET_MAX_ATTEMPTS env on every call rather than once at construction",
-      "file_globs": ["src/queue/store.ts"]
     },
     {
       "id": "AUDIT-IFleet-3b3ab72a",
@@ -146,10 +129,16 @@
       "file_globs": ["src/audit/audit-store.ts"]
     },
     {
-      "id": "AUDIT-IFleet-02454a89",
+      "id": "AUDIT-IFleet-c9e1f803",
       "severity": "COSMETIC",
-      "title": "budget.ts enforceBudget declared async but contains no await — misleading signature",
-      "file_globs": ["src/agents/proposer/budget.ts", "src/agents/proposer/index.ts"]
+      "title": "audit-runner.ts markFindingsClosed batch path skips per-fingerprint dedup that appendToClosedJson uses",
+      "file_globs": ["src/discord/audit-runner.ts"]
     }
+  ],
+  "fixed_findings": [
+    "AUDIT-IFleet-d7687cda",
+    "AUDIT-IFleet-1a2eb5fd",
+    "AUDIT-IFleet-35755878",
+    "AUDIT-IFleet-02454a89"
   ]
 }
