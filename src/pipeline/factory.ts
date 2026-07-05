@@ -273,6 +273,12 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     if (opts.taskStore) {
       const db = opts.taskStore.getDb();
       applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
+      // Keep _meta.finalTier consistent with the post-bandit architect model so
+      // analytics that read the persisted RoutingDecision see the correct tier
+      // (AUDIT-IFleet-0a1092e6).
+      if (routing._meta) {
+        routing._meta.finalTier = modelToTier(routing.architect.model) ?? routing._meta.finalTier;
+      }
       opts.taskStore.setRoutingDecision(task.id, routing);
     }
     // B3 (20260618 audit): write the closure log AFTER applyBanditRouting so

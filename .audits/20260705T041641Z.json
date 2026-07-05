@@ -1,0 +1,395 @@
+{
+  "audit_id": "audit-20260705T041641Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-07-05T04:16:41Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-ef85fec7",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "Public port 3001 onApprove/onVerify/onForcePr return HTTP 202 but take no effective action",
+      "detail": "onApprove, onVerify, and onForcePr on the public control-plane (port 3001) previously called console.error() and returned void. The HTTP layer always responded with 202/ok:true. Callers received a success response even though no action was taken, silently losing approval gates and pipeline triggers.",
+      "file_globs": [
+        "src/server.ts",
+        "src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "Throw UnsupportedCommandError in the three handlers; handle it in control-plane.ts to return 422 with {ok:false, error, routeTo} so callers get an actionable error.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-21745df8",
+      "severity": "CRITICAL",
+      "category": "risk",
+      "title": "Docker verifier container runs as --user root",
+      "detail": "buildDockerArgs() passed --user root to every docker run, overriding the Dockerfile USER verifier directive. Any code running inside the verifier container had root privileges, enabling host filesystem writes via the bind-mounted worktree.",
+      "file_globs": [
+        "src/agents/verifier/sandbox.ts"
+      ],
+      "fix_sketch": "Remove --user root from buildDockerArgs args array; the Dockerfile already creates and sets USER verifier.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-71a45728",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "spawnCapture treats signal-killed process as exit code 0 (null coercion)",
+      "detail": "child.on(close) used code ?? 0, mapping null (signal-killed) exit codes to 0 (success). A SIGKILL-terminated git clone or fetch appeared successful, leaving behind incomplete repo state that subsequent operations would silently misuse.",
+      "file_globs": [
+        "src/repos/manager.ts"
+      ],
+      "fix_sketch": "Use code ?? -1 and append signal name to stderr so runGit sees a non-zero exit and surfaces the kill reason.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-86f4ddc9",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "recoverStale reads IFLEET_MAX_ATTEMPTS env on every call not once at construction",
+      "detail": "recoverStale() reads process.env[IFLEET_MAX_ATTEMPTS] on every invocation rather than storing it at construction. This causes fragile test isolation and allows the cap to change mid-run between crash-recovery calls.",
+      "file_globs": [
+        "src/queue/store.ts"
+      ],
+      "fix_sketch": "Read IFLEET_MAX_ATTEMPTS once in TaskStore constructor and use this.maxAttempts in recoverStale().",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f89c0c0b",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "classifier/index.ts crashes entire process at module import if routing.json missing",
+      "detail": "JSON.parse(readFileSync(...)) runs at module load time. Any import of classifyTask causes an immediate process crash if config/routing.json is absent or malformed, with no graceful degradation.",
+      "file_globs": [
+        "src/classifier/index.ts"
+      ],
+      "fix_sketch": "Move file read inside a lazy initializer; initialize on first classifyTask call with proper error propagation.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7685213e",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Production fallback codeowners and approver hardcoded to @monstersebas1",
+      "detail": "factory.ts hardcodes opts.codeowners ?? ['@monstersebas1'] and opts.approver ?? '@monstersebas1' as defaults. A future repo added without explicit codeowners silently tags the wrong reviewer.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Require opts.codeowners/opts.approver in ProductionFactoryOpts or throw if both source and options are empty.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-dd423e62",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "resolveAutoApproveThreshold accepts 0 enabling fully autonomous operation",
+      "detail": "A threshold of 0 is finite and passes validation, auto-approving every candidate regardless of score. No warning was emitted for dangerously low thresholds.",
+      "file_globs": [
+        "src/agents/proposer/auto-approve.ts"
+      ],
+      "fix_sketch": "Add a console.warn when resolved threshold <= 0 so operators can detect misconfigured auto-approve.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1806aaa1",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "WORKER_CLAUDE_PERMISSIONS allow list includes Bash(npm/npx/node) enabling arbitrary code execution",
+      "detail": "The permission allow list includes Bash(npm *), Bash(npx *), Bash(node *). These are unrestricted wrappers around all shell operations, bypassing the deny list for curl/wget/ssh. A compromised or hallucinating worker can use node -e '...' to run arbitrary code.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Scope npm/npx/node permissions more narrowly (e.g. Bash(npm test)) or document the trust assumption as a tracked risk. Docker sandboxing for the worker itself is the complete mitigation.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5c2b41eb",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "GitHub auth token exposed in ps aux output via git -c http.extraheader",
+      "detail": "The GitHub token is passed as a -c http.extraheader=AUTHORIZATION: bearer TOKEN command-line argument. On Linux, process arguments are readable by any user who can run ps aux or read /proc/<pid>/cmdline.",
+      "file_globs": [
+        "src/repos/manager.ts"
+      ],
+      "fix_sketch": "Use a Git credential helper or GIT_ASKPASS mechanism to pass the token via environment, keeping it out of argv.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-91870517",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "ControlPlaneApprovalGate is in-memory only losing pending HITL approvals on daemon crash",
+      "detail": "All pending approve/reject waiters are stored in a Map. A daemon crash loses all pending approvals; the architect task is never unblocked; the task restarts from scratch on the next boot.",
+      "file_globs": [
+        "src/orchestrator/approval-gate.ts",
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Persist waiting_approval state to TaskStore. On restart, detect waiting_approval tasks and re-post the plan to Discord. Or improve UX: post a message that approval was lost and needs resubmission.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e83a5454",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Discord thread created BEFORE task DB insert risking orphaned threads",
+      "detail": "DiscordSource.ingest() calls postTaskCreated (which creates the Discord thread) before store.insert(). A crash between these operations leaves a permanently orphaned thread with no backing task row.",
+      "file_globs": [
+        "src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "Check for duplicate idempotency key inside a transaction with the insert. Store threadId only after confirming the insert was new.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e81d0b89",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Worktree node_modules symlink to host allows malicious postinstall scripts to affect host",
+      "detail": "The worktree node_modules is a symlink to the host checkout's node_modules. A malicious postinstall script run in the worktree context can modify host devDependencies, backdooring tools used by all subsequent sprints.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Detect package.json changes in the worktree and run pnpm install into a worktree-local node_modules instead of sharing the symlink for those tasks.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-269810d9",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Verifier cloneFromSha runs git clone as host process outside Docker with no resource limits",
+      "detail": "cloneFromSha() spawns git clone as a plain host process without --depth or --single-branch. A large repository or attacker-controlled ref could consume unbounded disk space on the host.",
+      "file_globs": [
+        "src/agents/verifier/sandbox.ts"
+      ],
+      "fix_sketch": "Add --depth 1 --single-branch to the clone arguments to limit history download.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1347e1bc",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Dashboard server binds to 127.0.0.1 but has no CORS headers allowing cross-origin reads",
+      "detail": "dashboard/server.ts sets no CORS response headers. Any browser tab on the operator machine can silently fetch /api/tasks/queue, /api/pr-decisions, and /api/budget via cross-origin GET requests.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Add Access-Control-Allow-Origin: http://localhost:<PORT> (self-origin only) to all /api/* responses, or check the Origin header and deny cross-origin requests.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c4564c7e",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "IFLEET_ALLOW_ALL_AUTHORS=1 on public repo enables arbitrary Claude code execution",
+      "detail": "With IFLEET_ALLOW_ALL_AUTHORS=1 and unconfigured allowedAuthors, any GitHub user can create auto:ship issues that dispatch claude -p on the issue body. No runtime guard prevents setting this on a public repo.",
+      "file_globs": [
+        "src/queue/github.ts"
+      ],
+      "fix_sketch": "Add startup-time check: if IFLEET_ALLOW_ALL_AUTHORS=1 is set, emit a persistent loud warning on every sprint that runs, or fail closed with a clear explanation.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1d363305",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "MemoryNonceLedger used on daemon restart if nonceLedger not passed to createControlPlane",
+      "detail": "createControlPlane silently falls back to in-memory replay protection when nonceLedger is omitted. In production this creates a replay window after restart within the maxSkewSec window.",
+      "file_globs": [
+        "src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "Emit console.warn when falling back to MemoryNonceLedger in NODE_ENV=production.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-0a1092e6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "applyBanditRouting mutates routing model in place but leaves _meta.finalTier stale",
+      "detail": "applyBanditRouting mutates routing[role].model but not routing._meta.finalTier. The persisted RoutingDecision contained the pre-bandit tier, misleading analytics.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "After applyBanditRouting, update routing._meta.finalTier = modelToTier(routing.architect.model) ?? routing._meta.finalTier before setRoutingDecision.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-14313d10",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "onAssignment in circuit-breaker decrements assignmentsRemaining for all arms not just disabled",
+      "detail": "onAssignment() decrements assignmentsRemaining for every arm in disabled state on every assignment system-wide. A high-throughput period drains the cooldown counter faster than intended, causing premature re-entry into probing state.",
+      "file_globs": [
+        "src/agents/bandit/circuit-breaker.ts"
+      ],
+      "fix_sketch": "Document the intended semantics explicitly: either limit cooldown decrement to the currently-selected arm or confirm all-assignment counting is intentional.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e85248e9",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "setupWorktree uses git branch -D force deleting unmerged commits from prior incomplete tasks",
+      "detail": "git branch -D force-deletes an existing branch to avoid 'already exists' errors. If a previous task committed to that branch but crashed before opening a PR, those commits are silently discarded.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Check for unmerged commits before force-deleting: git log origin/main..branchName. If found, preserve with a timestamp suffix or alert the operator.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-dff8a22a",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Two separate Date.now calls in recoverStale can read different wall-clock values",
+      "detail": "cutoff and now were computed with two separate Date.now() calls. While microsecond-level difference is cosmetic, semantic intent is that they derive from the same instant.",
+      "file_globs": [
+        "src/queue/store.ts"
+      ],
+      "fix_sketch": "Compute const now = Date.now(); const cutoff = now - maxAgeMs; using a single call.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f30dde3a",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "WORKER_INSTRUCTION is module-level constant with no per-task override point",
+      "detail": "WORKER_INSTRUCTION is a module-level constant in workers/claude.ts, providing no per-invocation override. Repos needing different worker instructions require a new adapter.",
+      "file_globs": [
+        "src/workers/claude.ts"
+      ],
+      "fix_sketch": "Add optional systemInstruction?: string to SpawnOpts; use it in place of WORKER_INSTRUCTION when set.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a6c7842c",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "TaskStore and orchestrator StateStore have identically-named methods easy to confuse",
+      "detail": "Two parallel state machines (TaskStore and orchestrator StateStore) use the same method names and similar state vocabularies. A new contributor can easily conflate the two state spaces.",
+      "file_globs": [
+        "src/queue/store.ts",
+        "src/orchestrator/store.ts"
+      ],
+      "fix_sketch": "Rename one store consistently: e.g. QueueStore/QueueTaskState to disambiguate at the TypeScript level.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5ee6f3e4",
+      "severity": "COSMETIC",
+      "category": "redo",
+      "title": "BRIEF_DATA_MARKER_CLOSE scrubbing replacement can reconstruct partial marker prefix",
+      "detail": "Replacing USER_BRIEF_END>>> with USER_BRIEF_END (escaped) leaves the word USER_BRIEF_END in the output, which is a prefix of the close marker. A crafted input could form a valid close marker from the replacement.",
+      "file_globs": [
+        "src/workers/claude-env.ts"
+      ],
+      "fix_sketch": "Replace with [USER-BRIEF-END-ESCAPED] (brackets and hyphens cannot form the marker prefix).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-6754237a",
+      "severity": "COSMETIC",
+      "category": "assumption",
+      "title": "classifyTask uses indexOf on TIER_ORDER without bounds-checking bumpTier result",
+      "detail": "bumpTier() calls TIER_ORDER.indexOf(tier) without guarding against -1. An unknown tier string would silently snap to haiku via Math.max(0, -1+delta).",
+      "file_globs": [
+        "src/classifier/index.ts"
+      ],
+      "fix_sketch": "Add: if (idx === -1) return tier; \u2014 no-op for unknown tiers.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-05T04:16:41Z",
+      "closed_at": "2026-07-05T04:30:00Z",
+      "closing_pr": null
+    }
+  ]
+}

@@ -409,8 +409,8 @@ export class TaskStore {
    */
   recoverStale(maxAgeMs: number = DEFAULT_STALE_MS): number {
     const maxAttempts = Math.max(1, Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5));
-    const cutoff = Date.now() - maxAgeMs;
     const now = Date.now();
+    const cutoff = now - maxAgeMs;
     // Both UPDATEs run in a single transaction so a concurrent pickNext() cannot
     // observe the intermediate state where a task is pending but has attempts >= maxAttempts.
     const runRecovery = this.db.transaction(() => {

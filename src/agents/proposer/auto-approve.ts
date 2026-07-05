@@ -56,18 +56,26 @@ const DEFAULT_THRESHOLD = Number.POSITIVE_INFINITY;
  * observability — the cron entry logs the value at the start of each run.
  */
 export function resolveAutoApproveThreshold(cfg: ProposerConfig): number {
+  let resolved: number | undefined;
   if (
     typeof cfg.proposalsAutoApproveThreshold === 'number' &&
     Number.isFinite(cfg.proposalsAutoApproveThreshold)
   ) {
-    return cfg.proposalsAutoApproveThreshold;
+    resolved = cfg.proposalsAutoApproveThreshold;
+  } else {
+    const raw = process.env[AUTO_APPROVE_THRESHOLD_ENV];
+    if (raw !== undefined && raw.length > 0) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) resolved = parsed;
+    }
   }
-  const raw = process.env[AUTO_APPROVE_THRESHOLD_ENV];
-  if (raw !== undefined && raw.length > 0) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) return parsed;
+  if (resolved === undefined) return DEFAULT_THRESHOLD;
+  if (resolved <= 0) {
+    console.warn(
+      `[proposer] WARNING: auto-approve threshold is ${resolved} — ALL candidates will be auto-dispatched regardless of score. Set ${AUTO_APPROVE_THRESHOLD_ENV} > 0 for production use (AUDIT-IFleet-dd423e62).`,
+    );
   }
-  return DEFAULT_THRESHOLD;
+  return resolved;
 }
 
 /** Format the `decided_by` audit string for the auto path. */

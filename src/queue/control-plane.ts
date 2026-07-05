@@ -149,6 +149,11 @@ export class MemoryNonceLedger implements NonceLedger {
 
 export function createControlPlane(opts: ControlPlaneOptions): ControlPlane {
   const maxSkew = opts.maxSkewSec ?? DEFAULT_MAX_SKEW;
+  if (!opts.nonceLedger && process.env['NODE_ENV'] === 'production') {
+    console.warn(
+      '[control-plane] WARNING: no persistent nonceLedger provided — using in-memory replay protection that resets on restart. Pass a SQLite-backed ledger from TaskStore.createNonceLedger() (AUDIT-IFleet-1d363305).',
+    );
+  }
   const nonceStore: NonceLedger =
     opts.nonceLedger ?? new MemoryNonceLedger((maxSkew + NONCE_TTL_PADDING_SEC) * 1000);
   const server = createServer((req, res) => {
@@ -291,6 +296,14 @@ async function handleRequest(
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ ok: true, type: command.type, ...result }));
   } catch (err) {
+    if (err instanceof UnsupportedCommandError) {
+      if (!res.headersSent) {
+        res.statusCode = 422;
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ ok: false, error: err.message, routeTo: err.routeHint }));
+      }
+      return;
+    }
     console.error('[control-plane] dispatch failed:', err);
     if (!res.headersSent) {
       res.statusCode = 500;
@@ -480,6 +493,15 @@ function headerOf(req: IncomingMessage, name: string): string | undefined {
 class PayloadTooLargeError extends Error {
   constructor() {
     super('payload too large');
+  }
+}
+
+export class UnsupportedCommandError extends Error {
+  readonly routeHint: string;
+  constructor(message: string, routeHint: string) {
+    super(message);
+    this.name = 'UnsupportedCommandError';
+    this.routeHint = routeHint;
   }
 }
 

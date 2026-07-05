@@ -158,6 +158,7 @@ function scoreToTier(score: number): Tier {
 
 function bumpTier(tier: Tier, delta: number): Tier {
   const idx = TIER_ORDER.indexOf(tier);
+  if (idx === -1) return tier;
   const next = Math.max(0, Math.min(TIER_ORDER.length - 1, idx + delta));
   return TIER_ORDER[next] as Tier;
 }

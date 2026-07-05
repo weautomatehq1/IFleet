@@ -24,7 +24,7 @@
  */
 
 import { resolve as resolvePath, join } from 'node:path';
-import { createControlPlane } from './queue/control-plane.js';
+import { createControlPlane, UnsupportedCommandError } from './queue/control-plane.js';
 import { DiscordSource } from './queue/sources/discord.js';
 import { TaskStore, defaultTasksDbPath } from './queue/store.js';
 import { FileChannelRouter } from './repos/router.js';
@@ -126,11 +126,12 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     },
     onApprove: async (taskId) => {
       // approve requires the in-process ControlPlaneApprovalGate that only the
-      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
-      // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      // daemon owns (pure in-memory; no DB polling). Throw so the caller gets
+      // 422 with routing info rather than a silent 202 that never unblocks the
+      // architect (AUDIT-IFleet-ef85fec7).
+      throw new UnsupportedCommandError(
+        `approve(${taskId}) is daemon-only on this port`,
+        `CONTROL_PLANE_PORT (daemon port)`,
       );
     },
     onCancel: async (taskId, reason) => {
@@ -145,17 +146,18 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });
     },
     // verify / force_pr require the in-process verifier + orchestrator wiring
-    // that only the daemon owns. If they reach this public entry, log loudly
-    // but do not throw — a throw after res.json(202) produces an unhandled
-    // exception log with no useful recovery path (AUDIT-IFleet-185399bf).
+    // that only the daemon owns. Throw UnsupportedCommandError so the caller
+    // receives 422 with routing info rather than a silent 202 (AUDIT-IFleet-ef85fec7).
     onVerify: async (taskId) => {
-      console.error(
-        `[control-plane] verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new UnsupportedCommandError(
+        `verify(${taskId}) is daemon-only on this port`,
+        `CONTROL_PLANE_PORT (daemon port)`,
       );
     },
     onForcePr: async (taskId) => {
-      console.error(
-        `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new UnsupportedCommandError(
+        `force_pr(${taskId}) is daemon-only on this port`,
+        `CONTROL_PLANE_PORT (daemon port)`,
       );
     },
     onStatus: () => null,

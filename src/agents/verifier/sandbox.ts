@@ -186,7 +186,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     }
     const cloneRes = await this.runCommand(
       'git',
-      ['clone', '--quiet', '--', repoUrl, tempDir],
+      ['clone', '--quiet', '--depth', '1', '--single-branch', '--', repoUrl, tempDir],
       { timeoutMs: this.timeoutMs },
     );
     if (cloneRes.exitCode !== 0) {
@@ -536,8 +536,6 @@ function buildDockerArgs(
     `${memoryMb}m`,
     '--network',
     needsNetwork ? 'bridge' : 'none',
-    '--user',
-    'root',
   ];
   if (envFilePath) {
     args.push('--env-file', envFilePath);
