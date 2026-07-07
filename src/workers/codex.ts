@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runStreaming, type SpawnLike } from './spawn-runner.ts';
+import { runStreaming, type SpawnLike } from './spawn-runner.js';
 import {
   categorizeRateLimitError,
   type SpawnHandle,
@@ -9,7 +9,7 @@ import {
   type WorkerAdapter,
   type WorkerEvent,
   type WorkerResult,
-} from './types.ts';
+} from './types.js';
 
 // Process-env *allowlist* for the `codex` subprocess. Without this the child
 // inherited the full parent `process.env` (GITHUB_TOKEN, DISCORD_BOT_TOKEN,
@@ -75,7 +75,9 @@ export function createCodexAdapter(adapterOpts: CodexAdapterOptions = {}): Worke
     provider: 'codex',
     spawn(opts: SpawnOpts): SpawnHandle {
       const tmpRoot = adapterOpts.tmpRoot ?? tmpdir();
-      const tmpDir = mkdtempSync(join(tmpRoot, 'ifleet-codex-'));
+      const tmpDir = join(tmpRoot, 'ifleet-codex', opts.taskId);
+      rmSync(tmpDir, { recursive: true, force: true });
+      mkdirSync(tmpDir, { recursive: true });
       const lastMessagePath = join(tmpDir, 'last-message.txt');
 
       const args = buildCodexArgs(opts, lastMessagePath);

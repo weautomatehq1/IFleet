@@ -13,10 +13,9 @@ import {
   type AuditStatus,
 } from './types.js';
 
-// SQL-literal list of terminal statuses for INSERT/UPDATE guards. Built from
-// the canonical TS list (in types.ts) so the SQL and TS surfaces can't drift.
-// Values are static enum members — no user input is ever interpolated.
-const TERMINAL_SQL_LIST = TERMINAL_AUDIT_STATUSES.map((s) => `'${s}'`).join(', ');
+// TERMINAL_AUDIT_STATUSES is passed as a text[] parameter ($N) rather than
+// interpolated into SQL — eliminates the structural injection risk even if a
+// future status value ever contained a quote or special character.
 
 // ---------------------------------------------------------------------------
 // Repo-name normalisation
@@ -86,7 +85,7 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
      WHERE NOT EXISTS (
        SELECT 1 FROM audit_findings
        WHERE fingerprint = $10 AND repo = $2
-         AND status NOT IN (${TERMINAL_SQL_LIST})
+         AND NOT (status = ANY($15))
          AND id != $1
      )
      ON CONFLICT (id) DO UPDATE SET
@@ -98,7 +97,7 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
        fix_sketch    = EXCLUDED.fix_sketch,
        parallel_safe = EXCLUDED.parallel_safe,
        fingerprint   = EXCLUDED.fingerprint
-     WHERE audit_findings.status NOT IN (${TERMINAL_SQL_LIST})`;
+     WHERE NOT (audit_findings.status = ANY($15))`;
   try {
     await client.query('BEGIN');
     for (const f of findings) {
@@ -112,6 +111,7 @@ export async function dbUpsertFindings(findings: AuditFinding[], repo: string): 
         f.id, repoKey, f.severity, f.category, f.title, f.detail,
         f.file_globs, f.fix_sketch, f.parallel_safe, f.fingerprint,
         f.status, openedAt, f.closed_at, f.closing_pr,
+        TERMINAL_AUDIT_STATUSES,
       ]);
     }
     await client.query('COMMIT');
@@ -142,16 +142,18 @@ export async function dbUpdateFindingStatus(
   extra: { closing_pr?: string; closed_at?: string; refuseFromTerminal?: boolean } = {},
 ): Promise<boolean> {
   const pool = getKgPool();
-  // SQL literal — TERMINAL_SQL_LIST is built from static enum values, never
-  // user input. Same guard pattern as dbUpsertFindings's ON CONFLICT clause.
   const terminalGuard = extra.refuseFromTerminal
-    ? ` AND status NOT IN (${TERMINAL_SQL_LIST})`
+    ? ` AND NOT (status = ANY($5))`
     : '';
+  const params: Array<string | readonly string[] | null> = [
+    id, status, extra.closed_at ?? null, extra.closing_pr ?? null,
+  ];
+  if (extra.refuseFromTerminal) params.push(TERMINAL_AUDIT_STATUSES);
   const result = await pool.query(
     `UPDATE audit_findings
      SET status = $2, closed_at = COALESCE($3, closed_at), closing_pr = COALESCE($4, closing_pr)
      WHERE id = $1${terminalGuard}`,
-    [id, status, extra.closed_at ?? null, extra.closing_pr ?? null],
+    params,
   );
   if (result.rowCount === 0) {
     console.warn(`[audit-store] dbUpdateFindingStatus: finding ${id} not found — no rows updated`);

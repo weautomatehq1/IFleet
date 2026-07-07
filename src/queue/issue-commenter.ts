@@ -60,23 +60,39 @@ export function createIssueCommenter(
         );
       }
       const deadline = Date.now() + opts.timeoutMs;
+      let consecutiveApiErrors = 0;
+      const MAX_CONSECUTIVE_API_ERRORS = 5;
 
       while (Date.now() < deadline) {
         if (opts.abortSignal.aborted) return false;
 
-        const reactions = await octokit.reactions.listForIssueComment({
-          owner,
-          repo,
-          comment_id: commentId,
-        });
+        try {
+          const reactions = await octokit.reactions.listForIssueComment({
+            owner,
+            repo,
+            comment_id: commentId,
+          });
+          consecutiveApiErrors = 0;
 
-        const approved = reactions.data.some((r) => {
-          if (!APPROVAL_REACTIONS.has(r.content)) return false;
-          const login = r.user?.login;
-          if (!login) return false;
-          return approverSet.has(login.toLowerCase());
-        });
-        if (approved) return true;
+          const approved = reactions.data.some((r) => {
+            if (!APPROVAL_REACTIONS.has(r.content)) return false;
+            const login = r.user?.login;
+            if (!login) return false;
+            return approverSet.has(login.toLowerCase());
+          });
+          if (approved) return true;
+        } catch (err) {
+          consecutiveApiErrors++;
+          console.warn(
+            `[issue-commenter] waitForApproval: GitHub API error (${consecutiveApiErrors}/${MAX_CONSECUTIVE_API_ERRORS}):`,
+            err instanceof Error ? err.message : String(err),
+          );
+          if (consecutiveApiErrors >= MAX_CONSECUTIVE_API_ERRORS) {
+            throw new Error(
+              `waitForApproval: GitHub API failed ${MAX_CONSECUTIVE_API_ERRORS} consecutive times — aborting HITL poll`,
+            );
+          }
+        }
 
         const remaining = deadline - Date.now();
         if (remaining <= 0) return false;
