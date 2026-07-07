@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-07-04T04:00:00Z",
-  "open_count": 20,
-  "fixed_count": 24,
+  "last_updated": "2026-07-07T04:18:32Z",
+  "open_count": 15,
+  "fixed_count": 31,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -11,7 +11,8 @@
     "2026-06-28T040632Z.json",
     "20260630T000000Z.json",
     "20260701T040000Z.json",
-    "20260704T040000Z.json"
+    "20260704T040000Z.json",
+    "20260707T041832Z.json"
   ],
   "open_findings": [
     {
@@ -37,12 +38,6 @@
       "severity": "IMPORTANT",
       "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
       "file_globs": ["src/agents/verifier/sandbox.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-84860186",
-      "severity": "IMPORTANT",
-      "title": "Inconsistent module import extensions across the codebase (partial fix applied)",
-      "file_globs": ["src/**/*.ts"]
     },
     {
       "id": "AUDIT-IFleet-202b928c",
@@ -81,12 +76,6 @@
       "file_globs": ["src/agents/verifier/sandbox.ts"]
     },
     {
-      "id": "AUDIT-IFleet-fde51222",
-      "severity": "IMPORTANT",
-      "title": "audit-store.ts TERMINAL_SQL_LIST string interpolation is structurally fragile",
-      "file_globs": ["src/audit/audit-store.ts"]
-    },
-    {
       "id": "AUDIT-IFleet-3b3ab72a",
       "severity": "IMPORTANT",
       "title": "workers/claude.ts passes full brief as -p argv — visible in ps aux for all pipeline phases",
@@ -97,12 +86,6 @@
       "severity": "COSMETIC",
       "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
       "file_globs": ["src/pipeline/reviewer.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-a103ab2c",
-      "severity": "COSMETIC",
-      "title": "spawn-runner.ts cancel() does not short-circuit the SIGTERM grace period if process already exited",
-      "file_globs": ["src/workers/spawn-runner.ts"]
     },
     {
       "id": "AUDIT-IFleet-4de85929",
@@ -139,6 +122,13 @@
     "AUDIT-IFleet-d7687cda",
     "AUDIT-IFleet-1a2eb5fd",
     "AUDIT-IFleet-35755878",
-    "AUDIT-IFleet-02454a89"
+    "AUDIT-IFleet-02454a89",
+    "AUDIT-IFleet-84860186",
+    "AUDIT-IFleet-a103ab2c",
+    "AUDIT-IFleet-e1c3b7f9",
+    "AUDIT-IFleet-b4a2d8c1",
+    "AUDIT-IFleet-f5c7e3a2",
+    "AUDIT-IFleet-d6a9c4f2",
+    "AUDIT-IFleet-fde51222"
   ]
 }

@@ -168,7 +168,7 @@ describe('dbUpsertFindings', () => {
       (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('INSERT'),
     );
     expect(insertCall![0]).toContain("WHERE NOT EXISTS");
-    expect(insertCall![0]).toMatch(/status NOT IN/);
+    expect(insertCall![0]).toContain("NOT (status = ANY($15))");
   });
 });
 
@@ -349,7 +349,7 @@ describe('dbUpdateFindingStatus', () => {
     });
 
     const [sql] = mockQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("AND status NOT IN ('closed', 'fixed', 'stale')");
+    expect(sql).toContain("AND NOT (status = ANY($5))");
   });
 
   it('returns false when refuseFromTerminal guard blocks the update', async () => {

@@ -425,13 +425,6 @@ export class SprintManager {
         this.sprintTraceIds.set(task.sprintId, parentTraceId);
       }
       const handle = await this.adapter.spawn(task.id, brief, { parentTraceId });
-      this.running.set(task.id, {
-        taskId: task.id,
-        sprintId: task.sprintId,
-        workerId,
-        handle,
-        startedAt: this.now(),
-      });
       this.store.saveTask({
         ...task,
         brief,
@@ -442,6 +435,13 @@ export class SprintManager {
         },
         attempts: newAttempts,
         updatedAt: this.now(),
+      });
+      this.running.set(task.id, {
+        taskId: task.id,
+        sprintId: task.sprintId,
+        workerId,
+        handle,
+        startedAt: this.now(),
       });
       void this.awaitHandle(task.id);
     } catch (err) {
