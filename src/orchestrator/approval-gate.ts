@@ -32,9 +32,9 @@ export class ControlPlaneApprovalGate implements ApprovalGate {
 
   /**
    * Suspend the architect until a verdict is observed for `taskId`. Returns
-   * `true` for approve, `false` for reject/cancel/timeout/abort. Safe to call
-   * multiple times for the same taskId only sequentially — a second call
-   * overwrites the first deferred.
+   * `true` for approve, `false` for reject/cancel/timeout/abort. If called
+   * again for the same taskId before the first await resolves, the first
+   * caller is cancelled (resolved false) before the new await is registered.
    */
   async awaitApproval(opts: {
     taskId: string;
@@ -42,6 +42,12 @@ export class ControlPlaneApprovalGate implements ApprovalGate {
     abortSignal: AbortSignal;
   }): Promise<boolean> {
     if (opts.abortSignal.aborted) return false;
+
+    // Evict any existing waiter for this taskId so its Promise doesn't leak.
+    const displaced = this.pending.get(opts.taskId);
+    if (displaced) {
+      displaced.resolve('cancel');
+    }
 
     return new Promise<boolean>((resolve) => {
       const settle = (verdict: Verdict): void => {

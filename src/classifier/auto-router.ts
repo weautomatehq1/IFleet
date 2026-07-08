@@ -232,6 +232,7 @@ function isRisk(value: unknown): value is Risk {
 
 function hashInput(input: AutoRouterInput): string {
   const payload = JSON.stringify({
+    r: input.repoRoot ?? '',
     t: input.title,
     b: input.body,
     l: [...input.labels].sort(),
