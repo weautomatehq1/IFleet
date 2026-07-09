@@ -181,8 +181,8 @@ export class GitRepoManager implements RepoManager {
     args: string[],
     opts: { withAuth: boolean; allowFail?: boolean },
   ): Promise<RunResult> {
-    const finalArgs = opts.withAuth && this.token ? this.authPrefix().concat(args) : args;
-    const result = await spawnCapture(this.gitBin, finalArgs);
+    const extraEnv = opts.withAuth && this.token ? this.authEnv() : undefined;
+    const result = await spawnCapture(this.gitBin, args, extraEnv);
     if (!opts.allowFail && result.code !== 0) {
       // git can echo the Authorization header back under GIT_TRACE or when
       // a credential helper logs verbosely — scrub both stderr and stdout
@@ -197,13 +197,14 @@ export class GitRepoManager implements RepoManager {
     return result;
   }
 
-  private authPrefix(): string[] {
-    // -c http.extraheader=... is passed inline so the token never lands in .git/config.
-    // (Token is still visible to local `ps` — acceptable on the dedicated VPS.)
-    return [
-      '-c',
-      `http.https://github.com/.extraheader=AUTHORIZATION: bearer ${this.token}`,
-    ];
+  private authEnv(): Record<string, string> {
+    // Pass auth via GIT_CONFIG_* env vars (git >= 2.32) so the token never
+    // appears in process argv visible to `ps`.
+    return {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+      GIT_CONFIG_VALUE_0: `AUTHORIZATION: bearer ${this.token}`,
+    };
   }
 }
 
@@ -213,13 +214,25 @@ export class GitRepoManager implements RepoManager {
 
 const OUTPUT_CAP_BYTES = 2 * 1024 * 1024; // 2 MB — mirrors spawn-util.ts cap
 
-async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
+// GIT_* vars that redirect the child git to a different repo or index.
+// We strip only these, not all GIT_* — GIT_CONFIG_* (used for auth injection)
+// and others must be allowed through.
+const REROUTING_GIT_VARS = new Set([
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+]);
+
+async function spawnCapture(bin: string, args: string[], extraEnv?: Record<string, string>): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    // Strip GIT_* vars so a parent pre-push hook's GIT_DIR/GIT_WORK_TREE
-    // doesn't leak into child git processes and redirect them to the wrong repo.
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
-    );
+    // Strip only the vars that redirect git to operate on a different repo/index.
+    // Leaving other GIT_* vars (e.g. GIT_CONFIG_*) intact so auth injection works.
+    const env = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !REROUTING_GIT_VARS.has(k))),
+      ...extraEnv,
+    };
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
     let stdout = '';
     let stderr = '';

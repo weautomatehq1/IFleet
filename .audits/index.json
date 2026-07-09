@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-07-07T04:18:32Z",
-  "open_count": 15,
-  "fixed_count": 31,
+  "last_updated": "2026-07-09T04:00:00Z",
+  "open_count": 2,
+  "fixed_count": 46,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -12,110 +12,23 @@
     "20260630T000000Z.json",
     "20260701T040000Z.json",
     "20260704T040000Z.json",
-    "20260707T041832Z.json"
+    "20260707T041832Z.json",
+    "20260709T040000Z.json"
   ],
   "open_findings": [
-    {
-      "id": "AUDIT-IFleet-ff8faf70",
-      "severity": "IMPORTANT",
-      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
-      "file_globs": ["src/utils/costs.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-2fdb1535",
-      "severity": "IMPORTANT",
-      "title": "sprint_goal missing required fields return 500 instead of 4xx",
-      "file_globs": ["src/queue/control-plane.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-634a726e",
-      "severity": "IMPORTANT",
-      "title": "Git auth token exposed via process args visible to local ps",
-      "file_globs": ["src/repos/manager.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-d2de0aca",
-      "severity": "IMPORTANT",
-      "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
-      "file_globs": ["src/agents/verifier/sandbox.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-202b928c",
-      "severity": "IMPORTANT",
-      "title": "TaskStore insert never persists the attempts column it relies on",
-      "file_globs": ["src/queue/store.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-56e677cf",
-      "severity": "IMPORTANT",
-      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
-      "file_globs": ["src/pipeline/runner.ts"]
-    },
     {
       "id": "AUDIT-IFleet-6dbc02a1",
       "severity": "IMPORTANT",
       "title": "defaultHaikuCall passes full prompt (including user brief) as argv — visible in ps aux",
+      "detail": "Intentional design: stdin was unreliable in production (documented in inline comment). Deferred until stdin reliability resolved.",
       "file_globs": ["src/classifier/auto-router.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-5a520b9e",
-      "severity": "IMPORTANT",
-      "title": "issue-commenter.ts lastCommentId mutable closure races if comment() called before waitForApproval resolves",
-      "file_globs": ["src/queue/issue-commenter.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-ff177eeb",
-      "severity": "IMPORTANT",
-      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
-      "file_globs": ["src/queue/github.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-8485d061",
-      "severity": "IMPORTANT",
-      "title": "DockerSandboxRunner falls back to in-worktree execution without requiring IFLEET_ALLOW_SANDBOX_FALLBACK",
-      "file_globs": ["src/agents/verifier/sandbox.ts"]
     },
     {
       "id": "AUDIT-IFleet-3b3ab72a",
       "severity": "IMPORTANT",
       "title": "workers/claude.ts passes full brief as -p argv — visible in ps aux for all pipeline phases",
+      "detail": "Fix requires spawn-runner.ts stdin refactor. Deferred to dedicated sprint.",
       "file_globs": ["src/workers/claude.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-f820fdb9",
-      "severity": "COSMETIC",
-      "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
-      "file_globs": ["src/pipeline/reviewer.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-4de85929",
-      "severity": "COSMETIC",
-      "title": "auto-router in-memory cache never expires — stale routing decisions persist across sprint submissions",
-      "file_globs": ["src/classifier/auto-router.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-20559453",
-      "severity": "COSMETIC",
-      "title": "contracts/hmac.ts verifyPayload has redundant length check after timingSafeEqual",
-      "file_globs": ["src/contracts/hmac.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-2896b739",
-      "severity": "COSMETIC",
-      "title": "server.ts deferringDiscordOut.postTaskCreated always returns empty threadId string without warning",
-      "file_globs": ["src/server.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-14ec04e8",
-      "severity": "COSMETIC",
-      "title": "audit-store.ts dbReadIndex returns null for both DB unreachable and zero-row cases without distinguishing them",
-      "file_globs": ["src/audit/audit-store.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-c9e1f803",
-      "severity": "COSMETIC",
-      "title": "audit-runner.ts markFindingsClosed batch path skips per-fingerprint dedup that appendToClosedJson uses",
-      "file_globs": ["src/discord/audit-runner.ts"]
     }
   ],
   "fixed_findings": [
@@ -129,6 +42,21 @@
     "AUDIT-IFleet-b4a2d8c1",
     "AUDIT-IFleet-f5c7e3a2",
     "AUDIT-IFleet-d6a9c4f2",
-    "AUDIT-IFleet-fde51222"
+    "AUDIT-IFleet-fde51222",
+    "AUDIT-IFleet-ff8faf70",
+    "AUDIT-IFleet-2fdb1535",
+    "AUDIT-IFleet-634a726e",
+    "AUDIT-IFleet-d2de0aca",
+    "AUDIT-IFleet-202b928c",
+    "AUDIT-IFleet-56e677cf",
+    "AUDIT-IFleet-5a520b9e",
+    "AUDIT-IFleet-ff177eeb",
+    "AUDIT-IFleet-8485d061",
+    "AUDIT-IFleet-f820fdb9",
+    "AUDIT-IFleet-4de85929",
+    "AUDIT-IFleet-20559453",
+    "AUDIT-IFleet-2896b739",
+    "AUDIT-IFleet-14ec04e8",
+    "AUDIT-IFleet-c9e1f803"
   ]
 }

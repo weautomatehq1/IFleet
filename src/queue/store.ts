@@ -333,9 +333,9 @@ export class TaskStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, source_kind, source_data, repo, brief, title, routing_hints,
-                            state, state_meta, idempotency_key, created_at, priority, mode)
+                            state, state_meta, idempotency_key, created_at, priority, mode, attempts)
          VALUES (@id, @source_kind, @source_data, @repo, @brief, @title, @routing_hints,
-                 @state, @state_meta, @idempotency_key, @created_at, @priority, @mode)`,
+                 @state, @state_meta, @idempotency_key, @created_at, @priority, @mode, @attempts)`,
       )
       .run({
         id: task.id,
@@ -351,6 +351,7 @@ export class TaskStore {
         created_at: task.createdAt,
         priority,
         mode: task.mode ?? null,
+        attempts: 0,
       });
     return { inserted: true };
   }

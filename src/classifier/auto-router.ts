@@ -74,12 +74,19 @@ const CONFIDENCE_THRESHOLD = 0.6;
 const LEARNINGS_TAIL = 50;
 const HAIKU_MAX_OUTPUT_CHARS = 2_000; // cap at 200 tokens × ~10 chars/token
 
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface CacheEntry {
+  decision: AutoRouterDecision;
+  expiresAt: number;
+}
+
 /**
- * In-memory cache keyed by sha256(title|body|labels). One-process lifetime so a
- * sprint retry does not re-call Haiku. Cleared automatically when the process
- * restarts (acceptable — the cache exists to dedupe retries inside one run).
+ * In-memory cache keyed by sha256(title|body|labels). Dedupes Haiku calls
+ * within a sprint retry window; entries expire after 5 min so stale routing
+ * decisions don't persist across unrelated sprint submissions.
  */
-const cache = new Map<string, AutoRouterDecision>();
+const cache = new Map<string, CacheEntry>();
 
 export function clearAutoRouterCache(): void {
   cache.clear();
@@ -102,9 +109,10 @@ export async function autoRouteMode(
     return { ...STANDARD_FALLBACK, reason: `disabled via ${KILL_SWITCH_ENV}=1` };
   }
 
+  const now = opts.now?.() ?? Date.now();
   const key = hashInput(input);
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached && now < cached.expiresAt) return cached.decision;
 
   const repoRoot = input.repoRoot ?? process.cwd();
   const learnings = loadLearningsTail(repoRoot, LEARNINGS_TAIL);
@@ -131,13 +139,13 @@ export async function autoRouteMode(
     clearTimeout(timer);
     const reason = `haiku call failed: ${err instanceof Error ? err.message : String(err)}`;
     const decision: AutoRouterDecision = { ...STANDARD_FALLBACK, reason };
-    cache.set(key, decision);
+    cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
     return decision;
   }
   clearTimeout(timer);
 
   const decision = parseRouterDecision(raw, riskFlags);
-  cache.set(key, decision);
+  cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
   return decision;
 }
 

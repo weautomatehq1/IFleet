@@ -1,6 +1,10 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
+// Per-file write queue — prevents interleaved appends when multiple pipeline
+// phases finish concurrently and all call appendCostRecord at the same time.
+const appendQueues = new Map<string, Promise<void>>();
+
 export interface CostRecord {
   sprintId: string;
   taskId: string;
@@ -31,7 +35,16 @@ export async function appendCostRecord(repoRoot: string, record: CostRecord): Pr
   await fs.mkdir(omcDir, { recursive: true });
 
   const line = JSON.stringify(record) + '\n';
-  await fs.appendFile(costFile, line, 'utf-8');
+  const doAppend = (): Promise<void> => fs.appendFile(costFile, line, 'utf-8');
+  const prev = appendQueues.get(costFile) ?? Promise.resolve();
+  // Use .then(fn, fn) so each write runs even when a prior write failed.
+  const next = prev.then(doAppend, doAppend);
+  const settled = next.catch(() => undefined);
+  appendQueues.set(costFile, settled);
+  void settled.then(() => {
+    if (appendQueues.get(costFile) === settled) appendQueues.delete(costFile);
+  });
+  return next;
 }
 
 export async function readCostLog(repoRoot: string): Promise<CostRecord[]> {

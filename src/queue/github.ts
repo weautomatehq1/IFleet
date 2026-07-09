@@ -378,20 +378,26 @@ export class GitHubQueue implements QueueAdapter {
     issueNumber: number,
     label: string,
   ): Promise<number | null> {
-    const events = await this.octokit.paginate(this.octokit.issues.listEvents, {
+    const MAX_PAGES = 10;
+    let pageCount = 0;
+    let latest = 0;
+    await this.octokit.paginate(this.octokit.issues.listEvents, {
       owner: repo.owner,
       repo: repo.name,
       issue_number: issueNumber,
       per_page: 100,
-    });
-    let latest = 0;
-    for (const ev of events) {
-      const labelName = (ev as { label?: { name?: string } }).label?.name;
-      if (ev.event === 'labeled' && labelName === label) {
-        const ts = Date.parse(ev.created_at);
-        if (Number.isFinite(ts) && ts > latest) latest = ts;
+    }, (response, done) => {
+      pageCount++;
+      if (pageCount >= MAX_PAGES) done();
+      for (const ev of response.data) {
+        const labelName = (ev as { label?: { name?: string } }).label?.name;
+        if (ev.event === 'labeled' && labelName === label) {
+          const ts = Date.parse(ev.created_at);
+          if (Number.isFinite(ts) && ts > latest) latest = ts;
+        }
       }
-    }
+      return response.data;
+    });
     return latest > 0 ? latest : null;
   }
 

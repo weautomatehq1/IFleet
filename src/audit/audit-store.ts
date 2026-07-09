@@ -192,7 +192,8 @@ export async function dbReadIndex(repo: string): Promise<AuditIndex | null> {
   let findings: AuditFinding[];
   try {
     findings = await dbReadFindings(repoKey);
-  } catch {
+  } catch (err) {
+    console.warn(`[audit-store] dbReadIndex: DB unreachable for repo ${repoKey}:`, err instanceof Error ? err.message : String(err));
     return null;
   }
   if (findings.length === 0) return null;

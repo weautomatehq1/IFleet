@@ -536,9 +536,7 @@ function buildDockerArgs(
     `${memoryMb}m`,
     '--network',
     needsNetwork ? 'bridge' : 'none',
-    '--user',
-    'root',
-  ];
+    ];
   if (envFilePath) {
     args.push('--env-file', envFilePath);
   }

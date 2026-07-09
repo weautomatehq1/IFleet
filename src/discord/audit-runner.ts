@@ -374,7 +374,11 @@ export function markFindingsClosed(
         cdata = { closures: [] };
       }
     }
-    cdata.closures.push(...records);
+    for (const record of records) {
+      if (!cdata.closures.some((c) => c.fingerprint === record.fingerprint)) {
+        cdata.closures.push(record);
+      }
+    }
     const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
     writeFileSync(tmp, `${JSON.stringify(cdata, null, 2)}\n`, 'utf8');
     renameSync(tmp, closedPath);
