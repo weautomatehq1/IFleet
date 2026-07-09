@@ -177,7 +177,10 @@ export class TaskStore {
   constructor(path: string = defaultTasksDbPath()) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
-    this.maxAttempts = Math.max(1, Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5));
+    const _maxAttemptsRaw = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
+    this.maxAttempts = Number.isFinite(_maxAttemptsRaw) && _maxAttemptsRaw >= 1
+      ? Math.floor(_maxAttemptsRaw)
+      : 5;
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);

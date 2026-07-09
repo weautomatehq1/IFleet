@@ -190,6 +190,7 @@ function buildCodexArgs(opts: SpawnOpts, lastMessagePath: string): string[] {
       'workspace-write',
       '--output-last-message',
       lastMessagePath,
+      '--',
       opts.brief,
     ];
   }
@@ -200,6 +201,7 @@ function buildCodexArgs(opts: SpawnOpts, lastMessagePath: string): string[] {
     'workspace-write',
     '--output-last-message',
     lastMessagePath,
+    '--',
     opts.brief,
   ];
 }

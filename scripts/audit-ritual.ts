@@ -5,7 +5,7 @@
 // morning-report: reads each repo's .audits/index.json and posts a findings
 //                 summary to #ifleet (channel 1504120127791042631)
 
-import { execFile, execSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { isMainModule } from './lib/is-main-module.js';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
@@ -43,7 +43,7 @@ export const AUDIT_ID_RE = /\bAUDIT-[A-Za-z][A-Za-z0-9]*-[0-9a-f]{8}\b/g;
 function resolveClaude(): string {
   if (process.env['CLAUDE_BIN']) return process.env['CLAUDE_BIN'];
   try {
-    return execSync('which claude', { encoding: 'utf8' }).trim();
+    return execFileSync('which', ['claude'], { encoding: 'utf8' }).trim();
   } catch {
     // VPS default: deploy/install-vps.sh symlinks claude to /usr/local/bin/claude.
     return '/usr/local/bin/claude';
@@ -152,7 +152,7 @@ export async function reconcileMergedPRs(repos: string[]): Promise<void> {
 
       if (process.env['IFLEET_KG_DATABASE_URL']) {
         try {
-          execSync(`npx tsx scripts/sync-audit-findings.ts ${indexPath}`, {
+          execFileSync('npx', ['tsx', 'scripts/sync-audit-findings.ts', indexPath], {
             stdio: 'inherit',
             cwd: resolveRepoPath('IFleet'),
           });
