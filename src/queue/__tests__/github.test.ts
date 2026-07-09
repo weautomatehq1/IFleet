@@ -124,9 +124,16 @@ function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
   const paginate = async (
     fn: unknown,
     params: { labels?: string; issue_number?: number },
+    mapFn?: (response: { data: unknown[] }, done: () => void) => unknown[],
   ): Promise<unknown[]> => {
     if (fn === listEvents && params.issue_number !== undefined) {
-      return state.events.filter((e) => e.issue === params.issue_number);
+      const evts = state.events.filter((e) => e.issue === params.issue_number);
+      if (mapFn) {
+        // Simulate Octokit paginate mapFn: single page with all events
+        mapFn({ data: evts }, () => undefined);
+        return [];
+      }
+      return evts;
     }
     if (params.issue_number !== undefined) {
       return state.comments.filter((c) => c.issue === params.issue_number);
