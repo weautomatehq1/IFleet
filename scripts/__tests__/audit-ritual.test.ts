@@ -32,7 +32,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   return { ...actual, execFile: execFileMock, execSync: execSyncMock };
 });
 
-vi.mock('../../src/discord/audit-runner.js', () => ({
+vi.mock('@wahq/orchestrator-core/discord/audit-runner', () => ({
   resolveAuditIndexPath: vi.fn((repoPath: string) => `${repoPath}/.audits/index.json`),
   readAuditIndex: vi.fn(),
   markFindingsClosed: vi.fn(() => 0),
@@ -42,7 +42,7 @@ vi.mock('../../src/discord/audit-runner.js', () => ({
 }));
 
 import { resolveRepoPath, AUDIT_ID_RE, reconcileMergedPRs } from '../audit-ritual.ts';
-import { readAuditIndex, markFindingsClosed } from '../../src/discord/audit-runner.js';
+import { readAuditIndex, markFindingsClosed } from '@wahq/orchestrator-core/discord/audit-runner';
 
 // ---------------------------------------------------------------------------
 // Helpers

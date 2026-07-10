@@ -7,8 +7,8 @@ import { DEFAULT_REPO_ID, loadReposConfig, type ReposMap } from '../config/repos
 import type { DiscordOut } from '@wahq/orchestrator-core/contracts/discord-out';
 import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import { DiscordOutbox } from '@wahq/orchestrator-core/observability/discord-outbox';
-import { setDiscordOutbox } from '../observability/discord-broadcast.js';
-import { postTaskDoneNotification } from '../observability/task-done-notify.js';
+import { setDiscordOutbox } from '@wahq/orchestrator-core/observability/discord-broadcast';
+import { postTaskDoneNotification } from '@wahq/orchestrator-core/observability/task-done-notify';
 import type { PipelineRunnerFactory } from './pipeline-bridge';
 import { PressureTracker } from './pressure';
 import { SprintManager, type StartSprintOpts, type TaskBriefLoader } from './sprint';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { ControlPlaneError, HmacControlPlaneClient, signPayload } from '../hmac-client.js';
+import { ControlPlaneError, HmacControlPlaneClient, signPayload } from '@wahq/orchestrator-core/discord/hmac-client';
 
 const SECRET = 'test-secret';
 const URL = 'http://127.0.0.1:3001/control';

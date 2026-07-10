@@ -16,7 +16,7 @@ import {
   readAuditIndex,
   markFindingsClosed,
   openFindings,
-} from '../src/discord/audit-runner.js';
+} from '@wahq/orchestrator-core/discord/audit-runner';
 import { isTerminalAuditStatus } from '../src/audit/types.js';
 
 const execFileAsync = promisify(execFile);

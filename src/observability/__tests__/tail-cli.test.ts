@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseArgs, helpText, formatEventLine } from '../tail-cli.js';
-import type { Event } from '../types.js';
+import { parseArgs, helpText, formatEventLine } from '@wahq/orchestrator-core/observability/tail-cli';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 
 describe('parseArgs', () => {
   it('parses a positional sprintId', () => {

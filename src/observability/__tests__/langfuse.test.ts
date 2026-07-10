@@ -4,7 +4,7 @@ import {
   getLangfuseClient,
   resetLangfuseClient,
   startTrace,
-} from '../langfuse.ts';
+} from '@wahq/orchestrator-core/observability/langfuse';
 
 describe('langfuse client singleton', () => {
   beforeEach(() => {
@@ -70,7 +70,7 @@ describe('startTrace', () => {
     // shape at the source level avoids a flaky integration test against the
     // singleton/network client.
     const src = readFileSync(
-      new URL('../langfuse.ts', import.meta.url),
+      new URL('../../../packages/orchestrator-core/src/observability/langfuse.ts', import.meta.url),
       'utf-8',
     );
     // Find the usageDetails object literal.
@@ -135,7 +135,7 @@ describe('startTrace', () => {
 
   it('parent-trace pattern is wired in the source (ADR-0001:36-42)', () => {
     const src = readFileSync(
-      new URL('../langfuse.ts', import.meta.url),
+      new URL('../../../packages/orchestrator-core/src/observability/langfuse.ts', import.meta.url),
       'utf-8',
     );
     expect(src).toContain('LANGFUSE_PARENT_TRACE_ID');

@@ -16,7 +16,7 @@ import {
   setFindingsStatus,
   synthesizeAuditBrief,
   writeAuditIndex,
-} from './audit-runner.js';
+} from '@wahq/orchestrator-core/discord/audit-runner';
 
 function finding(over: Partial<AuditFinding> & { id: string }): AuditFinding {
   return {

@@ -50,7 +50,7 @@ import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
 import { titleToBranchName } from '../src/utils/branch-name.ts';
 import { acquireDispatchLock } from './dispatcher-lock.ts';
-import { broadcastIFleet } from '../src/observability/discord-broadcast.ts';
+import { broadcastIFleet } from '@wahq/orchestrator-core/observability/discord-broadcast';
 import { isFleetPaused, readPauseInfo } from '../src/orchestrator/fleet-control.ts';
 import {
   PipelineBridge,

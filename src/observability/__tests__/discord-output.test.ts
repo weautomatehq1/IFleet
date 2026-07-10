@@ -14,7 +14,7 @@ import {
   PLAN_ATTACHMENT_THRESHOLD,
   shortTitle,
   truncate,
-} from '../discord-output.js';
+} from '@wahq/orchestrator-core/observability/discord-output';
 
 const ALLSTATE_CHANNEL = '1503769258981589012';
 

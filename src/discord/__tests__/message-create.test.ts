@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleMessageCreate } from '../handlers/message-create.js';
+import { handleMessageCreate } from '@wahq/orchestrator-core/discord/handlers/message-create';
 import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type {
   ControlCommand,

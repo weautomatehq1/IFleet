@@ -1,11 +1,3 @@
-export type { Event, EventLog, TailOptions } from './types.js';
-export { FileEventLog, parseEvents } from './event-log.js';
-export {
-  formatStatusCard,
-  chunkLines,
-  reduceEvents,
-  createBufferedFormatter,
-  DISCORD_CHUNK_LIMIT,
-  BUFFER_FLUSH_MS,
-} from './discord.js';
-export { parseArgs, helpText, formatEventLine } from './tail-cli.js';
+// Re-export shim — implementation now lives in @wahq/orchestrator-core/observability.
+// Existing callers importing from this path continue to work unchanged.
+export * from '@wahq/orchestrator-core/observability';

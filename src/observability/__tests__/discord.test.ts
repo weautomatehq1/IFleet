@@ -5,8 +5,8 @@ import {
   reduceEvents,
   createBufferedFormatter,
   DISCORD_CHUNK_LIMIT,
-} from '../discord.js';
-import type { Event } from '../types.js';
+} from '@wahq/orchestrator-core/observability/discord';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 
 describe('chunkLines', () => {
   it('emits a single chunk when content fits the limit', () => {

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { appendFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { FileEventLog, parseEvents } from '../event-log.js';
-import type { Event } from '../types.js';
+import { FileEventLog, parseEvents } from '@wahq/orchestrator-core/observability/event-log';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 
 function tmpRoot(): string {
   return mkdtempSync(join(tmpdir(), 'omc-events-'));

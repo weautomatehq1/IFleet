@@ -1,5 +1,5 @@
 import type { MessageReaction, PartialMessageReaction, PartialUser, User } from 'discord.js';
-import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
+import type { ChannelRouter } from '../../contracts/channel-router.js';
 import type {
   ControlCommand,
   ControlPlaneClient,

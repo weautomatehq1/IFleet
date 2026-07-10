@@ -2,8 +2,8 @@
 // initial thread post. T4 owns the ChannelRouter contract; this module is the
 // glue between T5's output adapter and T4's data.
 
-import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
-import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import type { ChannelRoute, ChannelRouter } from '../contracts/channel-router.js';
+import type { QueuedTask } from '../contracts/task.js';
 
 export type ChannelResolution =
   | {

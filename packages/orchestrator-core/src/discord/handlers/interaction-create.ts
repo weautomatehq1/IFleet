@@ -6,14 +6,14 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
+import type { ChannelRoute, ChannelRouter } from '../../contracts/channel-router.js';
 import type {
   ControlCommand,
   ControlPlaneAck,
   ControlPlaneClient,
   DiscordCommandSource,
 } from '../../contracts/control-plane-client.js';
-import { parseCustomId, type DiscordCustomIdVerb } from '@wahq/orchestrator-core/contracts/discord-out';
+import { parseCustomId, type DiscordCustomIdVerb } from '../../contracts/discord-out.js';
 import { ControlPlaneError } from '../hmac-client.js';
 import {
   formatFindingsList,
@@ -30,13 +30,13 @@ import {
   dbReadIndex,
   dbUpdateFindingStatus,
   normaliseAuditRepo,
-} from '../../audit/audit-store.js';
-import { recordProposalDecision } from '../../orchestrator/approval-gate.js';
+} from '../../../../../src/audit/audit-store.js';
+import { recordProposalDecision } from '../../../../../src/orchestrator/approval-gate.js';
 import {
   getProposalForShip,
   setResultingTaskId,
-} from '../../orchestrator/goal-proposals-store.js';
-import type { ProposalDecision } from '../../agents/proposer/types.js';
+} from '../../../../../src/orchestrator/goal-proposals-store.js';
+import type { ProposalDecision } from '../../../../../src/agents/proposer/types.js';
 
 export interface InteractionDeps {
   router: ChannelRouter;

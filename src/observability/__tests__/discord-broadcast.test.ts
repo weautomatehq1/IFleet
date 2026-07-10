@@ -39,7 +39,7 @@ vi.mock('node:http', () => ({
 
 // Import AFTER mock declaration
 const { broadcastIFleet, setDiscordOutbox, __resetBroadcastStateForTests } = await import(
-  '../discord-broadcast.js'
+  '@wahq/orchestrator-core/observability/discord-broadcast'
 );
 
 // ---------------------------------------------------------------------------

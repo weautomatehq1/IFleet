@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as https from 'node:https';
 import * as cp from 'node:child_process';
-import { postTaskDoneNotification } from '../task-done-notify.js';
+import { postTaskDoneNotification } from '@wahq/orchestrator-core/observability/task-done-notify';
 
 vi.mock('node:https');
 vi.mock('node:child_process');

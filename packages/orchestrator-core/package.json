@@ -30,6 +30,25 @@
     "./queue/sources/base": "./src/queue/sources/base.ts",
     "./queue/sources/discord": "./src/queue/sources/discord.ts",
     "./observability/discord-outbox": "./src/observability/discord-outbox.ts",
+    "./observability": "./src/observability/index.ts",
+    "./observability/types": "./src/observability/types.ts",
+    "./observability/event-log": "./src/observability/event-log.ts",
+    "./observability/discord": "./src/observability/discord.ts",
+    "./observability/discord-broadcast": "./src/observability/discord-broadcast.ts",
+    "./observability/discord-output": "./src/observability/discord-output.ts",
+    "./observability/channel-router-bridge": "./src/observability/channel-router-bridge.ts",
+    "./observability/langfuse": "./src/observability/langfuse.ts",
+    "./observability/tail-cli": "./src/observability/tail-cli.ts",
+    "./observability/task-done-notify": "./src/observability/task-done-notify.ts",
+    "./discord": "./src/discord/index.ts",
+    "./discord/client": "./src/discord/client.ts",
+    "./discord/hmac-client": "./src/discord/hmac-client.ts",
+    "./discord/audit-runner": "./src/discord/audit-runner.ts",
+    "./discord/proposals": "./src/discord/proposals.ts",
+    "./discord/slash-commands": "./src/discord/slash-commands.ts",
+    "./discord/handlers/interaction-create": "./src/discord/handlers/interaction-create.ts",
+    "./discord/handlers/message-create": "./src/discord/handlers/message-create.ts",
+    "./discord/handlers/reaction-add": "./src/discord/handlers/reaction-add.ts",
     "./utils/ulid": "./src/utils/ulid.ts",
     "./utils/audit-finding": "./src/utils/audit-finding.ts",
     "./workers": "./src/workers/index.ts",
@@ -47,14 +66,17 @@
     "./repos/fs-utils": "./src/repos/fs-utils.ts",
     "./repos/health": "./src/repos/health.ts",
     "./repos/manager": "./src/repos/manager.ts",
-    "./repos/router": "./src/repos/router.ts"
+    "./repos/router": "./src/repos/router.ts",
+    "./contracts/control-plane-client": "./src/contracts/control-plane-client.ts"
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.3.0",
+    "discord.js": "^14.26.4",
+    "langfuse": "^3.38.20"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11"

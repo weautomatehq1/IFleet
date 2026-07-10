@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleInteractionCreate } from '../handlers/interaction-create.js';
+import { handleInteractionCreate } from '@wahq/orchestrator-core/discord/handlers/interaction-create';
 import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type {
   ControlCommand,

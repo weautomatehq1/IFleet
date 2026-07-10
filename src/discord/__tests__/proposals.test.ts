@@ -4,7 +4,7 @@ import {
   getProposalsChannelId,
   postProposalsForApproval,
   type DiscordPostDeps,
-} from '../proposals.js';
+} from '@wahq/orchestrator-core/discord/proposals';
 import type { DedupedCandidate, ProposerConfig } from '../../agents/proposer/types.js';
 
 const insertedRows: Array<{ id: string; repo_id: string; title: string }> = [];

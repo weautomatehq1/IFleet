@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "bin": {
-    "ifleet": "src/observability/tail-cli.ts"
+    "ifleet": "packages/orchestrator-core/src/observability/tail-cli.ts"
   },
   "scripts": {
     "start": "node --import tsx scripts/run-smoke.ts",

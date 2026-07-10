@@ -5,7 +5,7 @@ import {
   buildCommandFromButton,
   buildCommandFromSlash,
   handleInteractionCreate,
-} from '../handlers/interaction-create.js';
+} from '@wahq/orchestrator-core/discord/handlers/interaction-create';
 import {
   DISCORD_CUSTOM_ID_MAX,
   parseCustomId,

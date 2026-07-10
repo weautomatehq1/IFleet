@@ -13,7 +13,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { withClosedJsonLock } from '../audit/closed-json-lock.js';
+import { withClosedJsonLock } from '../../../../src/audit/closed-json-lock.js';
 import {
   AUDIT_FIX_GOAL_RE,
   AUDIT_ID_PREFIX,
@@ -27,7 +27,7 @@ import {
   type AuditStatus,
   type ClosedIndex,
   type ClosureRecord,
-} from '../audit/types.js';
+} from '../../../../src/audit/types.js';
 
 // Re-export so existing importers (`import { AuditFinding } from '.../audit-runner.js'`)
 // keep working without touching every call site.

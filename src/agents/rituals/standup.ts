@@ -17,7 +17,7 @@ import { promisify } from 'node:util';
 import { existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
-import { parseEvents } from '../../observability/event-log.js';
+import { parseEvents } from '@wahq/orchestrator-core/observability/event-log';
 import { countPendingProposals } from '../../orchestrator/goal-proposals-store.js';
 import { readFileSync } from 'node:fs';
 

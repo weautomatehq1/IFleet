@@ -4,7 +4,7 @@
 // and drives the cycle on a timer. Keeping the logic here lets the tests run
 // without touching the network or spawning child processes.
 
-import type { Event } from '../observability/types.js';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 import {
   buildRollupPrompt,
   collectLearnings,

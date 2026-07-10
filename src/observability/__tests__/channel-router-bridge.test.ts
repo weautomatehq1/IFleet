@@ -4,7 +4,7 @@ import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import {
   isDiscordSnowflake,
   resolveTaskChannel,
-} from '../channel-router-bridge.js';
+} from '@wahq/orchestrator-core/observability/channel-router-bridge';
 
 const CHANNEL = '1503769258981589012';
 

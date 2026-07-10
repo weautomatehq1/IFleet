@@ -10,8 +10,8 @@ import {
   type PartialUser,
   type User,
 } from 'discord.js';
-import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
-import type { ControlPlaneClient } from '../contracts/control-plane-client.js';
+import type { ChannelRouter } from '../contracts/channel-router.js';
+import type { ControlPlaneClient } from '../../../../src/contracts/control-plane-client.js';
 import { handleInteractionCreate } from './handlers/interaction-create.js';
 import { handleMessageCreate } from './handlers/message-create.js';
 import { handleReactionAdd, type ReactionDeps } from './handlers/reaction-add.js';

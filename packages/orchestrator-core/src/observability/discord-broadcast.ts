@@ -12,7 +12,7 @@
 
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
-import type { DiscordOutbox } from '@wahq/orchestrator-core/observability/discord-outbox';
+import type { DiscordOutbox } from './discord-outbox.js';
 
 const ENV_VAR = 'DISCORD_IFLEET_WEBHOOK';
 
