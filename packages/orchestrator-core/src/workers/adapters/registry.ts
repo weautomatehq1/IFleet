@@ -1,4 +1,4 @@
-import type { WorkerAdapter } from '../../orchestrator/types.ts';
+import type { WorkerAdapter } from '../../../../../src/orchestrator/types.ts';
 
 /**
  * Factory that produces a {@link WorkerAdapter}. Factories are stored in the

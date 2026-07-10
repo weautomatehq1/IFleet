@@ -51,3 +51,14 @@ export {
 export * from './observability/discord-outbox.js';
 export * from './utils/ulid.js';
 export * from './utils/audit-finding.js';
+
+// --- workers + repos (Phase 1a extraction, split lane T2) ---
+export { createClaudeAdapter, type ClaudeAdapterOptions } from './workers/claude.js';
+export { createCodexAdapter, type CodexAdapterOptions } from './workers/codex.js';
+export * from './workers/types.js';
+export { FileChannelRouter } from './repos/router.js';
+export type { FileChannelRouterOptions } from './repos/router.js';
+export { GitRepoManager } from './repos/manager.js';
+export type { RepoManager, GitRepoManagerOptions } from './repos/manager.js';
+export { RepoHealthChecker } from './repos/health.js';
+export type { RepoHealthResult } from './repos/health.js';

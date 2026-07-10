@@ -5,7 +5,7 @@ import {
   AccountPoolEmptyError,
   AllAccountsPausedError,
 } from '../account-pool.ts';
-import type { WorkerConfig } from '../../orchestrator/types.ts';
+import type { WorkerConfig } from '../../../../../src/orchestrator/types.ts';
 
 function makeWorker(overrides: Partial<WorkerConfig> & Pick<WorkerConfig, 'id'>): WorkerConfig {
   return {

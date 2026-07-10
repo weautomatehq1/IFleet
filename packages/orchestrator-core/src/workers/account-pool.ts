@@ -1,4 +1,4 @@
-import type { WorkerConfig } from '../orchestrator/types.ts';
+import type { WorkerConfig } from '../../../../src/orchestrator/types.ts';
 
 export interface AccountPool {
   /**

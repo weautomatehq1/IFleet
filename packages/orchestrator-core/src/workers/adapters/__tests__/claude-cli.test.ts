@@ -14,7 +14,7 @@ import {
   resolveAdapter,
 } from '../registry.ts';
 import { createFakeSpawn } from '../../__tests__/fake-spawn.ts';
-import type { TaskId } from '../../../orchestrator/types.ts';
+import type { TaskId } from '../../../../../../src/orchestrator/types.ts';
 
 const SESSION_ID = 'sess-cli-001';
 

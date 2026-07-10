@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cleanGitEnv } from '../../testing/git-env.js';
+import { cleanGitEnv } from '../../../../../src/testing/git-env.js';
 import { FileChannelRouter } from '../router.js';
 import { GitRepoManager } from '../manager.js';
 import { RepoHealthChecker } from '../health.js';

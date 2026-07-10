@@ -16,7 +16,7 @@ import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
-import { claudeChildEnv, quoteAsUserData } from '../workers/claude-env.js';
+import { claudeChildEnv, quoteAsUserData } from '@wahq/orchestrator-core/workers/claude-env';
 
 export type Risk = 'low' | 'med' | 'high';
 

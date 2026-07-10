@@ -20,8 +20,8 @@ import { createIssueCommenter } from '../queue/issue-commenter.js';
 import type { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
-import { createAccountPool, type AccountPool } from '../workers/account-pool.js';
-import { getActivePipelineAdapter } from '../workers/adapters/index.js';
+import { createAccountPool, type AccountPool } from '@wahq/orchestrator-core/workers/account-pool';
+import { getActivePipelineAdapter } from '@wahq/orchestrator-core/workers/adapters';
 import { DefaultPipelineRunner } from './runner.js';
 import type {
   GitOps,

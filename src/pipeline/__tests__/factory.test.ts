@@ -11,7 +11,7 @@ import { classifyTask } from '../../classifier/index.js';
 import { readShadowDecisions } from '../../agents/bandit/shadow.js';
 import { KNOWN_MODEL_IDS } from '../../agents/bandit/known-arms.js';
 import type { RoutingDecision } from '../types.js';
-import type { AccountPool, AcquireResult } from '../../workers/account-pool.js';
+import type { AccountPool, AcquireResult } from '@wahq/orchestrator-core/workers/account-pool';
 import type { WorkerConfig } from '../../orchestrator/types.js';
 import type {
   SpawnHandle as AdapterSpawnHandle,
@@ -19,14 +19,14 @@ import type {
   WorkerAdapter,
   WorkerEvent,
   WorkerResult,
-} from '../../workers/types.js';
+} from '@wahq/orchestrator-core/workers/types';
 import {
   __resetPipelineAdapterRegistry,
   registerPipelineAdapter,
   createClaudeCliPipelineAdapter,
-} from '../../workers/adapters/pipeline-registry.js';
-import { DEFAULT_ADAPTER_NAME } from '../../workers/adapters/registry.js';
-import { createFakeSpawn } from '../../workers/__tests__/fake-spawn.js';
+} from '@wahq/orchestrator-core/workers/adapters/pipeline-registry';
+import { DEFAULT_ADAPTER_NAME } from '@wahq/orchestrator-core/workers/adapters/registry';
+import { createFakeSpawn } from '../../../packages/orchestrator-core/src/workers/__tests__/fake-spawn.js';
 import type { WorkerSpec } from '../types.js';
 
 describe('F5: normalizeReviewers — gh-safe reviewer logins', () => {

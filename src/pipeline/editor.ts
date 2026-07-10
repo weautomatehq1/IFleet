@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { quoteAsUserData } from '../workers/claude-env.js';
+import { quoteAsUserData } from '@wahq/orchestrator-core/workers/claude-env';
 import type {
   AttemptRecord,
   GitOps,

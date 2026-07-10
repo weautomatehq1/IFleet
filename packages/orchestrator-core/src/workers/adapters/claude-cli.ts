@@ -9,8 +9,8 @@ import type {
   TaskId,
   WorkerAdapter,
   WorkerConfig,
-} from '../../orchestrator/types.ts';
-import { startTrace } from '../../observability/langfuse.ts';
+} from '../../../../../src/orchestrator/types.ts';
+import { startTrace } from '../../../../../src/observability/langfuse.ts';
 import { registerAdapter } from './registry.ts';
 
 /**
