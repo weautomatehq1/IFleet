@@ -1,0 +1,10 @@
+{
+  "name": "@wahq/ifleet",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit -p ../../tsconfig.json",
+    "typecheck": "tsc --noEmit -p ../../tsconfig.json"
+  }
+}

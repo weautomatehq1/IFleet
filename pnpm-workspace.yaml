@@ -7,8 +7,13 @@
 #
 # package.json#pnpm.onlyBuiltDependencies is kept in parallel for backward
 # compatibility with pnpm v10 / external tooling (CI on older runners).
+# Phase 0 monorepo conversion (2026-07-09): the app source stays at the repo
+# root (see apps/ifleet/README.md); workspace members are the new package
+# shells under packages/* and apps/*. The root itself is the workspace root,
+# not a listed member, so `pnpm -r` targets the members below.
 packages:
-  - "."
+  - "packages/*"
+  - "apps/*"
 
 allowBuilds:
   better-sqlite3: true
