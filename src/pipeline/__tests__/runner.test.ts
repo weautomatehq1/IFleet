@@ -427,6 +427,7 @@ describe('DefaultPipelineRunner', () => {
         ],
         verify: [{ ok: true, failures: [] }],
         repoRoot,
+        sprintId: 'test-sprint-1',
       });
 
       const result = await new DefaultPipelineRunner().run(input);
@@ -460,6 +461,7 @@ describe('DefaultPipelineRunner', () => {
         ],
         verify: [{ ok: true, failures: [] }],
         repoRoot,
+        sprintId: 'test-sprint-2',
       });
 
       const result = await new DefaultPipelineRunner().run(input);

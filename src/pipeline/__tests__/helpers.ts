@@ -177,6 +177,8 @@ export interface BuildInputOpts {
    * short-circuits.
    */
   repoRoot?: string;
+  /** Sprint ID for cost aggregation. Required when repoRoot is set. */
+  sprintId?: string;
 }
 
 export function buildPipelineInput(opts: BuildInputOpts): {
@@ -207,6 +209,7 @@ export function buildPipelineInput(opts: BuildInputOpts): {
     baseBranch: 'main',
     approver: '@monstersebas1',
     ...(opts.repoRoot !== undefined && { repoRoot: opts.repoRoot }),
+    ...(opts.sprintId !== undefined && { sprintId: opts.sprintId }),
   };
   return { input, workerPool, verify, issues, pr };
 }
