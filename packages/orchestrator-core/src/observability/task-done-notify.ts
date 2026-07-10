@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { request } from 'node:https';
-import { claudeChildEnv, wrapBriefAsData } from '../../../../src/workers/claude-env.js';
+import { claudeChildEnv, wrapBriefAsData } from '../workers/claude-env.js';
 
 export interface TaskDoneNotifyOpts {
   taskId: string;
