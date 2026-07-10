@@ -23,7 +23,7 @@ import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/sto
 import { IFLEET_STORE_EXTENSIONS } from '../agents/bandit/store-extensions.js';
 import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
 import { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
-import { FileChannelRouter } from '../repos/router.js';
+import { FileChannelRouter } from '@wahq/orchestrator-core/repos/router';
 import { requireEnv } from '../utils/env.js';
 import type { SprintId, TaskId } from './types.js';
 import { Orchestrator } from './index.js';

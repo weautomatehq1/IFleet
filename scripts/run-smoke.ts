@@ -45,7 +45,7 @@ import { createGitHubQueue } from '../src/queue/github.ts';
 import { loadReposConfig } from '../src/config/repos.ts';
 import { createIssueCommenter } from '../src/queue/issue-commenter.ts';
 import { classifyTask } from '../src/classifier/index.ts';
-import { createClaudeAdapter } from '../src/workers/claude.ts';
+import { createClaudeAdapter } from '@wahq/orchestrator-core/workers/claude';
 import { DefaultPipelineRunner } from '../src/pipeline/runner.ts';
 import { createVerifyRunner } from '../src/verify/runner.ts';
 import { titleToBranchName } from '../src/utils/branch-name.ts';

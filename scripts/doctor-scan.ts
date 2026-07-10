@@ -41,7 +41,7 @@ import {
 } from '../src/pipeline/doctor-scan.js';
 import { FileEventLog } from '../src/observability/event-log.js';
 import type { Event } from '../src/observability/types.js';
-import { claudeChildEnv } from '../src/workers/claude-env.js';
+import { claudeChildEnv } from '@wahq/orchestrator-core/workers/claude-env';
 
 const STATE_PATH = resolve(process.cwd(), '.omc', 'doctor-scan.state.json');
 

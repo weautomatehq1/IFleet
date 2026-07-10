@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { loadReposConfig } from '../../config/repos.js';
-import { FileChannelRouter } from '../../repos/router.js';
+import { FileChannelRouter } from '@wahq/orchestrator-core/repos/router';
 import type { RepoResolver, ResolvedRepo } from '../../pipeline/factory.js';
 import type { WorkerConfig } from '../types.js';
 import { validateMaxPlanConcurrency } from '../workers.js';

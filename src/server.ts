@@ -28,7 +28,7 @@ import { createControlPlane } from '@wahq/orchestrator-core/queue/control-plane'
 import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
 import { IFLEET_STORE_EXTENSIONS } from './agents/bandit/store-extensions.js';
-import { FileChannelRouter } from './repos/router.js';
+import { FileChannelRouter } from '@wahq/orchestrator-core/repos/router';
 import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
 import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type { DiscordOut } from '@wahq/orchestrator-core/contracts/discord-out';

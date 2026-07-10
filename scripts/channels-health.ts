@@ -10,9 +10,9 @@
 import { resolve } from 'node:path';
 import { isMainModule } from './lib/is-main-module.js';
 import process from 'node:process';
-import { FileChannelRouter } from '../src/repos/router.js';
-import { GitRepoManager } from '../src/repos/manager.js';
-import { RepoHealthChecker } from '../src/repos/health.js';
+import { FileChannelRouter } from '@wahq/orchestrator-core/repos/router';
+import { GitRepoManager } from '@wahq/orchestrator-core/repos/manager';
+import { RepoHealthChecker } from '@wahq/orchestrator-core/repos/health';
 
 async function main(): Promise<void> {
   const configPath = resolve(process.env['IFLEET_CHANNELS_CONFIG'] ?? 'config/channels.json');

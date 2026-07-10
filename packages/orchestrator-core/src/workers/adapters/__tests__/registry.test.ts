@@ -15,7 +15,7 @@ import type {
   SpawnOpts,
   TaskId,
   WorkerAdapter,
-} from '../../../orchestrator/types.ts';
+} from '../../../../../../src/orchestrator/types.ts';
 
 function stubAdapter(tag: string): WorkerAdapter {
   return {
