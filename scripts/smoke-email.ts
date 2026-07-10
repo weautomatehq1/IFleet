@@ -22,8 +22,8 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { sendEmail } from '../src/utils/email.js';
-import { parseEvents } from '../src/observability/event-log.js';
-import type { Event } from '../src/observability/types.js';
+import { parseEvents } from '@wahq/orchestrator-core/observability/event-log';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 
 const DEFAULT_TO = 'weautomatehq1@gmail.com';
 const DEFAULT_SPRINTS_DIR = resolve(process.cwd(), '.omc/sprints');

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Event } from '../../observability/types.js';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 import {
   buildScanPrompt,
   hasNotableEvents,

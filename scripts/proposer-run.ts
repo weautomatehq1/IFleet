@@ -24,7 +24,7 @@ import type {
 import { getPastProposalsByRepo } from '../src/orchestrator/goal-proposals-store.js';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
 import { IFLEET_STORE_EXTENSIONS } from '../src/agents/bandit/store-extensions.js';
-import { HmacControlPlaneClient } from '../src/discord/hmac-client.js';
+import { HmacControlPlaneClient } from '@wahq/orchestrator-core/discord/hmac-client';
 
 const ENABLED_ENV = 'PROPOSER_ENABLED';
 const REPO_IDS_ENV = 'PROPOSER_REPO_IDS';

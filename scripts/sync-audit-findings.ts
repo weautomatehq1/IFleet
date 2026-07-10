@@ -12,7 +12,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dbUpsertFindings, normaliseAuditRepo } from '../src/audit/audit-store.js';
 import { TERMINAL_AUDIT_STATUSES } from '../src/audit/types.js';
-import type { AuditFinding } from '../src/discord/audit-runner.js';
+import type { AuditFinding } from '@wahq/orchestrator-core/discord/audit-runner';
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), '..', '..');
 const indexPath = process.argv[2] ?? join(repoRoot, '.audits', 'index.json');

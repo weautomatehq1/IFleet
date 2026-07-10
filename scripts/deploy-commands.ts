@@ -11,7 +11,7 @@
 // (useful for CI smoke tests so we don't burn the API quota).
 
 import { REST, Routes } from 'discord.js';
-import { buildSlashCommands } from '../src/discord/slash-commands.js';
+import { buildSlashCommands } from '@wahq/orchestrator-core/discord/slash-commands';
 
 interface DeployOptions {
   dryRun: boolean;

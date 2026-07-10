@@ -10,7 +10,7 @@ import type {
   WorkerAdapter,
   WorkerConfig,
 } from '../../../../../src/orchestrator/types.ts';
-import { startTrace } from '../../../../../src/observability/langfuse.ts';
+import { startTrace } from '../../observability/langfuse.ts';
 import { registerAdapter } from './registry.ts';
 
 /**

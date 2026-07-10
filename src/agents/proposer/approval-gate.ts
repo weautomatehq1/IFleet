@@ -20,7 +20,7 @@ import {
   discordPostDepsFromClient,
   postProposalsForApproval as postProposalsForApprovalImpl,
   type DiscordPostDeps,
-} from '../../discord/proposals.js';
+} from '@wahq/orchestrator-core/discord/proposals';
 import type { DedupedCandidate, ProposerConfig } from './types.js';
 
 let cachedClient: Client | null = null;

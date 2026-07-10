@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderSprintEmail, summariseSprint } from '../smoke-email.js';
-import type { Event } from '../../src/observability/types.js';
+import type { Event } from '@wahq/orchestrator-core/observability/types';
 
 const SPRINT_ID = 'spr-test-001';
 

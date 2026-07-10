@@ -4,7 +4,7 @@
 // for createControlPlane(), keeping daemon.ts's main() a thin wiring entry point.
 
 import { Octokit } from '@octokit/rest';
-import { broadcastIFleet } from '../../observability/discord-broadcast.js';
+import { broadcastIFleet } from '@wahq/orchestrator-core/observability/discord-broadcast';
 import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
 import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import { StateStore } from '../store.js';

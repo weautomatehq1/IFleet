@@ -18,7 +18,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
 import type { Pool } from 'pg';
-import { parseEvents } from '../../observability/event-log.js';
+import { parseEvents } from '@wahq/orchestrator-core/observability/event-log';
 import { getKgPool, KgPostgresUnavailableError } from '../indexer/pg-client.js';
 
 const execFileAsync = promisify(execFile);

@@ -15,7 +15,7 @@ import {
   markFindingClosed,
   resolveAuditIndexPath,
   setFindingsStatus,
-} from '../discord/audit-runner.js';
+} from '@wahq/orchestrator-core/discord/audit-runner';
 import { dbUpdateFindingStatus } from '../audit/audit-store.js';
 import type {
   AttemptRecord,
