@@ -10,13 +10,13 @@ import {
   DISCORD_CUSTOM_ID_MAX,
   parseCustomId,
   buildCustomId,
-} from '../../contracts/discord-out.js';
+} from '@wahq/orchestrator-core/contracts/discord-out';
 import type {
   ControlCommand,
   ControlPlaneClient,
   DiscordCommandSource,
 } from '../../contracts/control-plane-client.js';
-import type { ChannelRouter } from '../../contracts/channel-router.js';
+import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 
 const ALLSTATE = '1503769258981589012';
 const SOURCE: DiscordCommandSource = {

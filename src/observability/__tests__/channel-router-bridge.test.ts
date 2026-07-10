@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ChannelRouter } from '../../contracts/channel-router.js';
-import type { QueuedTask } from '../../contracts/task.js';
+import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import {
   isDiscordSnowflake,
   resolveTaskChannel,

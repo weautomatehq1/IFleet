@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'src/workers/**/*.test.ts' 'src/mcp/**/*.test.ts' 'src/classifier/**/*.test.ts' && vitest run",
+    "test": "node --import tsx --test 'src/orchestrator/**/*.test.ts' 'src/queue/**/*.test.ts' 'packages/orchestrator-core/**/*.test.ts' 'src/workers/**/*.test.ts' 'src/mcp/**/*.test.ts' 'src/classifier/**/*.test.ts' && vitest run",
     "test:watch": "vitest",
     "mcp:start": "node --import tsx scripts/mcp-server.ts",
     "smoke:email": "node --import tsx scripts/smoke-email.ts",
@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@wahq/orchestrator-core": "workspace:*",
     "@octokit/plugin-throttling": "^9.3.0",
     "@octokit/rest": "^21.0.0",
     "@xenova/transformers": "^2.17.2",

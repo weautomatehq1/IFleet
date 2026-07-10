@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleInteractionCreate } from '../handlers/interaction-create.js';
-import type { ChannelRouter } from '../../contracts/channel-router.js';
+import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type {
   ControlCommand,
   ControlPlaneClient,

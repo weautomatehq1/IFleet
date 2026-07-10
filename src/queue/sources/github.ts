@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { QueuedTask, TaskSource as TaskSourceType } from '../../contracts/task.js';
-import { ulid } from '../../utils/ulid.js';
+import type { QueuedTask, TaskSource as TaskSourceType } from '@wahq/orchestrator-core/contracts/task';
+import { ulid } from '@wahq/orchestrator-core/utils/ulid';
 import type { GitHubQueue } from '../github.js';
-import type { QueuedTask as LegacyGitHubTask } from '../types.js';
-import type { TaskStore } from '../store.js';
-import type { TaskSource } from './base.js';
+import type { QueuedTask as LegacyGitHubTask } from '@wahq/orchestrator-core/queue/types';
+import type { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import type { TaskSource } from '@wahq/orchestrator-core/queue/sources/base';
 
 /**
  * Wraps the existing GitHubQueue so issues land in the unified TaskStore.

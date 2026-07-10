@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { CapabilityBridge } from '../capability-bridge.js';
 import type { OrchestratorEvent } from '../../orchestrator/types.js';
-import type { QueueAdapter, QueuedTask } from '../types.js';
+import type { QueueAdapter, QueuedTask } from '@wahq/orchestrator-core/queue/types';
 
 function makeTask(issueNumber = 42): QueuedTask {
   return {

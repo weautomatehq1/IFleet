@@ -7,6 +7,7 @@ import type { Octokit } from '@octokit/rest';
 import { buildShadowObservations } from '../agents/bandit/observations.js';
 import { KNOWN_MODEL_IDS } from '../agents/bandit/known-arms.js';
 import { resolveRoutingModel } from '../agents/bandit/live.js';
+import { setRoutingDecision } from '../agents/bandit/store-extensions.js';
 import { classifyTask, modelToTier } from '../classifier/index.js';
 import { writeRoutingDecisionLog } from '../orchestrator/closure-log.js';
 import {
@@ -16,7 +17,7 @@ import {
 } from '../orchestrator/pipeline-bridge.js';
 import type { WorkerConfig } from '../orchestrator/types.js';
 import { createIssueCommenter } from '../queue/issue-commenter.js';
-import type { TaskStore } from '../queue/store.js';
+import type { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
 import { createAccountPool, type AccountPool } from '../workers/account-pool.js';
@@ -273,7 +274,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     if (opts.taskStore) {
       const db = opts.taskStore.getDb();
       applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
-      opts.taskStore.setRoutingDecision(task.id, routing);
+      setRoutingDecision(opts.taskStore, task.id, routing);
     }
     // B3 (20260618 audit): write the closure log AFTER applyBanditRouting so
     // final_tier reflects the model that actually runs. applyBanditRouting

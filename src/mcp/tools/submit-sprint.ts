@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SPRINT_MODES } from '../../classifier/modes.js';
-import { LABEL_AUTO_SHIP } from '../../queue/types.js';
+import { LABEL_AUTO_SHIP } from '@wahq/orchestrator-core/queue/types';
 import type { SprintMode } from '../../orchestrator/types.js';
 import type { McpOctokit } from '../octokit.js';
 

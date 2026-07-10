@@ -4,9 +4,9 @@ import {
   buildCustomId,
   DISCORD_CUSTOM_ID_VERBS,
   parseCustomId,
-} from '../../contracts/discord-out.js';
-import type { ChannelRouter } from '../../contracts/channel-router.js';
-import type { QueuedTask } from '../../contracts/task.js';
+} from '@wahq/orchestrator-core/contracts/discord-out';
+import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import {
   chunkMessage,
   DISCORD_MESSAGE_LIMIT,

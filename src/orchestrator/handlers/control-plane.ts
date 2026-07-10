@@ -5,13 +5,13 @@
 
 import { Octokit } from '@octokit/rest';
 import { broadcastIFleet } from '../../observability/discord-broadcast.js';
-import { DiscordSource } from '../../queue/sources/discord.js';
-import { TaskStore } from '../../queue/store.js';
+import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import { StateStore } from '../store.js';
 import { Orchestrator } from '../index.js';
 import { VerifierController } from '../../agents/verifier/controller.js';
 import type { SprintId, TaskId } from '../types.js';
-import type { ControlPlaneOptions } from '../../queue/control-plane.js';
+import type { ControlPlaneOptions } from '@wahq/orchestrator-core/queue/control-plane';
 import {
   clearFleetPause,
   isFleetPaused,

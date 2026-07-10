@@ -4,7 +4,22 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { QueuedTask, TaskState } from '../contracts/task.js';
 import { DiscordOutbox } from '../observability/discord-outbox.js';
-import type { RoutingDecision } from '../pipeline/types.js';
+import type { RoutingDecision } from '../contracts/routing.js';
+
+/**
+ * Schema-extension hook. Each callback receives the raw better-sqlite3 handle
+ * AFTER the core DDL (the 4 core tables + their migrations) has run, so a
+ * product can add its own tables/columns/indexes without core knowing about
+ * them. IFleet passes its bandit tables (`routing_shadow_log`,
+ * `bandit_arm_state`) this way; core owns exactly `tasks`, `pr_decisions`,
+ * `nonce_ledger`, `discord_outbox`.
+ */
+export type StoreExtension = (db: Database.Database) => void;
+
+export interface TaskStoreOptions {
+  /** Ordered schema extensions run once, after core DDL, at construction. */
+  extensions?: StoreExtension[];
+}
 
 export function defaultStateDir(): string {
   return process.env['IFLEET_STATE_DIR'] ?? join(process.cwd(), 'state');
@@ -174,7 +189,7 @@ export class TaskStore {
   private readonly db: Database.Database;
   private readonly maxAttempts: number;
 
-  constructor(path: string = defaultTasksDbPath()) {
+  constructor(path: string = defaultTasksDbPath(), opts: TaskStoreOptions = {}) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     const _maxAttemptsRaw = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
@@ -280,52 +295,13 @@ export class TaskStore {
     if (!cols.some((c) => c.name === 'fingerprint')) {
       this.db.exec(`ALTER TABLE pr_decisions ADD COLUMN fingerprint TEXT`);
     }
-    // M6-T2: routing_shadow_log — bandit's would-be model pick is
-    // captured here per task without overriding the live routing.
-    // Snapshot columns are JSON blobs so the analytics dashboard can
-    // reconstruct the posteriors at decision time. Foreign key to
-    // tasks(id) keeps the log clean on task deletes.
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS routing_shadow_log (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL,
-        repo TEXT NOT NULL,
-        decided_at INTEGER NOT NULL,
-        actual_model TEXT NOT NULL,
-        shadow_model TEXT NOT NULL,
-        alpha_snapshot TEXT NOT NULL,
-        beta_snapshot TEXT NOT NULL,
-        sample_snapshot TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'architect',
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS idx_routing_shadow_task ON routing_shadow_log(task_id);
-      CREATE INDEX IF NOT EXISTS idx_routing_shadow_decided
-        ON routing_shadow_log(decided_at);
-    `);
-    // M6-T3 follow-up: backfill the role column on DBs created before this
-    // migration. Pre-this-PR rows came from the architect-only wiring (PR
-    // #362), so DEFAULT 'architect' is the correct backfill.
-    try {
-      this.db.exec(`ALTER TABLE routing_shadow_log ADD COLUMN role TEXT NOT NULL DEFAULT 'architect'`);
-    } catch (err) {
-      if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+    // Product schema extensions run LAST, after all core DDL/migrations, so a
+    // consumer can add its own tables/columns/indexes (e.g. IFleet's
+    // routing_shadow_log + bandit_arm_state) without core owning them. Core
+    // owns exactly: tasks, pr_decisions, nonce_ledger, discord_outbox.
+    for (const ext of opts.extensions ?? []) {
+      ext(this.db);
     }
-    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_routing_shadow_role ON routing_shadow_log(role)`);
-    // M6 follow-up — per-arm circuit-breaker state (BANDIT_LIVE live-path).
-    // OFF by default and OFF for every shadow-only deployment because the
-    // table only gets written when `resolveRoutingModel` runs with live=true.
-    // Idempotent CREATE TABLE IF NOT EXISTS matches the in-line ALTER pattern
-    // above. Schema details live in src/agents/bandit/circuit-breaker.ts.
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS bandit_arm_state (
-        arm TEXT PRIMARY KEY,
-        status TEXT NOT NULL DEFAULT 'active',
-        consecutive_failures INTEGER NOT NULL DEFAULT 0,
-        assignments_remaining INTEGER NOT NULL DEFAULT 0,
-        updated_at INTEGER NOT NULL DEFAULT 0
-      );
-    `);
   }
 
   insert(task: QueuedTask): InsertResult {
@@ -704,19 +680,6 @@ export class TaskStore {
   /** Return a Discord outbox backed by this store's DB handle. */
   createDiscordOutbox(): DiscordOutbox {
     return new DiscordOutbox(this.db);
-  }
-
-  /**
-   * Persist the live RoutingDecision for `taskId`. Single UPDATE — overwrites
-   * any prior value. The shadow-mode wiring in `src/pipeline/factory.ts`
-   * calls this immediately after `classifyTask(...)` so the Thompson
-   * observations reader has a stable `(arm, reward)` history to join against
-   * once `pr_decisions` populates downstream.
-   */
-  setRoutingDecision(taskId: string, decision: RoutingDecision): void {
-    this.db
-      .prepare(`UPDATE tasks SET routing_decision = @decision WHERE id = @id`)
-      .run({ id: taskId, decision: JSON.stringify(decision) });
   }
 
   /**

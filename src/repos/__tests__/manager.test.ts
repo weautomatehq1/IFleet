@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { cleanGitEnv } from '../../testing/git-env.js';
 import { GitRepoManager, redactToken } from '../manager.js';
-import type { ChannelRoute } from '../../contracts/channel-router.js';
+import type { ChannelRoute } from '@wahq/orchestrator-core/contracts/channel-router';
 
 let tmp: string;
 let bareRepo: string;

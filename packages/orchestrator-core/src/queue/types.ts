@@ -1,3 +1,10 @@
+import type { RoutingHints } from '../contracts/routing.js';
+
+// RoutingHints + VerifyKind are hoisted into the contracts/routing type root
+// (they were duplicated across queue/pipeline/orchestrator "in lockstep").
+// Re-exported here so existing `queue/types` import sites keep resolving.
+export type { RoutingHints, VerifyKind } from '../contracts/routing.js';
+
 export interface QueueAdapter {
   pickNext(opts?: PickOpts): Promise<QueuedTask | null>;
   markPicked(task: QueuedTask, workerId: string): Promise<void>;
@@ -26,27 +33,6 @@ export interface QueuedTask {
   createdAt: number;
   url: string;
 }
-
-export interface RoutingHints {
-  model?: 'opus' | 'sonnet' | 'haiku' | 'codex';
-  priority: 'low' | 'normal' | 'high';
-  verify: VerifyKind[];
-  autonomy: 'auto' | 'review';
-  /**
-   * Explicit category label (canonical §3.2 override #1). When set to one of
-   * {security, auth, payments, migration}, the classifier promotes the
-   * architect to Opus regardless of severity or mode (M4.7).
-   */
-  category?: 'security' | 'auth' | 'payments' | 'migration';
-  /**
-   * Explicit severity label (canonical §3.2 override #2). When set to
-   * 'critical', the classifier promotes the architect to Opus regardless of
-   * category or mode (M4.7).
-   */
-  severity?: 'critical' | 'important' | 'cosmetic';
-}
-
-export type VerifyKind = 'typecheck' | 'lint' | 'test' | 'playwright' | 'screenshot';
 
 export type TaskStatus =
   | 'picked'

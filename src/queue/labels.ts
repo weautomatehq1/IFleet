@@ -8,7 +8,7 @@ import {
   type RepoRef,
   type RoutingHints,
   type VerifyKind,
-} from './types.js';
+} from '@wahq/orchestrator-core/queue/types';
 
 const MODELS = new Set(['opus', 'sonnet', 'haiku', 'codex'] as const);
 const PRIORITIES = new Set(['low', 'normal', 'high'] as const);

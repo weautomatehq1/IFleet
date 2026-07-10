@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DiscordOutbox } from '../discord-outbox.js';
+import { DiscordOutbox } from '@wahq/orchestrator-core/observability/discord-outbox';
 
 // ---------------------------------------------------------------------------
 // Module mock — intercept node:https and node:http requests at the module

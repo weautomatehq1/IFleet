@@ -1,6 +1,6 @@
-export * from './types.js';
+export * from '@wahq/orchestrator-core/queue/types';
 export { parseLabels, parseRequiredCapabilities } from './labels.js';
-export { loadRepoConfig, validateConfig } from './config.js';
+export { loadRepoConfig, validateConfig } from '@wahq/orchestrator-core/queue/config';
 export { createGitHubQueue, GitHubQueue, type GitHubQueueOptions } from './github.js';
 export {
   createControlPlane,
@@ -10,5 +10,5 @@ export {
   type ControlCommand,
   type ControlPlane,
   type ControlPlaneOptions,
-} from './control-plane.js';
+} from '@wahq/orchestrator-core/queue/control-plane';
 export { CapabilityBridge, type EventSource } from './capability-bridge.js';

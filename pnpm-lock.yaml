@@ -17,6 +17,9 @@ importers:
       '@octokit/rest':
         specifier: ^21.0.0
         version: 21.1.1
+      '@wahq/orchestrator-core':
+        specifier: workspace:*
+        version: link:packages/orchestrator-core
       '@xenova/transformers':
         specifier: ^2.17.2
         version: 2.17.2
@@ -95,7 +98,15 @@ importers:
 
   apps/wahq-bot: {}
 
-  packages/orchestrator-core: {}
+  packages/orchestrator-core:
+    dependencies:
+      better-sqlite3:
+        specifier: ^11.3.0
+        version: 11.10.0
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.11
+        version: 7.6.13
 
 packages:
 

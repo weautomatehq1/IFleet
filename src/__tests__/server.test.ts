@@ -15,8 +15,8 @@ import {
   createControlPlane,
   parseCommand,
   signPayload,
-} from '../queue/control-plane.js';
-import type { QueueAdapter } from '../queue/types.js';
+} from '@wahq/orchestrator-core/queue/control-plane';
+import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

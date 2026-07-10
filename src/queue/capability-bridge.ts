@@ -1,5 +1,5 @@
 import type { OrchestratorEvent } from '../orchestrator/types.js';
-import type { QueueAdapter, QueuedTask } from './types.js';
+import type { QueueAdapter, QueuedTask } from '@wahq/orchestrator-core/queue/types';
 
 export interface EventSource {
   on(event: string, cb: (event: OrchestratorEvent) => void): unknown;

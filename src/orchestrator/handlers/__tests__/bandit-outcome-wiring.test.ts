@@ -21,14 +21,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { recordBanditOutcomeForTask } from '../pr-decisions.js';
-import { TaskStore } from '../../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import {
   DEFAULT_CB_COOLDOWN,
   DEFAULT_CB_THRESHOLD,
   isArmEligible,
   onAssignment,
 } from '../../../agents/bandit/circuit-breaker.js';
-import type { QueuedTask } from '../../../contracts/task.js';
+import { IFLEET_STORE_EXTENSIONS, setRoutingDecision } from '../../../agents/bandit/store-extensions.js';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import type { RoutingDecision } from '../../../pipeline/types.js';
 
 const OPUS = 'claude-opus-4-7';
@@ -38,7 +39,7 @@ const KNOWN_ARMS = [OPUS, SONNET, HAIKU];
 
 function tmpStore(): { store: TaskStore; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-bandit-wire-'));
-  const store = new TaskStore(join(dir, 'tasks.db'));
+  const store = new TaskStore(join(dir, 'tasks.db'), { extensions: IFLEET_STORE_EXTENSIONS });
   return {
     store,
     cleanup: () => {
@@ -80,7 +81,7 @@ function makeRouting(model: string): RoutingDecision {
 function persistTaskWithRouting(store: TaskStore, id: string, model: string): QueuedTask {
   const task = ghTask(id);
   store.insert(task);
-  store.setRoutingDecision(id, makeRouting(model));
+  setRoutingDecision(store, id, makeRouting(model));
   const fresh = store.getById(id);
   if (!fresh) throw new Error('task not persisted');
   return fresh;

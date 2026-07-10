@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { ChannelRoute, ChannelRouter } from '../contracts/channel-router.js';
+import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 
 type ModelTier = ChannelRoute['defaultModel'];
 

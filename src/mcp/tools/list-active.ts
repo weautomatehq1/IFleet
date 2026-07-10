@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LABEL_AUTO_SHIP, LABEL_IN_FLIGHT } from '../../queue/types.js';
+import { LABEL_AUTO_SHIP, LABEL_IN_FLIGHT } from '@wahq/orchestrator-core/queue/types';
 import type { McpOctokit } from '../octokit.js';
 import { buildSprintId } from './id.js';
 

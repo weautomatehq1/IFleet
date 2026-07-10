@@ -4,7 +4,8 @@ import Database from 'better-sqlite3';
 type DB = Database.Database;
 
 import { readShadowDecisions, recordShadowDecision } from '../shadow.js';
-import { TaskStore } from '../../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import { IFLEET_STORE_EXTENSIONS } from '../store-extensions.js';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -238,11 +239,11 @@ describe('M6-T3 role wiring', () => {
     const dir = mkdtempSync(join(tmpdir(), 'shadow-mig-'));
     const path = join(dir, 'tasks.db');
     try {
-      const s1 = new TaskStore(path);
+      const s1 = new TaskStore(path, { extensions: IFLEET_STORE_EXTENSIONS });
       s1.close();
       // Re-opening must not throw: the ALTER catches the duplicate-column
       // error from the first construction.
-      const s2 = new TaskStore(path);
+      const s2 = new TaskStore(path, { extensions: IFLEET_STORE_EXTENSIONS });
       const db = s2.getDb();
       const cols = db.pragma('table_info(routing_shadow_log)') as Array<{ name: string }>;
       expect(cols.some((c) => c.name === 'role')).toBe(true);

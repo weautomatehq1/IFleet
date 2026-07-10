@@ -15,13 +15,14 @@ import { createDiscordClient } from '../discord/client.js';
 import { HmacControlPlaneClient } from '../discord/hmac-client.js';
 import { DiscordOutAdapter } from '../observability/discord-output.js';
 import { makeProductionFactory } from '../pipeline/factory.js';
-import { createControlPlane } from '../queue/control-plane.js';
+import { createControlPlane } from '@wahq/orchestrator-core/queue/control-plane';
 import { GitHubQueue } from '../queue/github.js';
 import { GitHubIssuesSource } from '../queue/sources/github.js';
-import { DiscordSource } from '../queue/sources/discord.js';
-import { TaskStore, defaultTasksDbPath } from '../queue/store.js';
-import type { QueueAdapter } from '../queue/types.js';
-import { UnifiedQueueAdapter } from '../queue/unified-adapter.js';
+import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
+import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
+import { IFLEET_STORE_EXTENSIONS } from '../agents/bandit/store-extensions.js';
+import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
+import { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
 import { FileChannelRouter } from '../repos/router.js';
 import { requireEnv } from '../utils/env.js';
 import type { SprintId, TaskId } from './types.js';
@@ -56,7 +57,7 @@ async function main(): Promise<void> {
   console.warn('[daemon] booting IFleet daemon');
 
   // -------- Persistent state --------
-  const store = new TaskStore(defaultTasksDbPath());
+  const store = new TaskStore(defaultTasksDbPath(), { extensions: IFLEET_STORE_EXTENSIONS });
   const staleCount = store.recoverStale();
   if (staleCount > 0) console.warn(`[daemon] recovered ${staleCount} stale in_flight task(s) → pending`);
 

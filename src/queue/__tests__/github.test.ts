@@ -7,14 +7,14 @@ import {
   isAuthorAllowed,
   shouldRetryRateLimit,
 } from '../github.js';
-import type { QueuedTask } from '../types.js';
+import type { QueuedTask } from '@wahq/orchestrator-core/queue/types';
 import {
   COOLDOWN_MS,
   LABEL_AUTO_SHIP,
   LABEL_FAILED,
   LABEL_IFLEET_COOLDOWN,
   LABEL_RETRY_PREFIX,
-} from '../types.js';
+} from '@wahq/orchestrator-core/queue/types';
 
 interface FakeIssue {
   number: number;

@@ -1,4 +1,4 @@
-import type { QueuedTask as UnifiedQueuedTask } from '../contracts/task.js';
+import type { QueuedTask as UnifiedQueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import type {
   PipelineInput,
   PipelineResult,
