@@ -18,10 +18,12 @@ import {
 import type { WorkerConfig } from '../orchestrator/types.js';
 import { createIssueCommenter } from '../queue/issue-commenter.js';
 import type { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import type { RoutingStrategy } from '@wahq/orchestrator-core/contracts/routing-strategy';
 import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
 import { createAccountPool, type AccountPool } from '@wahq/orchestrator-core/workers/account-pool';
 import { getActivePipelineAdapter } from '@wahq/orchestrator-core/workers/adapters';
+import { createDefaultRoutingStrategy } from './default-routing-strategy.js';
 import { DefaultPipelineRunner } from './runner.js';
 import type {
   GitOps,
@@ -211,6 +213,14 @@ export interface ProductionFactoryOpts {
    * cannot learn without observations.
    */
   taskStore?: TaskStore;
+  /**
+   * Routing seam. When omitted, the factory falls back to
+   * {@link createDefaultRoutingStrategy}, which preserves the pre-contract
+   * behavior byte-for-byte (classifier → applyBanditRouting →
+   * logPostRoutingDecision). Alt-orchestrators and deterministic tests can
+   * inject their own strategy without stubbing bandit internals.
+   */
+  routingStrategy?: RoutingStrategy;
 }
 
 export interface ProductionFactory {
@@ -228,6 +238,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
   const verify = opts.verify ?? buildVerifyAdapter();
   const fallbackCodeowners = opts.codeowners ?? ['@monstersebas1'];
   const fallbackApprover = opts.approver ?? '@monstersebas1';
+  const routingStrategy: RoutingStrategy = opts.routingStrategy ?? createDefaultRoutingStrategy();
 
   let pool: AccountPool = createAccountPool(opts.initialWorkers);
 
@@ -265,7 +276,21 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const worktreePath = await setupWorktree(worktreeKey, branchName, worktreesDir, resolved.repoRoot, resolved.defaultBranch);
 
     const workerPool = buildWorkerPool(worker, pool, spawnOpts.parentTraceId);
-    const routing = classifyTask({ title: task.title, body: task.body, labels: task.labels, mode: task.mode });
+    // Route classifier → bandit-live flip → closure-log through the injected
+    // RoutingStrategy seam. The default strategy (installed above when opts
+    // doesn't supply one) delegates to the same underlying primitives that
+    // `applyBanditRouting` and `logPostRoutingDecision` below wrap — behavior
+    // is byte-identical to the pre-contract call pattern. The seam exists so
+    // alt-orchestrators and deterministic tests can swap in a strategy
+    // without stubbing bandit internals.
+    const routing = routingStrategy.classify({
+      id: task.id,
+      repo: task.repo,
+      title: task.title,
+      body: task.body,
+      labels: task.labels,
+      mode: task.mode ?? undefined,
+    });
     // M6-T3 + AUDIT-IFleet-406c8c3e: shadow-log every role AND apply the gated
     // BANDIT_LIVE flip (a no-op while the flag is OFF — see applyBanditRouting).
     // `setRoutingDecision` runs AFTER the flip so the persisted RoutingDecision
@@ -273,14 +298,14 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     // unchanged decision when OFF).
     if (opts.taskStore) {
       const db = opts.taskStore.getDb();
-      applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
+      routingStrategy.applyBanditRouting(db, routing, { id: task.id, repo: task.repo });
       setRoutingDecision(opts.taskStore, task.id, routing);
     }
     // B3 (20260618 audit): write the closure log AFTER applyBanditRouting so
     // final_tier reflects the model that actually runs. applyBanditRouting
     // mutates routing[role].model but NOT routing._meta.finalTier — derive
     // the tier from the post-bandit architect.model.
-    logPostRoutingDecision(task.id, routing);
+    routingStrategy.logDecision(task.id, routing);
     const abortController = new AbortController();
 
     const issues: IssueCommenter = createIssueCommenter(opts.octokit, resolved.owner, resolved.name);
