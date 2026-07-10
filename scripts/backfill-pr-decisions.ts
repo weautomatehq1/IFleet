@@ -18,6 +18,7 @@
 import { execFileSync } from 'node:child_process';
 import { isMainModule } from './lib/is-main-module.js';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
+import { IFLEET_STORE_EXTENSIONS } from '../src/agents/bandit/store-extensions.js';
 import {
   mapPullRequests,
   type GhPullRequest,
@@ -118,7 +119,7 @@ function main(): void {
     return;
   }
 
-  const store = new TaskStore(args.db);
+  const store = new TaskStore(args.db, { extensions: IFLEET_STORE_EXTENSIONS });
   let written = 0;
   let skippedDuplicate = 0;
   try {

@@ -23,6 +23,7 @@ import type {
 } from '../src/agents/proposer/types.js';
 import { getPastProposalsByRepo } from '../src/orchestrator/goal-proposals-store.js';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
+import { IFLEET_STORE_EXTENSIONS } from '../src/agents/bandit/store-extensions.js';
 import { HmacControlPlaneClient } from '../src/discord/hmac-client.js';
 
 const ENABLED_ENV = 'PROPOSER_ENABLED';
@@ -199,7 +200,9 @@ async function main(): Promise<void> {
   let exitCode = 0;
   try {
     discordClient = await bootDiscordClient(process.env[DISCORD_TOKEN_ENV]);
-    const store = new TaskStore(process.env[TASKS_DB_ENV] ?? defaultTasksDbPath());
+    const store = new TaskStore(process.env[TASKS_DB_ENV] ?? defaultTasksDbPath(), {
+      extensions: IFLEET_STORE_EXTENSIONS,
+    });
     const contextDeps = buildContextDeps(store);
     const deps = buildRunProposerDeps();
 

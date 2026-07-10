@@ -5,11 +5,11 @@ export default tseslint.config(
     ignores: ['node_modules/**', 'dist/**', '.omc/**', 'config/**', '.claude/**', 'dashboard/**'],
   },
   {
-    files: ['src/**/*.ts', 'scripts/**/*.ts'],
+    files: ['src/**/*.ts', 'scripts/**/*.ts', 'packages/orchestrator-core/**/*.ts'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        project: './tsconfig.json',
+        project: ['./tsconfig.json', './packages/orchestrator-core/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },

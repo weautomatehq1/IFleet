@@ -33,7 +33,6 @@ export interface QueuedTask {
   mode?: SprintMode | null;
 }
 
-
 export interface SpawnOpts {
   worktreePath?: string;
   systemPrompt?: string;
