@@ -6,14 +6,14 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type { ChannelRoute, ChannelRouter } from '../../../contracts/channel-router.js';
+import type { ChannelRoute, ChannelRouter } from '../../contracts/channel-router.js';
 import type {
   ControlCommand,
   ControlPlaneAck,
   ControlPlaneClient,
   DiscordCommandSource,
 } from '../../../../../src/contracts/control-plane-client.js';
-import { parseCustomId, type DiscordCustomIdVerb } from '../../../contracts/discord-out.js';
+import { parseCustomId, type DiscordCustomIdVerb } from '../../contracts/discord-out.js';
 import { ControlPlaneError } from '../hmac-client.js';
 import {
   formatFindingsList,

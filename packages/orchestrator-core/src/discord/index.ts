@@ -18,7 +18,7 @@
 
 import { createDiscordClient } from './client.js';
 import { HmacControlPlaneClient } from './hmac-client.js';
-import type { ChannelRouter } from '../../contracts/channel-router.js';
+import type { ChannelRouter } from '../contracts/channel-router.js';
 import type { ReactionDeps } from './handlers/reaction-add.js';
 import { requireEnv } from '../../../../src/utils/env.js';
 
