@@ -1,9 +1,7 @@
 // Unified QueuedTask contract — T2 owns, T1/T4/T5 read.
 // See ~/.omc/splits/20260516-1430-ifleet-discord-rebuild/MASTER.md §"Shared contracts".
 
-import type { RoutingHints } from '../queue/types.js';
-import type { SprintMode } from '../orchestrator/types.js';
-import type { RoutingDecision } from '../pipeline/types.js';
+import type { RoutingHints, SprintMode, RoutingDecision } from './routing.js';
 
 export type { SprintMode };
 

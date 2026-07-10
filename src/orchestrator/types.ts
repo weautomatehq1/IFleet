@@ -9,19 +9,10 @@ export type WorkerId = string;
  */
 export type SprintOperatingMode = 'normal' | 'overnight';
 
-/**
- * Per-task routing mode emitted by the classifier (or its auto-router). Picks
- * the architect/editor prompt template and any mode-specific model overrides in
- * `config/routing.json`. `standard` is the fall-through default and is also the
- * value returned when the auto-router is below its confidence threshold.
- *
- * The four named modes mirror operator slash-commands the team already uses:
- *   - `ralph`   — persistence loop: keep retrying until verify is green
- *   - `ulw`     — ultrawork: parallel multi-file work
- *   - `tdd`     — tests first, implementation second
- *   - `deslop`  — clean generic AI-slop code (rewrite to project conventions)
- */
-export type SprintMode = 'standard' | 'ralph' | 'ulw' | 'tdd' | 'deslop';
+// Per-task routing mode (`ralph` | `ulw` | `tdd` | `deslop` | `standard`) is
+// hoisted into the contracts/routing type root and re-exported here so
+// `orchestrator/types` import sites keep resolving. See contracts/routing.ts.
+export type { SprintMode } from '../contracts/routing.js';
 
 export type SprintState =
   | { kind: 'queued' }

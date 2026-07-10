@@ -1,29 +1,21 @@
 import type { InterviewPoster } from './interview.js';
+import type {
+  VerifyKind,
+  Provider,
+  Autonomy,
+  SprintMode,
+  WorkerSpec,
+  RoutingDecision,
+} from '../contracts/routing.js';
 
 // Public types for the Architect → Editor → Reviewer pipeline.
 //
-// Other modules (queue, workers, verify) own the placeholder interfaces below;
-// they are declared here as the minimum shape this package depends on so the
-// pipeline can compile and be unit-tested in isolation.
-
-export type VerifyKind =
-  | 'typecheck'
-  | 'lint'
-  | 'test'
-  | 'playwright'
-  | 'screenshot';
-
-export type Provider = 'claude' | 'codex';
-
-export type Autonomy = 'auto' | 'review';
-
-/**
- * Per-task routing mode mirrored from `src/orchestrator/types.ts.SprintMode`.
- * Re-declared here to keep the pipeline package free of an inbound cross-package
- * import (same pattern as {@link QueuedTask} below). Kept in lockstep with the
- * orchestrator union; adding a new mode requires updates in both files.
- */
-export type SprintMode = 'standard' | 'ralph' | 'ulw' | 'tdd' | 'deslop';
+// The routing/worker type graph (VerifyKind, Provider, Autonomy, SprintMode,
+// WorkerSpec, RoutingDecision) is hoisted into the contracts/routing type root
+// and re-exported here so existing `pipeline/types` import sites keep resolving.
+// The pipeline-local QueuedTask below is a distinct shape (issue-centric) and
+// stays declared here.
+export type { VerifyKind, Provider, Autonomy, SprintMode, WorkerSpec, RoutingDecision };
 
 export interface QueuedTask {
   id: string;
@@ -41,37 +33,6 @@ export interface QueuedTask {
   mode?: SprintMode | null;
 }
 
-export interface WorkerSpec {
-  provider: Provider;
-  model: string;
-  workerId: string;
-}
-
-export interface RoutingDecision {
-  architect: WorkerSpec;
-  editor: WorkerSpec;
-  reviewer: WorkerSpec;
-  // Optional plan-reviewer. Runs between architect and editor and can veto
-  // the plan with structured reasons (M2 — see
-  // docs/elevation/upgrades/02-plan-reviewer.md). Absent → plan-review is
-  // disabled and the pipeline behaves exactly as in M1 (architect → editor
-  // → diff-reviewer).
-  planReviewer?: WorkerSpec;
-  // Optional cheap first-pass reviewer. When present, the pipeline runs this
-  // worker before the full reviewer; a CLEAN verdict short-circuits the round
-  // and the full reviewer is never spawned. Absent → gate disabled.
-  haikuGate?: WorkerSpec;
-  verify: VerifyKind[];
-  /**
-   * Per-task routing mode chosen by the classifier. Architect/editor use this
-   * to pick the mode-specific prompt template; absent / `null` → use the
-   * standard prompt. Set by `classifyTask` when an explicit `mode:*` label is
-   * present or when the auto-router emits a high-confidence mode.
-   */
-  mode?: SprintMode | null;
-  /** Routing telemetry for false-positive rate analysis. Populated by classifyTask; absent on pre-M4.X rows. */
-  _meta?: { hitKeyword: string | null; rawScore: number; finalTier: 'haiku' | 'sonnet' | 'opus' };
-}
 
 export interface SpawnOpts {
   worktreePath?: string;
