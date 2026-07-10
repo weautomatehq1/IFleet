@@ -327,11 +327,16 @@ describe('B3 (20260618 audit): closure log records post-bandit final_tier', () =
   });
 
   it('factory.ts emits the closure log AFTER applyBanditRouting (source-level guard)', () => {
+    // After the RoutingStrategy seam (T3 20260710-0617-phase1-extraction), the
+    // call sites live behind the injected strategy: `routingStrategy.applyBanditRouting`
+    // then `routingStrategy.logDecision`. The ordering invariant (log AFTER apply
+    // so final_tier reflects the model that actually runs — B3 from the
+    // 20260618-0600-codex-bugs audit) still holds and is what the guard locks.
     const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
-    const applyIdx = src.indexOf('applyBanditRouting(db, routing,');
-    const logIdx = src.indexOf('logPostRoutingDecision(task.id, routing)');
-    expect(applyIdx, 'applyBanditRouting call site not found').toBeGreaterThan(-1);
-    expect(logIdx, 'logPostRoutingDecision call site not found').toBeGreaterThan(-1);
+    const applyIdx = src.indexOf('routingStrategy.applyBanditRouting(db, routing,');
+    const logIdx = src.indexOf('routingStrategy.logDecision(task.id, routing)');
+    expect(applyIdx, 'routingStrategy.applyBanditRouting call site not found').toBeGreaterThan(-1);
+    expect(logIdx, 'routingStrategy.logDecision call site not found').toBeGreaterThan(-1);
     expect(logIdx).toBeGreaterThan(applyIdx);
   });
 });
@@ -340,10 +345,15 @@ describe('AUDIT-IFleet-d3e66e4a: factory integration passes mode through to clas
   // The above classifier test would still pass if factory.ts dropped mode on the
   // floor before invoking classifyTask. Lock the actual call site at the source
   // level so future refactors can't silently regress the integration.
-  it('factory.ts calls classifyTask with mode: task.mode', () => {
+  //
+  // After the RoutingStrategy seam (T3 20260710-0617-phase1-extraction),
+  // classifyTask is invoked through `routingStrategy.classify({...})` and mode
+  // is threaded via `task.mode ?? undefined` (the strategy interface's
+  // `mode?: string | undefined` shape) instead of the raw `task.mode`.
+  it('factory.ts calls routingStrategy.classify with mode: task.mode', () => {
     const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
-    const call = src.match(/classifyTask\(\{[^}]*\}\)/);
-    expect(call, 'classifyTask call not found in factory.ts').not.toBeNull();
+    const call = src.match(/routingStrategy\.classify\(\{[\s\S]*?\}\)/);
+    expect(call, 'routingStrategy.classify call not found in factory.ts').not.toBeNull();
     expect(call?.[0] ?? '').toMatch(/mode:\s*task\.mode/);
   });
 });
