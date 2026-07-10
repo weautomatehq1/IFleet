@@ -1,6 +1,16 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
+// Serialize per-file appends to prevent interleaved writes when multiple
+// pipeline attempts log costs concurrently on the same sprint.
+const appendQueues = new Map<string, Promise<void>>();
+function serialAppend(file: string, line: string): Promise<void> {
+  const prev = appendQueues.get(file) ?? Promise.resolve();
+  const next = prev.then(() => fs.appendFile(file, line, 'utf-8'));
+  appendQueues.set(file, next.catch(() => undefined) as Promise<void>);
+  return next;
+}
+
 export interface CostRecord {
   sprintId: string;
   taskId: string;
@@ -31,7 +41,7 @@ export async function appendCostRecord(repoRoot: string, record: CostRecord): Pr
   await fs.mkdir(omcDir, { recursive: true });
 
   const line = JSON.stringify(record) + '\n';
-  await fs.appendFile(costFile, line, 'utf-8');
+  await serialAppend(costFile, line);
 }
 
 export async function readCostLog(repoRoot: string): Promise<CostRecord[]> {

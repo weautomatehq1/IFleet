@@ -12,7 +12,7 @@
 //    decisions for human review without re-throwing.
 
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
@@ -73,13 +73,19 @@ const KILL_SWITCH_ENV = 'AUTO_ROUTER_DISABLED';
 const CONFIDENCE_THRESHOLD = 0.6;
 const LEARNINGS_TAIL = 50;
 const HAIKU_MAX_OUTPUT_CHARS = 2_000; // cap at 200 tokens × ~10 chars/token
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — prevents stale routing across sprint sessions
+
+interface CacheEntry {
+  decision: AutoRouterDecision;
+  expiresAt: number;
+}
 
 /**
- * In-memory cache keyed by sha256(title|body|labels). One-process lifetime so a
- * sprint retry does not re-call Haiku. Cleared automatically when the process
- * restarts (acceptable — the cache exists to dedupe retries inside one run).
+ * In-memory cache keyed by sha256(repoRoot|title|body|labels). Entries expire
+ * after CACHE_TTL_MS to prevent stale routing decisions from persisting across
+ * unrelated sprint submissions. (AUDIT-IFleet-4de85929)
  */
-const cache = new Map<string, AutoRouterDecision>();
+const cache = new Map<string, CacheEntry>();
 
 export function clearAutoRouterCache(): void {
   cache.clear();
@@ -103,8 +109,9 @@ export async function autoRouteMode(
   }
 
   const key = hashInput(input);
-  const cached = cache.get(key);
-  if (cached) return cached;
+  const now = opts.now ?? Date.now;
+  const entry = cache.get(key);
+  if (entry && entry.expiresAt > now()) return entry.decision;
 
   const repoRoot = input.repoRoot ?? process.cwd();
   const learnings = loadLearningsTail(repoRoot, LEARNINGS_TAIL);
@@ -131,13 +138,13 @@ export async function autoRouteMode(
     clearTimeout(timer);
     const reason = `haiku call failed: ${err instanceof Error ? err.message : String(err)}`;
     const decision: AutoRouterDecision = { ...STANDARD_FALLBACK, reason };
-    cache.set(key, decision);
+    cache.set(key, { decision, expiresAt: now() + CACHE_TTL_MS });
     return decision;
   }
   clearTimeout(timer);
 
   const decision = parseRouterDecision(raw, riskFlags);
-  cache.set(key, decision);
+  cache.set(key, { decision, expiresAt: now() + CACHE_TTL_MS });
   return decision;
 }
 
@@ -290,35 +297,39 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
-const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
+// Prompt is written to stdin rather than passed as an argv positional to
+// avoid leaking the brief+learnings in `ps aux`. The old argv path emitted
+// "Warning: no stdin data received in 3s" in some environments because the
+// pipe write raced with claude's stdin-wait window; writing synchronously
+// right after spawn (before any await) avoids that race.
+const defaultHaikuCall: HaikuCall = (prompt, { model, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
-      'claude',
-      ['--print', prompt, '--model', model],
-      {
-        signal,
-        timeout: timeoutMs,
-        maxBuffer: HAIKU_MAX_OUTPUT_CHARS * 2,
-        // Allowlist env passed to the child — keeps GITHUB_TOKEN /
-        // DISCORD_BOT_TOKEN / IFLEET_HMAC_SECRET out of a prompt-injected
-        // child's reach. Matches src/observability/task-done-notify.ts.
-        env: claudeChildEnv(),
-      },
-      (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout.toString());
-      },
-    );
+    const child = spawn('claude', ['--print', '--model', model], {
+      signal,
+      env: claudeChildEnv(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let totalBytes = 0;
+    child.stdout?.on('data', (chunk: Buffer) => {
+      totalBytes += chunk.length;
+      if (totalBytes <= HAIKU_MAX_OUTPUT_CHARS * 2) stdout += chunk.toString('utf8');
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        reject(new Error(`claude exited with code ${code}`));
+      } else {
+        resolve(stdout.slice(0, HAIKU_MAX_OUTPUT_CHARS));
+      }
+    });
+
+    // Write synchronously before any async handoff so the pipe is flushed
+    // before claude's stdin-wait window can expire.
+    child.stdin?.write(prompt, 'utf8', () => {
+      child.stdin?.end();
+    });
   });
 
 export const _internal = {

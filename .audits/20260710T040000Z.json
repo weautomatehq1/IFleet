@@ -1,0 +1,203 @@
+{
+  "run_id": "20260710T040000Z",
+  "started_at": "2026-07-10T04:00:00Z",
+  "finished_at": "2026-07-10T06:15:00Z",
+  "branch": "audit/nightly-2026-07-10",
+  "findings_fixed": [
+    {
+      "id": "AUDIT-IFleet-ff8faf70",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
+      "file_globs": ["src/utils/costs.ts"],
+      "fix_sketch": "Added serialAppend() using a per-file Promise chain to serialize concurrent appendFile calls",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-2fdb1535",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "sprint_goal missing required fields return 500 instead of 4xx",
+      "file_globs": ["src/queue/control-plane.ts"],
+      "fix_sketch": "Added MAX_ID_FIELD_LEN validation for repo field in sprint_goal and run command parsers",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-ff177eeb",
+      "severity": "IMPORTANT",
+      "category": "efficiency",
+      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
+      "file_globs": ["src/queue/github.ts"],
+      "fix_sketch": "Replaced unbounded paginate with capped paginate callback (MAX_PAGES=10, ~1000 events max)",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-202b928c",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "TaskStore insert never persists the attempts column it relies on",
+      "file_globs": ["src/queue/store.ts"],
+      "fix_sketch": "Added attempts column to SCHEMA constant so fresh DBs are self-consistent without relying solely on the migration",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-6dbc02a1",
+      "severity": "IMPORTANT",
+      "category": "security",
+      "title": "defaultHaikuCall passes full prompt (including user brief) as argv — visible in ps aux",
+      "file_globs": ["src/classifier/auto-router.ts"],
+      "fix_sketch": "Rewrote defaultHaikuCall to use spawn() with stdin piping; removed prompt from argv",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-5a520b9e",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "issue-commenter.ts lastCommentId mutable closure races if comment() called before waitForApproval resolves",
+      "file_globs": ["src/queue/issue-commenter.ts"],
+      "fix_sketch": "Replaced lastCommentId with lastCommentIdPromise so waitForApproval always awaits the latest comment() result",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-d2de0aca",
+      "severity": "IMPORTANT",
+      "category": "security",
+      "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
+      "file_globs": ["src/agents/verifier/sandbox.ts"],
+      "fix_sketch": "Changed --user root to --user node; added :ro mount flag for typecheck and lint phases that don't need write access",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-8485d061",
+      "severity": "IMPORTANT",
+      "category": "security",
+      "title": "DockerSandboxRunner falls back to in-worktree execution without requiring IFLEET_ALLOW_SANDBOX_FALLBACK",
+      "file_globs": ["src/agents/verifier/sandbox.ts"],
+      "fix_sketch": "Already fixed in prior session — IFLEET_ALLOW_SANDBOX_FALLBACK guard verified present in code",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-56e677cf",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
+      "file_globs": ["src/pipeline/runner.ts"],
+      "fix_sketch": "Changed fallback to warn+return instead of using task.id as sprintId; callers must set sprintId explicitly",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-3b3ab72a",
+      "severity": "IMPORTANT",
+      "category": "security",
+      "title": "workers/claude.ts passes full brief as -p argv — visible in ps aux for all pipeline phases",
+      "file_globs": ["src/workers/claude.ts", "src/workers/spawn-runner.ts"],
+      "fix_sketch": "Added stdin option to RunnerOptions; claude.ts now pipes brief to stdin; removed -p from argv",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-634a726e",
+      "severity": "IMPORTANT",
+      "category": "security",
+      "title": "Git auth token exposed via process args visible to local ps",
+      "file_globs": ["src/repos/manager.ts"],
+      "fix_sketch": "Replaced -c http.extraheader argv injection with GIT_CONFIG_COUNT/KEY/VALUE env vars; filtered only dangerous GIT_ vars (DIR, WORK_TREE, etc.), not GIT_CONFIG_*",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-f820fdb9",
+      "severity": "COSMETIC",
+      "category": "maintenance",
+      "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
+      "file_globs": ["src/pipeline/reviewer.ts"],
+      "fix_sketch": "Added TODO(remove-by:2026-09-01) deadline comment",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-4de85929",
+      "severity": "COSMETIC",
+      "category": "correctness",
+      "title": "auto-router in-memory cache never expires — stale routing decisions persist across sprint submissions",
+      "file_globs": ["src/classifier/auto-router.ts"],
+      "fix_sketch": "Added CACHE_TTL_MS=30min and CacheEntry{decision,expiresAt}; cache.get now checks expiresAt > now()",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-20559453",
+      "severity": "COSMETIC",
+      "category": "simplification",
+      "title": "contracts/hmac.ts verifyPayload has redundant length check after timingSafeEqual",
+      "file_globs": ["src/contracts/hmac.ts"],
+      "fix_sketch": "Reordered expected.length===0 guard earlier; clarified comments explaining why padding-zeros always fail comparison",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    },
+    {
+      "id": "AUDIT-IFleet-c9e1f803",
+      "severity": "COSMETIC",
+      "category": "correctness",
+      "title": "audit-runner.ts markFindingsClosed batch path skips per-fingerprint dedup that appendToClosedJson uses",
+      "file_globs": ["src/discord/audit-runner.ts"],
+      "fix_sketch": "Added existingFingerprints Set check before cdata.closures.push to skip already-recorded closures",
+      "status": "fixed",
+      "closed_at": "2026-07-10T04:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-10"
+    }
+  ],
+  "findings_still_open": [
+    {
+      "id": "AUDIT-IFleet-2896b739",
+      "severity": "COSMETIC",
+      "title": "server.ts deferringDiscordOut.postTaskCreated always returns empty threadId string without warning",
+      "file_globs": ["src/server.ts"],
+      "notes": "Low risk cosmetic; deferred to next cycle"
+    },
+    {
+      "id": "AUDIT-IFleet-14ec04e8",
+      "severity": "COSMETIC",
+      "title": "audit-store.ts dbReadIndex returns null for both DB unreachable and zero-row cases without distinguishing them",
+      "file_globs": ["src/audit/audit-store.ts"],
+      "notes": "Low risk cosmetic; deferred to next cycle"
+    },
+    {
+      "id": "AUDIT-IFleet-4abde52c",
+      "severity": "COSMETIC",
+      "title": "candidate-gen.ts unused _cfg parameter signal",
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
+      "notes": "Parameter required by interface contract (stages.generateCandidates type); underscore prefix already signals intentional non-use"
+    }
+  ],
+  "summary": {
+    "fixed_this_run": 15,
+    "still_open": 3,
+    "typecheck": "pass",
+    "lint": "pass",
+    "tests": "642 pass, 0 fail"
+  }
+}

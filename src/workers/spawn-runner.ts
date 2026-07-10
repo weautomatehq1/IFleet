@@ -8,6 +8,8 @@ export interface RunnerOptions {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  /** Optional text written to the child's stdin then closed. Keeps large prompts out of argv. */
+  stdin?: string;
   parseLine: (line: string, emit: (e: WorkerEvent) => void) => void;
   finalize: (state: FinalizeState) => WorkerResult;
   /**
@@ -52,8 +54,11 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
   const child = spawnFn(opts.command, opts.args, {
     cwd: opts.cwd,
     env: opts.env ?? process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [opts.stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
   });
+  if (opts.stdin !== undefined) {
+    child.stdin?.write(opts.stdin, 'utf8', () => { child.stdin?.end(); });
+  }
 
   if (child.pid === undefined) {
     throw new Error(`failed to spawn ${opts.command}`);

@@ -27,6 +27,8 @@ interface SpawnCall {
   args: readonly string[];
   /** Env passed to the child process. Populated from the SpawnOptions.env field. */
   env?: NodeJS.ProcessEnv;
+  /** Content written to stdin (accumulated after spawn, empty string if nothing written). */
+  stdin: string;
 }
 
 export interface FakeSpawn {
@@ -37,8 +39,14 @@ export interface FakeSpawn {
 export function createFakeSpawn(opts: FakeChildOptions): FakeSpawn {
   const calls: SpawnCall[] = [];
   const spawnFn: SpawnLike = ((command: string, args: readonly string[], options: SpawnOptions) => {
-    calls.push({ command, args, env: options?.env as NodeJS.ProcessEnv | undefined });
-    return createFakeChild(opts) as unknown as ReturnType<SpawnLike>;
+    const call: SpawnCall = { command, args, env: options?.env as NodeJS.ProcessEnv | undefined, stdin: '' };
+    calls.push(call);
+    const child = createFakeChild(opts);
+    // Accumulate stdin writes so tests can assert on what was piped in.
+    child.stdin.on('data', (chunk: Buffer | string) => {
+      call.stdin += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    });
+    return child as unknown as ReturnType<SpawnLike>;
   }) as SpawnLike;
   return { spawn: spawnFn, calls };
 }

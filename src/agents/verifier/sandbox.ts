@@ -359,7 +359,8 @@ export class DockerSandboxRunner implements SandboxRunner {
     const startedAt = this.now();
     const argv = buildPhaseArgv(kind);
     const command = useFallback ? this.pnpmBin : this.dockerBin;
-    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath, kind === 'install');
+    const phaseNeedsWrite = kind === 'install' || kind === 'build' || kind === 'test';
+    const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath, kind === 'install', phaseNeedsWrite);
     const result = await this.runCommand(command, args, {
       ...(useFallback ? { cwd: worktreePath } : {}),
       timeoutMs: this.timeoutMs,
@@ -528,6 +529,7 @@ function buildDockerArgs(
   innerArgv: string[],
   envFilePath?: string,
   needsNetwork?: boolean,
+  needsWrite?: boolean,
 ): string[] {
   const args = [
     'run',
@@ -536,15 +538,21 @@ function buildDockerArgs(
     `${memoryMb}m`,
     '--network',
     needsNetwork ? 'bridge' : 'none',
+    // Run as the unprivileged `node` user that ships in the verifier image
+    // instead of root — limits blast radius if a task exploits pnpm/build
+    // toolchain vulnerabilities inside the container.
     '--user',
-    'root',
+    'node',
   ];
   if (envFilePath) {
     args.push('--env-file', envFilePath);
   }
+  // Mount read-only for phases that only read source files (typecheck, lint).
+  // install/build/test need write access for node_modules and build artifacts.
+  const mountFlag = needsWrite ? `${worktreePath}:/work` : `${worktreePath}:/work:ro`;
   args.push(
     '-v',
-    `${worktreePath}:/work`,
+    mountFlag,
     '-w',
     '/work',
     image,

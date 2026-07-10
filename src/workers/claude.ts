@@ -29,7 +29,7 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
     spawn(opts: SpawnOpts): SpawnHandle {
       // --session-id requires a UUID; never fall back to taskId (which is not a UUID).
       const sessionId = opts.sessionId ?? randomUUID();
-      const args = buildClaudeArgs(opts, sessionId, opts.trustedBrief ?? false);
+      const { args, stdinBrief } = buildClaudeArgs(opts, sessionId, opts.trustedBrief ?? false);
 
       let textBuffer = '';
       let totalCostUsd: number | undefined;
@@ -45,6 +45,7 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
         cwd: opts.workingDir,
         env: claudeChildEnv(process.env, { parentTraceId: opts.parentTraceId }),
         signal: opts.signal,
+        stdin: stdinBrief,
         spawnImpl: adapterOpts.spawnImpl,
         parseLine: (line, emit) => {
           const evt = safeJsonParse(line);
@@ -106,14 +107,17 @@ export function createClaudeAdapter(adapterOpts: ClaudeAdapterOptions = {}): Wor
   };
 }
 
-function buildClaudeArgs(opts: SpawnOpts, sessionId: string, trustedBrief: boolean): string[] {
+function buildClaudeArgs(
+  opts: SpawnOpts,
+  sessionId: string,
+  trustedBrief: boolean,
+): { args: string[]; stdinBrief: string } {
   // For trusted pipeline content (editor, doctor), pass the brief directly so
   // Claude can follow the architect plan as instructions. For untrusted user
   // input (architect phase), wrap in a DATA block to block prompt injection.
-  const wrapped = trustedBrief ? opts.brief : wrapBriefAsData(WORKER_INSTRUCTION, opts.brief);
+  const stdinBrief = trustedBrief ? opts.brief : wrapBriefAsData(WORKER_INSTRUCTION, opts.brief);
+  // Brief is delivered via stdin so it never appears in `ps aux` / /proc/*/cmdline.
   const args = [
-    '-p',
-    wrapped,
     '--model',
     opts.model,
     '--permission-mode',
@@ -135,7 +139,7 @@ function buildClaudeArgs(opts: SpawnOpts, sessionId: string, trustedBrief: boole
   } else {
     args.push('--session-id', sessionId);
   }
-  return args;
+  return { args, stdinBrief };
 }
 
 function safeJsonParse(line: string): unknown {

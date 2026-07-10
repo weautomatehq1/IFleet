@@ -364,7 +364,10 @@ export function parseCommand(body: string): ControlCommand {
         return typeof v === 'string' ? v : undefined;
       };
       const cmd: ControlCommand = { type: 'sprint_goal', goal: parsed.goal };
-      if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
+      if (typeof parsed.repo === 'string') {
+        if (parsed.repo.length > MAX_ID_FIELD_LEN) throw new Error('sprint_goal: repo exceeds maximum length');
+        cmd.repo = parsed.repo;
+      }
       const channelId = pickStr('channelId');
       if (channelId) {
         if (channelId.length > MAX_ID_FIELD_LEN) throw new Error('sprint_goal: channelId exceeds maximum length');
@@ -395,7 +398,10 @@ export function parseCommand(body: string): ControlCommand {
     }
     case 'run': {
       const cmd: ControlCommand = { type: 'run' };
-      if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
+      if (typeof parsed.repo === 'string') {
+        if (parsed.repo.length > MAX_ID_FIELD_LEN) throw new Error('run: repo exceeds maximum length');
+        cmd.repo = parsed.repo;
+      }
       return cmd;
     }
     case 'cancel': {

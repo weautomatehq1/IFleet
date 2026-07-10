@@ -91,20 +91,10 @@ test('claude-cli adapter: spawn delegates to the inner Claude adapter and comple
     const call = fake.calls[0];
     assert.ok(call, 'inner adapter should have been spawned');
     assert.equal(call.command, 'claude');
-    assert.ok(call.args.includes('-p'));
-    // CRIT-1 fix: the brief is now wrapped in a delimited DATA block before
-    // it is passed as the `-p` argument, so it is no longer present as a
-    // literal arg — instead it appears *inside* the wrapped prompt string.
-    const pIdx = call.args.indexOf('-p');
-    const wrappedPrompt = call.args[pIdx + 1] ?? '';
-    assert.ok(
-      typeof wrappedPrompt === 'string' && wrappedPrompt.includes('do the thing'),
-      'wrapped prompt should still contain the brief as data',
-    );
-    assert.ok(
-      wrappedPrompt.includes('USER_BRIEF_BEGIN'),
-      'wrapped prompt should include the data-block markers',
-    );
+    // Brief is delivered via stdin (not -p arg) to keep it out of ps aux.
+    assert.ok(!call.args.includes('-p'), 'brief must not appear as -p argv');
+    assert.ok(call.stdin.includes('do the thing'), 'brief should be piped to stdin');
+    assert.ok(call.stdin.includes('USER_BRIEF_BEGIN'), 'stdin should include data-block markers');
     assert.ok(call.args.includes('--model'));
     assert.ok(call.args.includes('claude-opus-4-7'));
   } finally {

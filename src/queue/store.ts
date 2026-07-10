@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed_at INTEGER,
   priority TEXT NOT NULL DEFAULT 'normal',
   routing_decision TEXT,
-  mode TEXT
+  mode TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo);

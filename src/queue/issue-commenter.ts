@@ -26,32 +26,33 @@ export function createIssueCommenter(
   repo: string,
   options: IssueCommenterOptions = {},
 ): IssueCommenter {
-  let lastCommentId: number | null = null;
+  // Track the in-flight or settled comment ID as a Promise so that
+  // waitForApproval always awaits the latest comment() result — even if
+  // comment() is still awaiting the GitHub API when waitForApproval is called.
+  let lastCommentIdPromise: Promise<number | null> = Promise.resolve(null);
   const factoryApprovers = (options.approvers ?? [])
     .map(normalizeLogin)
     .filter((s) => s.length > 0);
 
   return {
     async comment(issueNumber: number, body: string): Promise<void> {
-      const res = await octokit.issues.createComment({
-        owner,
-        repo,
-        issue_number: issueNumber,
-        body,
-      });
-      lastCommentId = res.data.id;
+      const pending = octokit.issues
+        .createComment({ owner, repo, issue_number: issueNumber, body })
+        .then((res) => res.data.id);
+      lastCommentIdPromise = pending.catch(() => null);
+      await pending;
     },
 
     async waitForApproval(
       _issueNumber: number,
       opts: WaitForApprovalOpts,
     ): Promise<boolean> {
-      if (lastCommentId === null) {
+      const commentId = await lastCommentIdPromise;
+      if (commentId === null) {
         throw new Error(
           'waitForApproval called before comment() — no plan comment to poll for reactions',
         );
       }
-      const commentId = lastCommentId;
       const approverSet = new Set<string>(factoryApprovers);
       if (opts.approver) approverSet.add(normalizeLogin(opts.approver));
       if (approverSet.size === 0) {

@@ -1,6 +1,6 @@
-// Deprecated shim — kept for one release. Re-exports the diff-reviewer at
-// its new home. New code should import from './diff-reviewer.js' directly.
-// Remove this file after the next release cuts.
+// Deprecated shim — kept for one release cycle after the diff-reviewer rename.
+// New code must import from './diff-reviewer.js' directly.
+// TODO(remove-by:2026-09-01): delete this file once all callers migrated.
 export {
   runReviewer,
   assertCrossProviderRule,

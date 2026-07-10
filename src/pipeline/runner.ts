@@ -577,7 +577,14 @@ function maybeMarkAuditFindingReopened(input: PipelineInput): void {
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
   if (!input.repoRoot) return;
-  const sprintId = input.sprintId ?? input.task.id;
+  if (!input.sprintId) {
+    // task.id is a unique task-level ID; using it as sprintId would create a
+    // phantom sprint-per-task in cost aggregation. Emit a warning so callers
+    // can be fixed upstream rather than silently corrupting sprint-level rollups.
+    console.warn(`[pipeline] logCosts: input.sprintId missing for task ${input.task.id} — cost record skipped`);
+    return;
+  }
+  const sprintId = input.sprintId;
   const roleSpec: Record<string, { model: string; provider: string }> = {
     architect: input.routing.architect,
     editor: input.routing.editor,

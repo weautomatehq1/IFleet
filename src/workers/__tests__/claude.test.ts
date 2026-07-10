@@ -91,7 +91,9 @@ test('claude adapter: spawn args include flags and session-id for new run', asyn
   const call = fake.calls[0];
   assert.ok(call);
   assert.equal(call.command, 'claude');
-  assert.ok(call.args.includes('-p'));
+  // Brief is delivered via stdin (not -p arg) to keep it out of ps aux.
+  assert.ok(!call.args.includes('-p'), 'brief must not appear as -p argv');
+  assert.ok(call.stdin.includes('do'), 'brief should be piped to stdin');
   assert.ok(call.args.includes('--model'));
   assert.ok(call.args.includes('claude-sonnet-4-6'));
   assert.ok(call.args.includes('--permission-mode'));
