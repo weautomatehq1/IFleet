@@ -24,13 +24,14 @@
  */
 
 import { resolve as resolvePath, join } from 'node:path';
-import { createControlPlane } from './queue/control-plane.js';
-import { DiscordSource } from './queue/sources/discord.js';
-import { TaskStore, defaultTasksDbPath } from './queue/store.js';
+import { createControlPlane } from '@wahq/orchestrator-core/queue/control-plane';
+import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
+import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
+import { IFLEET_STORE_EXTENSIONS } from './agents/bandit/store-extensions.js';
 import { FileChannelRouter } from './repos/router.js';
-import type { QueueAdapter } from './queue/types.js';
-import type { ChannelRouter } from './contracts/channel-router.js';
-import type { DiscordOut } from './contracts/discord-out.js';
+import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
+import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
+import type { DiscordOut } from '@wahq/orchestrator-core/contracts/discord-out';
 
 export interface ServerDeps {
   /** Optional — defaults to an open TaskStore on IFLEET_STATE_DIR. */
@@ -58,6 +59,7 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   const port = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
   const store = deps.store ?? new TaskStore(
     env['IFLEET_STATE_DIR'] ? join(env['IFLEET_STATE_DIR'], 'tasks.db') : defaultTasksDbPath(),
+    { extensions: IFLEET_STORE_EXTENSIONS },
   );
 
   // Crash-recovery sweep: any task left `in_flight` past the threshold (30

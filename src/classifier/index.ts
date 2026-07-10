@@ -94,7 +94,7 @@ const CATEGORY_NEEDLES = [...HIGH_KEYWORDS, 'sql'];
 // M4.7 (ADR-0004 §Known-Limitations item 2): canonical §3.2 override #1
 // category vocabulary, used when an operator labels an issue `category:*`
 // explicitly. Matches the parser whitelist in `src/queue/labels.ts`.
-const OPUS_CATEGORIES: ReadonlySet<NonNullable<import('../queue/types.ts').RoutingHints['category']>> =
+const OPUS_CATEGORIES: ReadonlySet<NonNullable<import('@wahq/orchestrator-core/queue/types').RoutingHints['category']>> =
   new Set(['security', 'auth', 'payments', 'migration'] as const);
 
 const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus'];

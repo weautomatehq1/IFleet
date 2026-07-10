@@ -8,7 +8,7 @@
 
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { TaskStore } from '../store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 
 describe('backfill-pr-decisions cold-start (AUDIT-IFleet-31181042)', () => {
   it('recordPrDecision on a fresh DB with unseen task_id throws without stub', () => {

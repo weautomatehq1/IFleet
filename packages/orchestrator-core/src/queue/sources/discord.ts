@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { extractAuditFindingId } from '../../audit/types.js';
+import { extractAuditFindingId } from '../../utils/audit-finding.js';
 import type { ChannelRouter } from '../../contracts/channel-router.js';
 import type { DiscordOut } from '../../contracts/discord-out.js';
 import type { QueuedTask, TaskSource as TaskSourceType } from '../../contracts/task.js';

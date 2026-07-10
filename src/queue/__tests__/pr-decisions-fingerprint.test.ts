@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import Database from 'better-sqlite3';
-import { TaskStore } from '../store.js';
-import type { QueuedTask } from '../../contracts/task.js';
-import { ulid } from '../../utils/ulid.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import { ulid } from '@wahq/orchestrator-core/utils/ulid';
 
 function tmpDb(): { path: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-fp-store-'));

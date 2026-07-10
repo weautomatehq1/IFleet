@@ -17,7 +17,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { isMainModule } from './lib/is-main-module.js';
-import { TaskStore, defaultTasksDbPath } from '../src/queue/store.ts';
+import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
 import {
   mapPullRequests,
   type GhPullRequest,

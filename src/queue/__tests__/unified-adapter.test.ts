@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import type { QueuedTask } from '../../contracts/task.js';
-import type { TaskSource } from '../sources/base.js';
-import { TaskStore } from '../store.js';
-import { UnifiedQueueAdapter } from '../unified-adapter.js';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import type { TaskSource } from '@wahq/orchestrator-core/queue/sources/base';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
 
 function tmpStore(): { store: TaskStore; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-unified-'));

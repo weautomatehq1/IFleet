@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { validateConfig } from '../config.js';
+import { validateConfig } from '@wahq/orchestrator-core/queue/config';
 
 describe('validateConfig', () => {
   it('accepts a well-formed config', () => {

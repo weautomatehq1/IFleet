@@ -1,11 +1,11 @@
 // Tick loop and sprint-completion wiring.
 // Extracted from daemon.ts — pure structural refactor, no logic changes.
 
-import { UnifiedQueueAdapter } from '../../queue/unified-adapter.js';
+import { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
 import { Orchestrator } from '../index.js';
 import type { OrchestratorEvent, SprintId } from '../types.js';
-import type { QueuedTask } from '../../contracts/task.js';
-import { TaskStore } from '../../queue/store.js';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import { DiscordOutAdapter } from '../../observability/discord-output.js';
 import { broadcastIFleet } from '../../observability/discord-broadcast.js';
 import { encodeBridgeBrief } from '../pipeline-bridge.js';

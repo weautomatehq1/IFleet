@@ -9,12 +9,12 @@ import {
   ButtonStyle,
   EmbedBuilder,
 } from 'discord.js';
-import type { ChannelRouter } from '../contracts/channel-router.js';
+import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import {
   buildCustomId,
   type DiscordOut,
-} from '../contracts/discord-out.js';
-import type { QueuedTask } from '../contracts/task.js';
+} from '@wahq/orchestrator-core/contracts/discord-out';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import { resolveTaskChannel } from './channel-router-bridge.js';
 
 export const DISCORD_MESSAGE_LIMIT = 1900; // 2000 hard cap; leave headroom

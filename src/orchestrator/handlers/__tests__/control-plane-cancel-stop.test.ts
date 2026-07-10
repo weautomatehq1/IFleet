@@ -27,8 +27,8 @@ import { join } from 'node:path';
 
 import { buildControlPlaneOptions } from '../control-plane.js';
 import type { ControlPlaneDeps } from '../control-plane.js';
-import { TaskStore } from '../../../queue/store.js';
-import type { QueuedTask } from '../../../contracts/task.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import type { SprintId } from '../../types.js';
 
 function makeTask(id: string, state: QueuedTask['state']): QueuedTask {

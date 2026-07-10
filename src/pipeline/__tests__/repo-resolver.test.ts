@@ -25,10 +25,11 @@ import { describe, it, expect } from 'vitest';
 import { cleanGitEnv } from '../../testing/git-env.js';
 import { makeProductionFactory, type RepoResolver, type ResolvedRepo } from '../factory.js';
 import { encodeBridgeBrief } from '../../orchestrator/pipeline-bridge.js';
-import type { QueuedTask as UnifiedQueuedTask } from '../../contracts/task.js';
+import type { QueuedTask as UnifiedQueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import type { TaskId, WorkerConfig } from '../../orchestrator/types.js';
 import type { Octokit } from '@octokit/rest';
-import { TaskStore } from '../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import { IFLEET_STORE_EXTENSIONS } from '../../agents/bandit/store-extensions.js';
 import { readShadowDecisions } from '../../agents/bandit/shadow.js';
 
 const taskId = (raw: string) => raw as unknown as TaskId;
@@ -163,7 +164,7 @@ describe('makeProductionFactory — M6-T3 shadow wiring', () => {
   it('persists routing_decision and appends a routing_shadow_log row', async () => {
     const repoRoot = initGitRepo();
     const dbDir = mkdtempSync(join(tmpdir(), 'm6-db-'));
-    const store = new TaskStore(join(dbDir, 'tasks.db'));
+    const store = new TaskStore(join(dbDir, 'tasks.db'), { extensions: IFLEET_STORE_EXTENSIONS });
     try {
       // Seed a task so the FK on routing_shadow_log holds and so
       // setRoutingDecision has a row to update.

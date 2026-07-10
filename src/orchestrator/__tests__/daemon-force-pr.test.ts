@@ -29,7 +29,7 @@ import { handleForcePr, TaskContextRegistry } from '../daemon.js';
 import type { ForcePrDeps } from '../daemon.js';
 import { isSafeGitRef } from '../handlers/pr-decisions.js';
 import { StateStore } from '../store.js';
-import { TaskStore } from '../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import type { PrOpener, OpenPrInput } from '../../pipeline/types.js';
 import type { SprintId, TaskId } from '../types.js';
 

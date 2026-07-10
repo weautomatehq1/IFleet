@@ -3,10 +3,10 @@ import { describe, it } from 'node:test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { TaskStore } from '../store.js';
-import type { QueuedTask } from '../../contracts/task.js';
-import type { RecordPrDecisionInput } from '../store.js';
-import { ulid } from '../../utils/ulid.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import type { RecordPrDecisionInput } from '@wahq/orchestrator-core/queue/store';
+import { ulid } from '@wahq/orchestrator-core/utils/ulid';
 
 function tmpDb(): { path: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-store-'));
@@ -414,7 +414,12 @@ describe('TaskStore', () => {
     }
   });
 
-  it('setRoutingDecision persists JSON; rowToTask round-trips it (M6-T3)', () => {
+  // NOTE: setRoutingDecision + routing_shadow_log/bandit_arm_state assertions
+  // moved to src/agents/bandit/__tests__/store-extensions.test.ts — those are
+  // IFleet schema extensions, not part of core's 4-table store. The
+  // routing_decision COLUMN round-trip below stays here (it's a core column).
+
+  it('routing_decision column round-trips a raw JSON write (core column)', () => {
     const { path, cleanup } = tmpDb();
     try {
       const store = new TaskStore(path);
@@ -430,7 +435,12 @@ describe('TaskStore', () => {
         reviewer: { provider: 'claude' as const, model: 'claude-sonnet-4-6', workerId: 'w3' },
         verify: ['typecheck' as const],
       };
-      store.setRoutingDecision(task.id, decision);
+      // Core exposes getDb() but not setRoutingDecision (that helper is
+      // IFleet-side). Write the core column directly to prove the round-trip.
+      store
+        .getDb()
+        .prepare(`UPDATE tasks SET routing_decision = @d WHERE id = @id`)
+        .run({ id: task.id, d: JSON.stringify(decision) });
 
       const round = store.getById(task.id)!;
       assert.deepEqual(round.routingDecision, decision);
@@ -454,48 +464,6 @@ describe('TaskStore', () => {
       const plain = fakeGithubTask({ idempotencyKey: 'mode-rt-2' });
       store.insert(plain);
       assert.equal(store.getById(plain.id)!.mode, null, 'absent mode round-trips to null');
-      store.close();
-    } finally {
-      cleanup();
-    }
-  });
-
-  it('getDb returns the live handle the shadow recorder writes through (M6-T3)', () => {
-    const { path, cleanup } = tmpDb();
-    try {
-      const store = new TaskStore(path);
-      const db = store.getDb();
-      // Sanity: the schema migration ran and routing_shadow_log is present —
-      // shadow.ts will INSERT into this table via the same handle.
-      const row = db
-        .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='routing_shadow_log'`)
-        .get() as { name: string } | undefined;
-      assert.ok(row, 'routing_shadow_log table should exist on the handle');
-      store.close();
-    } finally {
-      cleanup();
-    }
-  });
-
-  it("routing_shadow_log has the role column post-construction with DEFAULT 'architect' (M6-T3 follow-up)", () => {
-    const { path, cleanup } = tmpDb();
-    try {
-      const store = new TaskStore(path);
-      const db = store.getDb();
-      const cols = db.pragma('table_info(routing_shadow_log)') as Array<{
-        name: string;
-        dflt_value: string | null;
-        notnull: number;
-      }>;
-      const role = cols.find((c) => c.name === 'role');
-      assert.ok(role, 'role column missing on routing_shadow_log');
-      assert.equal(role!.notnull, 1, 'role column should be NOT NULL');
-      // DEFAULT comes back quoted from pragma — accept either form.
-      assert.match(
-        String(role!.dflt_value ?? ''),
-        /^'?architect'?$/,
-        "role column DEFAULT should be 'architect'",
-      );
       store.close();
     } finally {
       cleanup();

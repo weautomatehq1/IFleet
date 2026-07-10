@@ -10,9 +10,9 @@ import {
   parseCommand,
   signPayload,
   verifySignature,
-} from '../control-plane.js';
-import { TaskStore } from '../store.js';
-import type { QueueAdapter } from '../types.js';
+} from '@wahq/orchestrator-core/queue/control-plane';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
 
 const fixedNonce = (): string => randomUUID();
 

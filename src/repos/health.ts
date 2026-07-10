@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import type { ChannelRoute, ChannelRouter } from '../contracts/channel-router.js';
+import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import { isGitDir } from './fs-utils.js';
 import type { GitRepoManager } from './manager.js';
 

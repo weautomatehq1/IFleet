@@ -6,14 +6,14 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type { ChannelRoute, ChannelRouter } from '../../contracts/channel-router.js';
+import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type {
   ControlCommand,
   ControlPlaneAck,
   ControlPlaneClient,
   DiscordCommandSource,
 } from '../../contracts/control-plane-client.js';
-import { parseCustomId, type DiscordCustomIdVerb } from '../../contracts/discord-out.js';
+import { parseCustomId, type DiscordCustomIdVerb } from '@wahq/orchestrator-core/contracts/discord-out';
 import { ControlPlaneError } from '../hmac-client.js';
 import {
   formatFindingsList,

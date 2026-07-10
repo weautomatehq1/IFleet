@@ -74,7 +74,7 @@ import type {
   RoutingDecision,
   VerifyRunner as PipelineVerifyRunner,
 } from '../src/pipeline/types.ts';
-import type { QueuedTask as RawTask } from '../src/queue/types.ts';
+import type { QueuedTask as RawTask } from '@wahq/orchestrator-core/queue/types';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, '..');

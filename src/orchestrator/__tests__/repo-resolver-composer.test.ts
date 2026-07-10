@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRepoResolver } from '../daemon';
 import { FileChannelRouter } from '../../repos/router';
-import type { ChannelRoute } from '../../contracts/channel-router';
+import type { ChannelRoute } from '@wahq/orchestrator-core/contracts/channel-router';
 
 function fakeRouter(routes: ChannelRoute[]): FileChannelRouter {
   return new FileChannelRouter(routes);

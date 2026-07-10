@@ -12,7 +12,7 @@ export type SprintOperatingMode = 'normal' | 'overnight';
 // Per-task routing mode (`ralph` | `ulw` | `tdd` | `deslop` | `standard`) is
 // hoisted into the contracts/routing type root and re-exported here so
 // `orchestrator/types` import sites keep resolving. See contracts/routing.ts.
-export type { SprintMode } from '../contracts/routing.js';
+export type { SprintMode } from '@wahq/orchestrator-core/contracts/routing';
 
 export type SprintState =
   | { kind: 'queued' }

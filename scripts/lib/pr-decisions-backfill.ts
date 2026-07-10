@@ -9,7 +9,7 @@
  * task get the sentinel `backfill:<pr_url>` task id.
  */
 
-import type { PrVerdict, RecordPrDecisionInput } from '../../src/queue/store.ts';
+import type { PrVerdict, RecordPrDecisionInput } from '@wahq/orchestrator-core/queue/store';
 
 export interface GhReview {
   state?: string;

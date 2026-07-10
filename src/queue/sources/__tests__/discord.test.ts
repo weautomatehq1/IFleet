@@ -3,11 +3,11 @@ import { describe, it } from 'node:test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { TaskStore } from '../../store.js';
-import { DiscordSource, idempotencyForDiscord } from '../discord.js';
-import type { ChannelRouter, ChannelRoute } from '../../../contracts/channel-router.js';
-import type { DiscordOut } from '../../../contracts/discord-out.js';
-import type { QueuedTask } from '../../../contracts/task.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import { DiscordSource, idempotencyForDiscord } from '@wahq/orchestrator-core/queue/sources/discord';
+import type { ChannelRouter, ChannelRoute } from '@wahq/orchestrator-core/contracts/channel-router';
+import type { DiscordOut } from '@wahq/orchestrator-core/contracts/discord-out';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 
 function tmpStore(): { store: TaskStore; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'ifleet-disc-'));

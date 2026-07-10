@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { ChannelRoute } from '../contracts/channel-router.js';
+import type { ChannelRoute } from '@wahq/orchestrator-core/contracts/channel-router';
 import { isGitDir, pathExists } from './fs-utils.js';
 
 export interface RepoManager {

@@ -15,10 +15,10 @@ import type { PipelineRunBootstrap, PipelineRunnerFactory } from '../pipeline-br
 import { decodeBridgeBrief } from '../pipeline-bridge.js';
 import type { PipelineEvent, PrOpener } from '../../pipeline/types.js';
 import { StateStore } from '../store.js';
-import { TaskStore } from '../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import { ControlPlaneApprovalGate } from '../approval-gate.js';
 import type { SprintId, TaskId } from '../types.js';
-import type { QueuedTask } from '../../contracts/task.js';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import { titleToBranchName } from '../../utils/branch-name.js';
 
 const execFileAsync = promisify(execFile);

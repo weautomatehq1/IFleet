@@ -21,7 +21,7 @@ import {
   type QueuedTask,
   type RepoRef,
   type TaskStatus,
-} from './types.js';
+} from '@wahq/orchestrator-core/queue/types';
 
 const execFileAsync = promisify(execFile);
 

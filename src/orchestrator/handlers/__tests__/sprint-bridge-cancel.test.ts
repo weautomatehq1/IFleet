@@ -16,11 +16,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { wireSprintCompletion } from '../sprint-bridge.js';
-import { TaskStore } from '../../../queue/store.js';
-import { UnifiedQueueAdapter } from '../../../queue/unified-adapter.js';
-import type { QueuedTask } from '../../../contracts/task.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
+import { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
 import type { OrchestratorEvent, SprintId } from '../../types.js';
-import type { TaskSource } from '../../../queue/sources/base.js';
+import type { TaskSource } from '@wahq/orchestrator-core/queue/sources/base';
 import { EventEmitter } from 'node:events';
 
 // ── helpers ───────────────────────────────────────────────────────────────────

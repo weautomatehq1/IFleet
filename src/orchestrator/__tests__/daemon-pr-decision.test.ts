@@ -35,10 +35,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { wireSprintCompletion, TaskContextRegistry } from '../daemon.js';
-import { TaskStore } from '../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import type { OrchestratorEvent, SprintId } from '../types.js';
-import type { QueuedTask } from '../../contracts/task.js';
-import type { UnifiedQueueAdapter } from '../../queue/unified-adapter.js';
+import type { QueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import type { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
 import type { Orchestrator } from '../index.js';
 // AUDIT-IFleet-43254bcf — strip every GIT_* env var inherited from the host
 // process before spawning git (the pre-push hook inherits GIT_DIR /

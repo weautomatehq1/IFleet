@@ -68,7 +68,7 @@ describe('M6-T3: factory persists RoutingDecision and records shadow pick', () =
   // typecheck — this assertion catches it at the call site.
   it('factory.ts calls setRoutingDecision + resolveRoutingModel after classifyTask', () => {
     const src = readFileSync(new URL('../factory.ts', import.meta.url), 'utf-8');
-    expect(src).toMatch(/opts\.taskStore\.setRoutingDecision\(task\.id, routing\)/);
+    expect(src).toMatch(/setRoutingDecision\(opts\.taskStore, task\.id, routing\)/);
     // AUDIT-IFleet-406c8c3e: shadow logging now flows through the live seam
     // (resolveRoutingModel calls recordShadowDecision internally).
     expect(src).toMatch(/resolveRoutingModel\(/);

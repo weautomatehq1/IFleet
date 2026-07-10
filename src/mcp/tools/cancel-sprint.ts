@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LABEL_CAPABILITY_BLOCKED } from '../../queue/types.js';
+import { LABEL_CAPABILITY_BLOCKED } from '@wahq/orchestrator-core/queue/types';
 import type { McpOctokit } from '../octokit.js';
 import { parseSprintId } from './id.js';
 

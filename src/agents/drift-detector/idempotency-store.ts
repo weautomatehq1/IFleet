@@ -18,7 +18,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { defaultStateDir } from '../../queue/store.js';
+import { defaultStateDir } from '@wahq/orchestrator-core/queue/store';
 
 /**
  * Default DB path for the drift idempotency store. Sibling of

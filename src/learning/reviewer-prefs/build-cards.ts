@@ -12,7 +12,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { TaskStore, type PrDecision } from '../../queue/store.js';
+import { TaskStore, type PrDecision } from '@wahq/orchestrator-core/queue/store';
 import type { ReviewerCard, ReviewerAcceptPattern, ReviewerRejectPattern } from './types.js';
 
 /** Default window — M4 DoD calls for 30d rolling cards. */

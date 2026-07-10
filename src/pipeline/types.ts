@@ -6,7 +6,7 @@ import type {
   SprintMode,
   WorkerSpec,
   RoutingDecision,
-} from '../contracts/routing.js';
+} from '@wahq/orchestrator-core/contracts/routing';
 
 // Public types for the Architect → Editor → Reviewer pipeline.
 //

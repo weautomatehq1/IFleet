@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { signPayload } from '../contracts/hmac.js';
+import { signPayload } from '@wahq/orchestrator-core/contracts/hmac';
 import type {
   ControlCommand,
   ControlPlaneAck,
@@ -19,7 +19,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 // Re-exported for callers/tests that still import `signPayload` from this
 // module. The implementation now lives in src/contracts/hmac.ts.
-export { signPayload } from '../contracts/hmac.js';
+export { signPayload } from '@wahq/orchestrator-core/contracts/hmac';
 
 export class HmacControlPlaneClient implements ControlPlaneClient {
   private readonly url: string;

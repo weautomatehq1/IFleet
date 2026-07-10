@@ -22,7 +22,7 @@ import type {
   ProposerConfig,
 } from '../src/agents/proposer/types.js';
 import { getPastProposalsByRepo } from '../src/orchestrator/goal-proposals-store.js';
-import { TaskStore, defaultTasksDbPath } from '../src/queue/store.js';
+import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
 import { HmacControlPlaneClient } from '../src/discord/hmac-client.js';
 
 const ENABLED_ENV = 'PROPOSER_ENABLED';

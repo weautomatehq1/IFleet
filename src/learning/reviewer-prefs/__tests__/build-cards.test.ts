@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TaskStore } from '../../../queue/store.js';
+import { TaskStore } from '@wahq/orchestrator-core/queue/store';
 import {
   buildReviewerCards,
   defaultPrefsDir,
@@ -18,7 +18,7 @@ import {
   summariseReviewerDecisions,
   writeReviewerCard,
 } from '../build-cards.js';
-import type { PrDecision } from '../../../queue/store.js';
+import type { PrDecision } from '@wahq/orchestrator-core/queue/store';
 
 const FIXED_NOW = 1_700_000_000_000;
 const FIXED_ISO = new Date(FIXED_NOW).toISOString();

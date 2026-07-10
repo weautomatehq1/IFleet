@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleMessageCreate } from '../handlers/message-create.js';
-import type { ChannelRoute, ChannelRouter } from '../../contracts/channel-router.js';
+import type { ChannelRoute, ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type {
   ControlCommand,
   ControlPlaneAck,
