@@ -1,3 +1,3 @@
-// Re-export shim — implementation moved to @wahq/orchestrator-core/discord (Phase 1c).
-// Existing callers are unaffected.
-export { startDiscordBot, type DiscordBootstrap } from '@wahq/orchestrator-core/discord';
+// Re-export shim — implementation now lives in @wahq/orchestrator-core/discord.
+// Existing callers importing from this path continue to work unchanged.
+export * from '@wahq/orchestrator-core/discord';

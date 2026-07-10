@@ -4,7 +4,7 @@ import type {
   ControlCommand,
   ControlPlaneAck,
   ControlPlaneClient,
-} from '../../../../src/contracts/control-plane-client.js';
+} from '../contracts/control-plane-client.js';
 
 export interface HmacControlPlaneClientOptions {
   url: string;

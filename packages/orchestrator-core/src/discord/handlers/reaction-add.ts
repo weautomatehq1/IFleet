@@ -4,7 +4,7 @@ import type {
   ControlCommand,
   ControlPlaneClient,
   DiscordCommandSource,
-} from '../../../../../src/contracts/control-plane-client.js';
+} from '../../contracts/control-plane-client.js';
 
 export interface ReactionDeps {
   router: ChannelRouter;

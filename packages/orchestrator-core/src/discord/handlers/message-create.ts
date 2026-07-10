@@ -3,7 +3,7 @@ import type { ChannelRouter } from '../../contracts/channel-router.js';
 import type {
   ControlPlaneClient,
   DiscordCommandSource,
-} from '../../../../../src/contracts/control-plane-client.js';
+} from '../../contracts/control-plane-client.js';
 
 export interface MessageCreateDeps {
   router: ChannelRouter;
