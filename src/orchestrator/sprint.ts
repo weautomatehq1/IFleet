@@ -467,7 +467,7 @@ export class SprintManager {
   }
 
   private accumulateCost(sprintId: SprintId, costUsd: number | undefined): number {
-    if (!costUsd) return this.sprintSpend.get(sprintId) ?? 0;
+    if (costUsd == null || !Number.isFinite(costUsd)) return this.sprintSpend.get(sprintId) ?? 0;
     const prev = this.sprintSpend.get(sprintId) ?? 0;
     const next = prev + costUsd;
     this.sprintSpend.set(sprintId, next);

@@ -8,7 +8,7 @@ import { buildShadowObservations } from '../agents/bandit/observations.js';
 import { KNOWN_MODEL_IDS } from '../agents/bandit/known-arms.js';
 import { resolveRoutingModel } from '../agents/bandit/live.js';
 import { setRoutingDecision } from '../agents/bandit/store-extensions.js';
-import { classifyTask, modelToTier } from '../classifier/index.js';
+import { modelToTier } from '../classifier/index.js';
 import { writeRoutingDecisionLog } from '../orchestrator/closure-log.js';
 import {
   decodeBridgeBrief,
@@ -600,6 +600,9 @@ function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string):
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
       const number = match?.[1] ? parseInt(match[1], 10) : 0;
+      if (number === 0) {
+        console.warn(`[pr] could not parse PR number from URL: "${url}" — reviewer assignment skipped`);
+      }
       // Best-effort reviewer request — never throws. A failed review request
       // must not fail an otherwise-successful PR.
       const reviewers = normalizeReviewers(input.reviewers);

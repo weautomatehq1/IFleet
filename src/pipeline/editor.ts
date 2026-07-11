@@ -78,7 +78,10 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   try {
     await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
   } catch (err) {
-    console.warn('[pipeline] editor: git add failed:', err);
+    // git add failure means the downstream diff will be empty and the runner
+    // will log "editor produced no diff". Log at error level so the real cause
+    // is visible rather than the misleading "silent tool-use failure" attribution.
+    console.error(`[pipeline] editor: git add failed in ${worktreePath} — downstream diff will be empty:`, err);
     return;
   }
   // `git diff --cached --quiet` exits 1 when there are staged changes; treat
