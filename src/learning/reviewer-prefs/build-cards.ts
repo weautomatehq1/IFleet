@@ -176,12 +176,11 @@ function loadDecisions(opts: {
 }
 
 function readAllDecisions(store: TaskStore): PrDecision[] {
-  // Reach into the shared DB handle: `getPrDecisionsByRepo` is the only
+  // Use the public getDb() API: `getPrDecisionsByRepo` is the only scoped
   // public read path today, but the M4-T3 card pipeline genuinely wants
   // cross-repo. A dedicated `getAllPrDecisions` would be cleaner but is
   // out of scope for this PR (one concern: reviewer-pref pipeline).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db: import('better-sqlite3').Database = (store as any).db;
+  const db = store.getDb();
   const rows = db
     .prepare(
       `SELECT id, task_id, repo, pr_number, verdict, reviewer_login, merged_at,
