@@ -374,7 +374,16 @@ export function markFindingsClosed(
         cdata = { closures: [] };
       }
     }
-    cdata.closures.push(...records);
+    // Per-fingerprint dedup: mirrors the guard in appendToClosedJson so the
+    // batch path cannot produce duplicate closures for the same finding
+    // (AUDIT-IFleet-c9e1f803).
+    const existingFingerprints = new Set(cdata.closures.map((c) => c.fingerprint));
+    for (const record of records) {
+      if (!existingFingerprints.has(record.fingerprint)) {
+        cdata.closures.push(record);
+        existingFingerprints.add(record.fingerprint);
+      }
+    }
     const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
     writeFileSync(tmp, `${JSON.stringify(cdata, null, 2)}\n`, 'utf8');
     renameSync(tmp, closedPath);

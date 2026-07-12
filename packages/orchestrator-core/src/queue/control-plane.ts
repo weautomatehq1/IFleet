@@ -86,6 +86,19 @@ export interface ControlPlane {
   stop(): Promise<void>;
 }
 
+/**
+ * Thrown by onSprintGoal/onApprove/etc. handlers to signal a client-side
+ * validation error (missing required fields, invalid payload). The control
+ * plane catches this specifically and responds with 400 Bad Request instead
+ * of the generic 500 path. (AUDIT-IFleet-2fdb1535)
+ */
+export class BadRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BadRequestError';
+  }
+}
+
 const SIGNATURE_HEADER = 'x-ifleet-signature';
 const TIMESTAMP_HEADER = 'x-ifleet-timestamp';
 const NONCE_HEADER = 'x-ifleet-nonce';
@@ -281,6 +294,16 @@ async function handleRequest(
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ ok: true, type: command.type, ...result }));
     } catch (err) {
+      // BadRequestError signals a client-side validation failure — missing
+      // required fields, invalid payload. Return 400 so callers can distinguish
+      // misconfiguration from a server-side bug (AUDIT-IFleet-2fdb1535).
+      if (err instanceof BadRequestError) {
+        if (!res.headersSent) {
+          res.statusCode = 400;
+          res.end(err.message);
+        }
+        return;
+      }
       console.error('[control-plane] sprint_goal handler failed:', err);
       if (!res.headersSent) {
         res.statusCode = 500;
