@@ -75,11 +75,24 @@ const LEARNINGS_TAIL = 50;
 const HAIKU_MAX_OUTPUT_CHARS = 2_000; // cap at 200 tokens × ~10 chars/token
 
 /**
- * In-memory cache keyed by sha256(title|body|labels). One-process lifetime so a
- * sprint retry does not re-call Haiku. Cleared automatically when the process
- * restarts (acceptable — the cache exists to dedupe retries inside one run).
+ * TTL for auto-router cache entries (10 minutes). Stale entries are evicted
+ * on the next read so routing decisions reflect current repo state rather than
+ * persisting indefinitely across sprint submissions. (AUDIT-IFleet-4de85929)
  */
-const cache = new Map<string, AutoRouterDecision>();
+const CACHE_TTL_MS = 10 * 60 * 1_000;
+
+interface CacheEntry {
+  decision: AutoRouterDecision;
+  expiresAt: number;
+}
+
+/**
+ * In-memory cache keyed by sha256(title|body|labels). Entries expire after
+ * {@link CACHE_TTL_MS} so stale routing decisions do not outlive one session.
+ * Cleared on process restart (acceptable — the cache exists to dedupe retries
+ * inside one run, not across restarts).
+ */
+const cache = new Map<string, CacheEntry>();
 
 export function clearAutoRouterCache(): void {
   cache.clear();
@@ -103,8 +116,9 @@ export async function autoRouteMode(
   }
 
   const key = hashInput(input);
+  const now = opts.now?.() ?? Date.now();
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached && cached.expiresAt > now) return cached.decision;
 
   const repoRoot = input.repoRoot ?? process.cwd();
   const learnings = loadLearningsTail(repoRoot, LEARNINGS_TAIL);
@@ -131,13 +145,13 @@ export async function autoRouteMode(
     clearTimeout(timer);
     const reason = `haiku call failed: ${err instanceof Error ? err.message : String(err)}`;
     const decision: AutoRouterDecision = { ...STANDARD_FALLBACK, reason };
-    cache.set(key, decision);
+    cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
     return decision;
   }
   clearTimeout(timer);
 
   const decision = parseRouterDecision(raw, riskFlags);
-  cache.set(key, decision);
+  cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
   return decision;
 }
 

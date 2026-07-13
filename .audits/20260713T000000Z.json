@@ -1,31 +1,49 @@
 {
   "audit_id": "audit-20260713T000000Z",
-  "repo": "IFleet",
+  "repo": "weautomatehq1/IFleet",
   "scanned_at": "2026-07-13T00:00:00Z",
-  "scanner": "claude-sonnet-4-6-nightly",
+  "scanner": "claude-sonnet-4-6 nightly-audit",
   "findings": [
     {
       "id": "AUDIT-IFleet-8e574f48",
       "severity": "IMPORTANT",
-      "category": "redo",
+      "category": "correctness",
       "title": "classifyTask imported but never used in src/pipeline/factory.ts — blocks lint",
-      "detail": "src/pipeline/factory.ts line 11 imports `classifyTask` from `../classifier/index.js` but never calls it. The function was moved to `src/pipeline/default-routing-strategy.ts` during the routing-strategy extraction refactor (Phase 1 monorepo conversion), but the import was not cleaned up. ESLint reports this as an error (`@typescript-eslint/no-unused-vars`), causing `pnpm lint` to exit 1 and blocking CI.",
+      "detail": "src/pipeline/factory.ts imports `classifyTask` from `../classifier/index.js` but never calls it. The function was moved to `src/pipeline/default-routing-strategy.ts` during the routing-strategy extraction refactor (Phase 1 monorepo conversion), but the import was not cleaned up. ESLint reports this as an error (`@typescript-eslint/no-unused-vars`), causing `pnpm lint` to exit 1 and blocking CI.",
       "file_globs": ["src/pipeline/factory.ts"],
-      "fix_sketch": "Remove `classifyTask` from the import on line 11, keeping `modelToTier` which is still used on line 371.",
+      "fix_sketch": "Remove `classifyTask` from the import on line 11, keeping `modelToTier` which is still used.",
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-13T00:00:00Z",
       "closed_at": "2026-07-13T00:00:00Z",
-      "closing_pr": null
+      "closing_pr": "audit/nightly-2026-07-13"
+    },
+    {
+      "id": "AUDIT-IFleet-d1bf88cf",
+      "severity": "IMPORTANT",
+      "category": "security",
+      "title": "InvariantRunner.runCommand spawns Semgrep without env allowlist — inherits full process secrets",
+      "detail": "The private `runCommand` method in `src/agents/verifier/invariants.ts` spawns `semgrep` with `spawnOpts` that omits the `env` key, so the child process inherits the full parent `process.env` including `GITHUB_TOKEN`, `IFLEET_HMAC_SECRET`, `ANTHROPIC_API_KEY`, and `DISCORD_BOT_TOKEN`. The rest of the codebase explicitly strips secrets via `verifyChildEnv()` for all other subprocesses.",
+      "file_globs": ["src/agents/verifier/invariants.ts"],
+      "fix_sketch": "Import `verifyChildEnv` from `@wahq/orchestrator-core/verify/spawn-util` and add `env: verifyChildEnv()` to `spawnOpts` in `runCommand()`.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-13T00:00:00Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-13"
     },
     {
       "id": "AUDIT-IFleet-26262db9",
       "severity": "IMPORTANT",
-      "category": "assumption",
+      "category": "architecture",
       "title": "orchestrator-core package imports back into root src/ via relative paths — breaks package isolation",
-      "detail": "Five production files under `packages/orchestrator-core/src/` import from `../../../../../src/` using raw relative paths: `discord/handlers/interaction-create.ts` pulls from `src/audit/audit-store.js`, `src/orchestrator/approval-gate.js`, `src/orchestrator/goal-proposals-store.js`, and `src/agents/proposer/types.ts`; `workers/adapters/claude-cli.ts` and `workers/adapters/registry.ts` pull from `src/orchestrator/types.ts`. This creates an inverted dependency (the extracted package depends on the app it was extracted from), defeats the purpose of the workspace boundary, and would break any attempt to publish or reuse `@wahq/orchestrator-core` independently. The TypeScript build currently passes only because both packages share the root `tsconfig.json`.",
-      "file_globs": ["packages/orchestrator-core/src/discord/handlers/interaction-create.ts", "packages/orchestrator-core/src/workers/adapters/claude-cli.ts", "packages/orchestrator-core/src/workers/adapters/registry.ts"],
-      "fix_sketch": "Move the IFleet-specific types (`WorkerAdapter`, `WorkerConfig`, `ProposalDecision`) into `packages/orchestrator-core/src/contracts/` so the package owns them; or move the files with cross-package deps (`interaction-create.ts`, `claude-cli.ts`, `registry.ts`) back into root `src/` where they rightfully belong until the contract boundary stabilises. Note in the commit that this is a Phase 1c leftover — breaking API change; coordinate with the Phase 2 roadmap.",
+      "detail": "Files under `packages/orchestrator-core/src/` import from `../../../../../src/` using raw relative paths: `discord/handlers/interaction-create.ts` pulls from `src/audit/audit-store.js`, `src/orchestrator/approval-gate.js`, `src/orchestrator/goal-proposals-store.js`; `workers/adapters/claude-cli.ts` and `workers/adapters/registry.ts` pull from `src/orchestrator/types.ts`. This creates an inverted dependency (the extracted package depends on the app it was extracted from), defeats the workspace boundary, and would break any attempt to publish or reuse `@wahq/orchestrator-core` independently.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/handlers/interaction-create.ts",
+        "packages/orchestrator-core/src/workers/adapters/claude-cli.ts",
+        "packages/orchestrator-core/src/workers/adapters/registry.ts"
+      ],
+      "fix_sketch": "Move the IFleet-specific types (`WorkerAdapter`, `WorkerConfig`, `ProposalDecision`) into `packages/orchestrator-core/src/contracts/` so the package owns them; or move the files with cross-package deps back into root `src/` where they belong until the contract boundary stabilises. Breaking API change — coordinate with Phase 2 roadmap.",
       "parallel_safe": false,
       "status": "open",
       "opened_at": "2026-07-13T00:00:00Z",
@@ -33,18 +51,77 @@
       "closing_pr": null
     },
     {
-      "id": "AUDIT-IFleet-d1bf88cf",
+      "id": "AUDIT-IFleet-2fdb1535",
       "severity": "IMPORTANT",
-      "category": "risk",
-      "title": "InvariantRunner.runCommand spawns Semgrep without env allowlist — inconsistent with hardened subprocess pattern",
-      "detail": "The private `runCommand` method in `src/agents/verifier/invariants.ts` spawns `semgrep` with `spawnOpts` that omits the `env` key, so the child process inherits the full parent `process.env` including `GITHUB_TOKEN`, `IFLEET_HMAC_SECRET`, `ANTHROPIC_API_KEY`, and `DISCORD_BOT_TOKEN`. The rest of the codebase explicitly strips secrets via `verifyChildEnv()` (in `packages/orchestrator-core/src/verify/spawn-util.ts`) and `claudeChildEnv()` (in `packages/orchestrator-core/src/workers/claude-env.ts`) for all other subprocesses.",
-      "file_globs": ["src/agents/verifier/invariants.ts"],
-      "fix_sketch": "Import `verifyChildEnv` from `@wahq/orchestrator-core/verify/spawn-util` and add `env: verifyChildEnv()` to `spawnOpts` in `runCommand()`. Semgrep only needs `PATH`, `HOME`, `TMPDIR` etc. — it does not need GitHub or HMAC tokens.",
+      "category": "correctness",
+      "title": "sprint_goal missing required fields returns 500 instead of 400",
+      "detail": "The onSprintGoal handler in src/orchestrator/handlers/control-plane.ts throws plain Error when Discord-source fields (channelId, userId, userLabel) or dedup anchor (messageId/idempotencyKey) are absent. The HTTP layer in packages/orchestrator-core/src/queue/control-plane.ts catches all exceptions from onSprintGoal and returns 500, making client-side validation failures indistinguishable from internal server errors. T1 slash commands that omit required fields get a 500 with no actionable information.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/control-plane.ts",
+        "src/orchestrator/handlers/control-plane.ts"
+      ],
+      "fix_sketch": "Export `ControlPlaneValidationError extends Error` from the core package; throw it for validation failures in the handler; catch it separately in the HTTP layer and return 400.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-07-08T04:25:54Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-13"
+    },
+    {
+      "id": "AUDIT-IFleet-56e677cf",
+      "severity": "IMPORTANT",
+      "category": "correctness",
+      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
+      "detail": "In src/pipeline/runner.ts, `logCosts` computes `sprintId = input.sprintId ?? input.task.id`. When `input.sprintId` is absent, each task's costs are recorded under its own task ID, making per-sprint aggregation incorrect because multiple tasks in one sprint appear as separate 'sprints' in costs.json.",
+      "file_globs": ["src/pipeline/runner.ts"],
+      "fix_sketch": "Emit a `console.warn` when `input.sprintId` is absent so the fallback is visible in logs, while retaining the existing behaviour (task.id as key) to avoid breaking the record format.",
       "parallel_safe": true,
       "status": "fixed",
-      "opened_at": "2026-07-13T00:00:00Z",
+      "opened_at": "2026-07-08T04:25:54Z",
       "closed_at": "2026-07-13T00:00:00Z",
-      "closing_pr": null
+      "closing_pr": "audit/nightly-2026-07-13"
+    },
+    {
+      "id": "AUDIT-IFleet-ff177eeb",
+      "severity": "IMPORTANT",
+      "category": "efficiency",
+      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
+      "detail": "GitHubQueue.findLabelAddedAt uses `this.octokit.paginate` with no `mapFn` or page limit. Issues with many events (e.g. long-running label churn) could result in hundreds of API calls before the label is found or all events are exhausted, contributing to rate-limit exhaustion.",
+      "file_globs": ["src/queue/github.ts"],
+      "fix_sketch": "Switch from `octokit.paginate` to a manual page loop capped at MAX_LABEL_EVENT_PAGES (10 pages × 100 events = 1 000 events max). Break early when a page returns fewer than 100 items.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-08T04:25:54Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-13"
+    },
+    {
+      "id": "AUDIT-IFleet-4de85929",
+      "severity": "COSMETIC",
+      "category": "correctness",
+      "title": "auto-router in-memory cache never expires — stale routing decisions persist across sprint submissions",
+      "detail": "In src/classifier/auto-router.ts the `cache = new Map<string, AutoRouterDecision>()` has no TTL. If a sprint's brief was routed when learnings.md had outdated content, the cached decision persists for the entire process lifetime (potentially many hours in PM2) regardless of how much the repo state changes.",
+      "file_globs": ["src/classifier/auto-router.ts"],
+      "fix_sketch": "Wrap cache values in `{ decision, expiresAt: number }` with CACHE_TTL_MS = 10 min. Evict on read.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-08T04:25:54Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-13"
+    },
+    {
+      "id": "AUDIT-IFleet-4abde52c",
+      "severity": "COSMETIC",
+      "category": "simplification",
+      "title": "candidate-gen.ts unused _cfg parameter signal",
+      "detail": "generateCandidates(ctx, _cfg, deps) receives a ProposerConfig parameter that is never read in the function body. The `_` prefix silences TypeScript's noUnusedParameters, but the parameter is confusing because all sibling stage functions (dedupeCandidates, scoreCandidates, enforceBudget) do use their cfg parameter. The parameter is retained in the interface type in index.ts and is passed at every call site.",
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
+      "fix_sketch": "Add an inline comment explaining the parameter is retained for interface compatibility and potential future use (model/maxTokens override via config).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-08T04:25:54Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-07-13"
     }
   ]
 }

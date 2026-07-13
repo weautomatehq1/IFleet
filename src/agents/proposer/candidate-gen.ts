@@ -119,6 +119,9 @@ export class AnthropicCompleter implements LlmCompleter {
 
 export async function generateCandidates(
   ctx: ProposerContext,
+  // _cfg is intentionally unused here — retained for interface compatibility with the
+  // stage type in index.ts (`stages.generateCandidates`) and for potential future use
+  // (e.g., overriding the Haiku model or max_tokens via config). (AUDIT-IFleet-4abde52c)
   _cfg: ProposerConfig,
   deps: GenerateCandidatesDeps = {},
 ): Promise<Candidate[]> {

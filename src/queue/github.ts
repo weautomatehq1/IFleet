@@ -27,6 +27,13 @@ const execFileAsync = promisify(execFile);
 
 const ThrottledOctokit = Octokit.plugin(throttling);
 
+/**
+ * Maximum pages (×100 events each) fetched when searching for a label event.
+ * Issues with >1 000 events are pathological; capping here prevents runaway
+ * API usage and per-issue denial-of-service. (AUDIT-IFleet-ff177eeb)
+ */
+const MAX_LABEL_EVENT_PAGES = 10;
+
 /** Maximum number of times Octokit will retry a request that hit a rate limit. */
 export const THROTTLE_MAX_RETRIES = 2;
 
@@ -378,19 +385,26 @@ export class GitHubQueue implements QueueAdapter {
     issueNumber: number,
     label: string,
   ): Promise<number | null> {
-    const events = await this.octokit.paginate(this.octokit.issues.listEvents, {
-      owner: repo.owner,
-      repo: repo.name,
-      issue_number: issueNumber,
-      per_page: 100,
-    });
+    // AUDIT-IFleet-ff177eeb: cap pagination to MAX_LABEL_EVENT_PAGES pages so a
+    // pathological issue with thousands of events cannot cause runaway API usage.
     let latest = 0;
-    for (const ev of events) {
-      const labelName = (ev as { label?: { name?: string } }).label?.name;
-      if (ev.event === 'labeled' && labelName === label) {
-        const ts = Date.parse(ev.created_at);
-        if (Number.isFinite(ts) && ts > latest) latest = ts;
+    for (let page = 1; page <= MAX_LABEL_EVENT_PAGES; page++) {
+      const { data: events } = await this.octokit.issues.listEvents({
+        owner: repo.owner,
+        repo: repo.name,
+        issue_number: issueNumber,
+        per_page: 100,
+        page,
+      });
+      for (const ev of events) {
+        const labelName = (ev as { label?: { name?: string } }).label?.name;
+        if (ev.event === 'labeled' && labelName === label) {
+          const ts = Date.parse(ev.created_at);
+          if (Number.isFinite(ts) && ts > latest) latest = ts;
+        }
       }
+      // GitHub returns fewer than `per_page` items on the last page.
+      if (events.length < 100) break;
     }
     return latest > 0 ? latest : null;
   }

@@ -11,7 +11,10 @@ import { StateStore } from '../store.js';
 import { Orchestrator } from '../index.js';
 import { VerifierController } from '../../agents/verifier/controller.js';
 import type { SprintId, TaskId } from '../types.js';
-import type { ControlPlaneOptions } from '@wahq/orchestrator-core/queue/control-plane';
+import {
+  ControlPlaneValidationError,
+  type ControlPlaneOptions,
+} from '@wahq/orchestrator-core/queue/control-plane';
 import {
   clearFleetPause,
   isFleetPaused,
@@ -62,13 +65,19 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
   return {
     onSprintGoal: async (cmd) => {
       if (!cmd.channelId || !cmd.userId || !cmd.userLabel) {
-        throw new Error('sprint_goal requires Discord-source fields (channelId, userId, userLabel)');
+        // Throw ControlPlaneValidationError so the HTTP layer returns 400, not 500.
+        // (AUDIT-IFleet-2fdb1535)
+        throw new ControlPlaneValidationError(
+          'sprint_goal requires Discord-source fields (channelId, userId, userLabel)',
+        );
       }
       // Slash commands carry only an interaction.id, not a messageId — T1
       // sends idempotencyKey instead. Require at least one of the two so
       // dedup is always anchored to a stable client-side identifier.
       if (!cmd.messageId && !cmd.idempotencyKey) {
-        throw new Error('sprint_goal requires messageId or idempotencyKey for dedup');
+        throw new ControlPlaneValidationError(
+          'sprint_goal requires messageId or idempotencyKey for dedup',
+        );
       }
       const task = await discordSource.ingest(
         {

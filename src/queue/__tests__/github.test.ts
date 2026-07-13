@@ -119,15 +119,17 @@ function makeStateWithEvents(issues: FakeIssue[]): MockStateWithEvents {
 }
 
 function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
-  const listEvents = () => undefined; // sentinel used to route paginate
+  // findLabelAddedAt now calls listEvents directly (not via paginate) after the
+  // MAX_LABEL_EVENT_PAGES cap was added (AUDIT-IFleet-ff177eeb). Return the
+  // { data } envelope that the direct-call API expects.
+  const listEvents = async (params: { issue_number: number; per_page?: number; page?: number }) => {
+    return { data: state.events.filter((e) => e.issue === params.issue_number) };
+  };
 
   const paginate = async (
     fn: unknown,
     params: { labels?: string; issue_number?: number },
   ): Promise<unknown[]> => {
-    if (fn === listEvents && params.issue_number !== undefined) {
-      return state.events.filter((e) => e.issue === params.issue_number);
-    }
     if (params.issue_number !== undefined) {
       return state.comments.filter((c) => c.issue === params.issue_number);
     }
