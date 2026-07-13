@@ -139,6 +139,17 @@ function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
     });
   };
 
+  // paginate.iterator is used by findLabelAddedAt (AUDIT-IFleet-ff177eeb fix).
+  // Yield one page containing all matching items so existing tests keep working.
+  async function* paginateIterator(
+    fn: unknown,
+    params: { labels?: string; issue_number?: number },
+  ): AsyncGenerator<{ data: unknown[] }> {
+    const items = await paginate(fn, params);
+    yield { data: items };
+  }
+  (paginate as unknown as { iterator: typeof paginateIterator }).iterator = paginateIterator;
+
   return {
     paginate,
     issues: {

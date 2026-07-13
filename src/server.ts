@@ -24,7 +24,7 @@
  */
 
 import { resolve as resolvePath, join } from 'node:path';
-import { createControlPlane } from '@wahq/orchestrator-core/queue/control-plane';
+import { createControlPlane, BadRequestError } from '@wahq/orchestrator-core/queue/control-plane';
 import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
 import { IFLEET_STORE_EXTENSIONS } from './agents/bandit/store-extensions.js';
@@ -97,11 +97,13 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       // dedup; we validate that at least one is present here and let ingest()
       // derive the idempotencyKey from messageId when it's the only one given
       // (AUDIT-IFleet-4b7622ff).
+      // BadRequestError signals client-side validation failure so the control
+      // plane returns 400 instead of 500 (AUDIT-IFleet-2fdb1535).
       if (!cmd.channelId || !cmd.userId || !cmd.userLabel) {
-        throw new Error('sprint_goal from server requires channelId, userId, userLabel');
+        throw new BadRequestError('sprint_goal from server requires channelId, userId, userLabel');
       }
       if (!cmd.messageId && !cmd.idempotencyKey) {
-        throw new Error('sprint_goal from server requires either messageId or idempotencyKey');
+        throw new BadRequestError('sprint_goal from server requires either messageId or idempotencyKey');
       }
       const task = await discordSource.ingest(
         {

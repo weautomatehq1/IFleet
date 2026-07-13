@@ -577,7 +577,13 @@ function maybeMarkAuditFindingReopened(input: PipelineInput): void {
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
   if (!input.repoRoot) return;
-  const sprintId = input.sprintId ?? input.task.id;
+  // Using task.id as sprintId corrupts sprint-level cost aggregation because the
+  // two IDs have different namespaces. Warn and use a sentinel prefix so the
+  // misuse is detectable in the cost log (AUDIT-IFleet-56e677cf).
+  if (!input.sprintId) {
+    console.warn(`[pipeline] logCosts: sprintId missing for task ${input.task.id} — cost record will use sentinel prefix`);
+  }
+  const sprintId = input.sprintId ?? `orphan-sprint:${input.task.id}`;
   const roleSpec: Record<string, { model: string; provider: string }> = {
     architect: input.routing.architect,
     editor: input.routing.editor,
