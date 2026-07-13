@@ -1,0 +1,50 @@
+{
+  "audit_id": "audit-20260713T000000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-07-13T00:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-8e574f48",
+      "severity": "IMPORTANT",
+      "category": "redo",
+      "title": "classifyTask imported but never used in src/pipeline/factory.ts — blocks lint",
+      "detail": "src/pipeline/factory.ts line 11 imports `classifyTask` from `../classifier/index.js` but never calls it. The function was moved to `src/pipeline/default-routing-strategy.ts` during the routing-strategy extraction refactor (Phase 1 monorepo conversion), but the import was not cleaned up. ESLint reports this as an error (`@typescript-eslint/no-unused-vars`), causing `pnpm lint` to exit 1 and blocking CI.",
+      "file_globs": ["src/pipeline/factory.ts"],
+      "fix_sketch": "Remove `classifyTask` from the import on line 11, keeping `modelToTier` which is still used on line 371.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-13T00:00:00Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-26262db9",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "orchestrator-core package imports back into root src/ via relative paths — breaks package isolation",
+      "detail": "Five production files under `packages/orchestrator-core/src/` import from `../../../../../src/` using raw relative paths: `discord/handlers/interaction-create.ts` pulls from `src/audit/audit-store.js`, `src/orchestrator/approval-gate.js`, `src/orchestrator/goal-proposals-store.js`, and `src/agents/proposer/types.ts`; `workers/adapters/claude-cli.ts` and `workers/adapters/registry.ts` pull from `src/orchestrator/types.ts`. This creates an inverted dependency (the extracted package depends on the app it was extracted from), defeats the purpose of the workspace boundary, and would break any attempt to publish or reuse `@wahq/orchestrator-core` independently. The TypeScript build currently passes only because both packages share the root `tsconfig.json`.",
+      "file_globs": ["packages/orchestrator-core/src/discord/handlers/interaction-create.ts", "packages/orchestrator-core/src/workers/adapters/claude-cli.ts", "packages/orchestrator-core/src/workers/adapters/registry.ts"],
+      "fix_sketch": "Move the IFleet-specific types (`WorkerAdapter`, `WorkerConfig`, `ProposalDecision`) into `packages/orchestrator-core/src/contracts/` so the package owns them; or move the files with cross-package deps (`interaction-create.ts`, `claude-cli.ts`, `registry.ts`) back into root `src/` where they rightfully belong until the contract boundary stabilises. Note in the commit that this is a Phase 1c leftover — breaking API change; coordinate with the Phase 2 roadmap.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-07-13T00:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d1bf88cf",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "InvariantRunner.runCommand spawns Semgrep without env allowlist — inconsistent with hardened subprocess pattern",
+      "detail": "The private `runCommand` method in `src/agents/verifier/invariants.ts` spawns `semgrep` with `spawnOpts` that omits the `env` key, so the child process inherits the full parent `process.env` including `GITHUB_TOKEN`, `IFLEET_HMAC_SECRET`, `ANTHROPIC_API_KEY`, and `DISCORD_BOT_TOKEN`. The rest of the codebase explicitly strips secrets via `verifyChildEnv()` (in `packages/orchestrator-core/src/verify/spawn-util.ts`) and `claudeChildEnv()` (in `packages/orchestrator-core/src/workers/claude-env.ts`) for all other subprocesses.",
+      "file_globs": ["src/agents/verifier/invariants.ts"],
+      "fix_sketch": "Import `verifyChildEnv` from `@wahq/orchestrator-core/verify/spawn-util` and add `env: verifyChildEnv()` to `spawnOpts` in `runCommand()`. Semgrep only needs `PATH`, `HOME`, `TMPDIR` etc. — it does not need GitHub or HMAC tokens.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-13T00:00:00Z",
+      "closed_at": "2026-07-13T00:00:00Z",
+      "closing_pr": null
+    }
+  ]
+}

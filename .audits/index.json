@@ -1,7 +1,7 @@
 {
   "last_updated": "2026-07-13T04:45:00Z",
   "open_count": 12,
-  "fixed_count": 40,
+  "fixed_count": 41,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -14,7 +14,8 @@
     "20260704T040000Z.json",
     "20260707T041832Z.json",
     "20260708T042554Z.json",
-    "20260713T043000Z.json"
+    "20260713T043000Z.json",
+    "20260713T000000Z.json"
   ],
   "open_findings": [
     {
@@ -152,6 +153,7 @@
     "AUDIT-IFleet-b784b402",
     "AUDIT-IFleet-2db02b44",
     "AUDIT-IFleet-5b34d4f6",
-    "AUDIT-IFleet-8986c35b"
+    "AUDIT-IFleet-8986c35b",
+    "AUDIT-IFleet-d1bf88cf"
   ]
 }
