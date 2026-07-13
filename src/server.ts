@@ -169,11 +169,16 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
 
   const shutdown = async (): Promise<void> => {
     console.warn('[control-plane] shutting down');
-    await cp.stop();
-    store.close();
+    try {
+      await cp.stop();
+    } finally {
+      store.close();
+    }
   };
-  process.once('SIGTERM', () => void shutdown().then(() => process.exit(0)));
-  process.once('SIGINT', () => void shutdown().then(() => process.exit(0)));
+  const handleSignal = () =>
+    shutdown().then(() => process.exit(0)).catch(() => process.exit(1));
+  process.once('SIGTERM', handleSignal);
+  process.once('SIGINT', handleSignal);
 
   return { url, port, store, stop: shutdown };
 }

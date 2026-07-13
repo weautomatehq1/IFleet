@@ -684,7 +684,9 @@ export class SprintManager {
         // on schedule to check the rate-reset window, so re-driving here would
         // just be noise.
         if (sprint.state.kind === 'paused') return;
-        this.tick(sprintId).catch(() => undefined);
+        this.tick(sprintId).catch((err) => {
+          console.error('[sprint] scheduleTick tick failed for', sprintId, ':', err);
+        });
       } catch {
         // Store may be closed (e.g. during test teardown) — ignore.
       }

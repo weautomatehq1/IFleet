@@ -176,42 +176,7 @@ function loadDecisions(opts: {
 }
 
 function readAllDecisions(store: TaskStore): PrDecision[] {
-  // Reach into the shared DB handle: `getPrDecisionsByRepo` is the only
-  // public read path today, but the M4-T3 card pipeline genuinely wants
-  // cross-repo. A dedicated `getAllPrDecisions` would be cleaner but is
-  // out of scope for this PR (one concern: reviewer-pref pipeline).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db: import('better-sqlite3').Database = (store as any).db;
-  const rows = db
-    .prepare(
-      `SELECT id, task_id, repo, pr_number, verdict, reviewer_login, merged_at,
-              created_at, fingerprint
-         FROM pr_decisions
-        ORDER BY created_at DESC, rowid DESC
-        LIMIT 50000`,
-    )
-    .all() as Array<{
-      id: string;
-      task_id: string;
-      repo: string;
-      pr_number: number;
-      verdict: string;
-      reviewer_login: string | null;
-      merged_at: number | null;
-      created_at: number;
-      fingerprint: string | null;
-    }>;
-  return rows.map((r) => ({
-    id: r.id,
-    taskId: r.task_id,
-    repo: r.repo,
-    prNumber: r.pr_number,
-    verdict: r.verdict as PrDecision['verdict'],
-    reviewerLogin: r.reviewer_login,
-    mergedAt: r.merged_at,
-    createdAt: r.created_at,
-    fingerprint: r.fingerprint,
-  }));
+  return store.getAllPrDecisions();
 }
 
 export function defaultPrefsDir(): string {
