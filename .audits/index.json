@@ -1,7 +1,7 @@
 {
   "last_updated": "2026-07-14T04:18:39Z",
-  "open_count": 10,
-  "fixed_count": 39,
+  "open_count": 17,
+  "fixed_count": 53,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -42,6 +42,60 @@
       "file_globs": ["packages/orchestrator-core/src/workers/claude.ts"]
     },
     {
+      "id": "AUDIT-IFleet-2a3f1b4c",
+      "severity": "IMPORTANT",
+      "title": "pendingCount for rate-limit check uses stale pre-dispatch task snapshot instead of freshTasks",
+      "file_globs": ["src/orchestrator/sprint.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-a0ece77d",
+      "severity": "IMPORTANT",
+      "title": "markCompleted receives empty string instead of undefined/null when no PR was opened",
+      "file_globs": ["src/orchestrator/handlers/sprint-bridge.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-e73634a4",
+      "severity": "IMPORTANT",
+      "title": "VerifierController hardcodes repoSlug as 'IFleet' regardless of which client repo is being built",
+      "file_globs": ["src/orchestrator/daemon.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-fda64c57",
+      "severity": "IMPORTANT",
+      "title": "Verifier runner has no timeout — a hanging CI subprocess blocks the sprint indefinitely",
+      "file_globs": ["packages/orchestrator-core/src/verify/runner.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-9fc5341e",
+      "severity": "IMPORTANT",
+      "title": "autoApproveProposals re-resolves threshold independently, creating a corruptible audit trail",
+      "file_globs": ["src/agents/proposer/auto-approve.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-b4bc6383",
+      "severity": "IMPORTANT",
+      "title": "Fleet PAUSED flag path falls back to process.cwd(), causing daemon/cron mismatch",
+      "file_globs": ["src/orchestrator/fleet-control.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-e365866b",
+      "severity": "IMPORTANT",
+      "title": "onCancel swallows all store.updateState errors, masking disk and DB failures",
+      "file_globs": ["src/orchestrator/handlers/control-plane.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-365b889b",
+      "severity": "IMPORTANT",
+      "title": "Auto-approve leaves a dangling 'approved' proposal when control plane returns accepted=true but no taskId",
+      "file_globs": ["src/agents/proposer/auto-approve.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-3f69328f",
+      "severity": "IMPORTANT",
+      "title": "Dashboard startup logs expose full DB filesystem paths including local username",
+      "file_globs": ["dashboard/server.ts"]
+    },
+    {
       "id": "AUDIT-IFleet-f820fdb9",
       "severity": "COSMETIC",
       "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
@@ -75,8 +129,37 @@
       "id": "AUDIT-IFleet-4abde52c",
       "severity": "COSMETIC",
       "title": "candidate-gen.ts unused _cfg parameter signal",
-      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
-      "status": "open"
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-db9b0e3d",
+      "severity": "COSMETIC",
+      "title": "Redundant JS state.kind filter after SQL WHERE clause in listSprintsByStateKind",
+      "file_globs": ["src/orchestrator/store.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-2a0373e7",
+      "severity": "COSMETIC",
+      "title": "lastPausedAt boolean variable in runTickLoop is named as if it holds a timestamp",
+      "file_globs": ["src/orchestrator/handlers/sprint-bridge.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-a86bccf6",
+      "severity": "COSMETIC",
+      "title": "forceExplored telemetry count includes already-dropped candidates, overstating the value",
+      "file_globs": ["src/agents/proposer/scorer.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-1d9c1f7c",
+      "severity": "COSMETIC",
+      "title": "resolveTaskIdFromMessage permanently returns null, silently disabling message-to-task routing",
+      "file_globs": ["src/orchestrator/daemon.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-5138c0d3",
+      "severity": "COSMETIC",
+      "title": "briefPreview in listTaskQueue always shows JSON envelope bytes, never the human-readable task description",
+      "file_globs": ["dashboard/server.ts"]
     }
   ],
   "fixed_findings": [
@@ -103,6 +186,11 @@
     "AUDIT-IFleet-56e677cf",
     "AUDIT-IFleet-ff177eeb",
     "AUDIT-IFleet-8485d061",
-    "AUDIT-IFleet-c9e1f803"
+    "AUDIT-IFleet-c9e1f803",
+    "AUDIT-IFleet-ff16d7cc",
+    "AUDIT-IFleet-85bf481d",
+    "AUDIT-IFleet-c86cfad3",
+    "AUDIT-IFleet-1061c4f5",
+    "AUDIT-IFleet-2a972511"
   ]
 }
