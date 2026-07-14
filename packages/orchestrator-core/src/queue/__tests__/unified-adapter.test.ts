@@ -147,20 +147,27 @@ describe('UnifiedQueueAdapter', () => {
       const discord = mockSource('discord');
       const adapter = new UnifiedQueueAdapter(store, { github, discord });
 
+      // Pick tasks to in_flight before marking complete/failed — markCompleted
+      // and markFailed now require fromState='in_flight' to guard against
+      // concurrent state overwrites (AUDIT-IFleet-918842f6).
+      await adapter.pickNext();  // picks tGh (github, inserted first)
+      await adapter.pickNext();  // picks tDc (discord)
+
       await adapter.markCompleted(tGh, 'https://pr/1');
       assert.equal(store.getById('tg')?.state, 'done');
-      assert.deepEqual(github.calls, ['completed:tg:https://pr/1']);
+      assert.deepEqual(github.calls.filter(c => c.startsWith('completed')), ['completed:tg:https://pr/1']);
 
       await adapter.markFailed(tDc, 'boom');
       assert.equal(store.getById('td')?.state, 'failed');
-      assert.deepEqual(discord.calls, ['failed:td:boom']);
+      assert.deepEqual(discord.calls.filter(c => c.startsWith('failed')), ['failed:td:boom']);
 
       // Re-insert because the previous discord task is in 'failed' state.
       const tDc2 = discordTask('td2');
       store.insert(tDc2);
+      await adapter.pickNext();  // picks tDc2
       await adapter.markBlocked(tDc2, 'docker');
       assert.equal(store.getById('td2')?.state, 'blocked');
-      assert.deepEqual(discord.calls.slice(-1), ['blocked:td2:docker']);
+      assert.deepEqual(discord.calls.filter(c => c.startsWith('blocked')), ['blocked:td2:docker']);
     } finally {
       cleanup();
     }
@@ -175,6 +182,7 @@ describe('UnifiedQueueAdapter', () => {
       const discord = mockSource('discord');
       const adapter = new UnifiedQueueAdapter(store, { github, discord });
 
+      await adapter.pickNext();  // move to in_flight before marking complete
       await adapter.markCompleted(t, 'https://github.com/org/repo/pull/77');
 
       // pr_decisions are written by daemon.ts wireSprintCompletion, not by the adapter.

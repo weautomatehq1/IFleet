@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-07-08T04:25:54Z",
-  "open_count": 21,
-  "fixed_count": 31,
+  "last_updated": "2026-07-13T08:15:00Z",
+  "open_count": 13,
+  "fixed_count": 42,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -13,7 +13,9 @@
     "20260701T040000Z.json",
     "20260704T040000Z.json",
     "20260707T041832Z.json",
-    "20260708T042554Z.json"
+    "20260708T042554Z.json",
+    "20260713T000000Z.json",
+    "20260713T043000Z.json"
   ],
   "open_findings": [
     {
@@ -83,6 +85,12 @@
       "file_globs": ["src/workers/claude.ts"]
     },
     {
+      "id": "AUDIT-IFleet-26262db9",
+      "severity": "IMPORTANT",
+      "title": "orchestrator-core package imports back into root src/ via relative paths — breaks package isolation",
+      "file_globs": ["packages/orchestrator-core/src/discord/handlers/interaction-create.ts", "packages/orchestrator-core/src/workers/adapters/claude-cli.ts", "packages/orchestrator-core/src/workers/adapters/registry.ts"]
+    },
+    {
       "id": "AUDIT-IFleet-f820fdb9",
       "severity": "COSMETIC",
       "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
@@ -119,56 +127,10 @@
       "file_globs": ["src/discord/audit-runner.ts"]
     },
     {
-      "id": "AUDIT-IFleet-a493f7b4",
-      "severity": "CRITICAL",
-      "title": "Math.max(1, NaN) propagates NaN as maxAttempts — stale tasks never recovered",
-      "file_globs": ["src/queue/store.ts"],
-      "status": "fixed",
-      "closed_at": "2026-07-08T04:25:54Z",
-      "closing_pr": "audit/nightly-2026-07-08"
-    },
-    {
-      "id": "AUDIT-IFleet-c75a7d98",
-      "severity": "CRITICAL",
-      "title": "buildCodexArgs passes brief directly as positional arg — brief starting with '-' treated as flag",
-      "file_globs": ["src/workers/codex.ts"],
-      "status": "fixed",
-      "closed_at": "2026-07-08T04:25:54Z",
-      "closing_pr": "audit/nightly-2026-07-08"
-    },
-    {
-      "id": "AUDIT-IFleet-2db9fd7e",
-      "severity": "IMPORTANT",
-      "title": "awaitApproval second call overwrites first deferred — first caller promise leaks permanently",
-      "file_globs": ["src/orchestrator/approval-gate.ts"],
-      "status": "fixed",
-      "closed_at": "2026-07-08T04:25:54Z",
-      "closing_pr": "audit/nightly-2026-07-08"
-    },
-    {
-      "id": "AUDIT-IFleet-718c5ee0",
-      "severity": "IMPORTANT",
-      "title": "auto-router.ts hashInput excludes repoRoot — cross-repo cache collision returns wrong routing decision",
-      "file_globs": ["src/classifier/auto-router.ts"],
-      "status": "fixed",
-      "closed_at": "2026-07-08T04:25:54Z",
-      "closing_pr": "audit/nightly-2026-07-08"
-    },
-    {
-      "id": "AUDIT-IFleet-549d6843",
-      "severity": "IMPORTANT",
-      "title": "audit-ritual.ts execSync interpolates indexPath into shell string — command injection on unsafe repo paths",
-      "file_globs": ["scripts/audit-ritual.ts"],
-      "status": "fixed",
-      "closed_at": "2026-07-08T04:25:54Z",
-      "closing_pr": "audit/nightly-2026-07-08"
-    },
-    {
       "id": "AUDIT-IFleet-4abde52c",
       "severity": "COSMETIC",
       "title": "candidate-gen.ts unused _cfg parameter signal",
-      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
-      "status": "open"
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"]
     }
   ],
   "fixed_findings": [
@@ -187,6 +149,17 @@
     "AUDIT-IFleet-c75a7d98",
     "AUDIT-IFleet-2db9fd7e",
     "AUDIT-IFleet-718c5ee0",
-    "AUDIT-IFleet-549d6843"
+    "AUDIT-IFleet-549d6843",
+    "AUDIT-IFleet-db1307c7",
+    "AUDIT-IFleet-46ae9e11",
+    "AUDIT-IFleet-453c5d53",
+    "AUDIT-IFleet-d19f383a",
+    "AUDIT-IFleet-918842f6",
+    "AUDIT-IFleet-b784b402",
+    "AUDIT-IFleet-2db02b44",
+    "AUDIT-IFleet-5b34d4f6",
+    "AUDIT-IFleet-8986c35b",
+    "AUDIT-IFleet-8e574f48",
+    "AUDIT-IFleet-d1bf88cf"
   ]
 }

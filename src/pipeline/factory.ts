@@ -8,7 +8,7 @@ import { buildShadowObservations } from '../agents/bandit/observations.js';
 import { KNOWN_MODEL_IDS } from '../agents/bandit/known-arms.js';
 import { resolveRoutingModel } from '../agents/bandit/live.js';
 import { setRoutingDecision } from '../agents/bandit/store-extensions.js';
-import { classifyTask, modelToTier } from '../classifier/index.js';
+import { modelToTier } from '../classifier/index.js';
 import { writeRoutingDecisionLog } from '../orchestrator/closure-log.js';
 import {
   decodeBridgeBrief,

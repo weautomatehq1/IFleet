@@ -577,6 +577,14 @@ function maybeMarkAuditFindingReopened(input: PipelineInput): void {
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
   if (!input.repoRoot) return;
+  // AUDIT-IFleet-56e677cf: warn when sprintId is absent — silently falling back to
+  // task.id corrupts per-sprint cost aggregation because multiple tasks can belong
+  // to the same sprint but each would appear under its own ad-hoc "sprint" ID.
+  if (!input.sprintId) {
+    console.warn(
+      `[pipeline] logCosts: input.sprintId absent for task ${input.task.id} — cost records will be keyed by task.id, not a real sprint ID`,
+    );
+  }
   const sprintId = input.sprintId ?? input.task.id;
   const roleSpec: Record<string, { model: string; provider: string }> = {
     architect: input.routing.architect,

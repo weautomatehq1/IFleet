@@ -21,6 +21,7 @@ import { spawn, type SpawnOptions } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { verifyChildEnv } from '@wahq/orchestrator-core/verify/spawn-util';
 import { parseSemgrepJsonOutput } from './failure-parser.js';
 import type { VerifierFailure } from './types.js';
 
@@ -164,6 +165,11 @@ export class InvariantRunner {
       const spawnOpts: SpawnOptions = {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
+        // Strip secrets from the child env — Semgrep must not inherit
+        // GITHUB_TOKEN, IFLEET_HMAC_SECRET, ANTHROPIC_API_KEY, etc.
+        // Mirrors the allowlist applied to all other subprocess paths.
+        // (AUDIT-IFleet-d1bf88cf)
+        env: verifyChildEnv(),
       };
       const child = this.spawnFn(cmd, args, spawnOpts);
       const chunks: Buffer[] = [];

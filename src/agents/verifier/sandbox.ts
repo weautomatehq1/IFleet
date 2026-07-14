@@ -299,6 +299,13 @@ export class DockerSandboxRunner implements SandboxRunner {
         }
         if (!outcome.report.ok) {
           allFailures.push(...outcome.failures);
+          // Check timedOut BEFORE the fatal break so that a timeout on any
+          // phase (including fatal ones like install/build/test) is correctly
+          // propagated to computeStatus() as 'timeout' (AUDIT-IFleet-46ae9e11).
+          if (outcome.timedOut) {
+            timedOut = true;
+            break;
+          }
           if (isPhaseFatal(kind)) {
             hadHardFailure = true;
             break;
@@ -357,7 +364,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     envFilePath?: string,
   ): Promise<PhaseRunOutcome> {
     const startedAt = this.now();
-    const argv = buildPhaseArgv(kind);
+    const argv = buildPhaseArgv(kind, useFallback);
     const command = useFallback ? this.pnpmBin : this.dockerBin;
     const args = useFallback ? argv : buildDockerArgs(this.image, worktreePath, this.memoryMb, argv, envFilePath, kind === 'install');
     const result = await this.runCommand(command, args, {
@@ -507,10 +514,16 @@ function planPhases(pkg: PackageJsonScripts): PhasePlan {
   return { phases, partial };
 }
 
-function buildPhaseArgv(kind: VerifierFailureKind): string[] {
+function buildPhaseArgv(kind: VerifierFailureKind, hostFallback = false): string[] {
   switch (kind) {
     case 'install':
-      return ['install', '--frozen-lockfile', '--prefer-offline', '--store-dir', '/root/.pnpm-store'];
+      // --store-dir /root/.pnpm-store is correct inside the Docker container
+      // image. When running on the host (useFallback=true), non-root processes
+      // cannot write to /root/.pnpm-store (EACCES). Omit --store-dir in
+      // fallback mode so pnpm uses the default user store (AUDIT-IFleet-db1307c7).
+      return hostFallback
+        ? ['install', '--frozen-lockfile', '--prefer-offline']
+        : ['install', '--frozen-lockfile', '--prefer-offline', '--store-dir', '/root/.pnpm-store'];
     case 'build':
     case 'typecheck':
     case 'lint':

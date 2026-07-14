@@ -305,14 +305,14 @@ export class TaskStore {
   }
 
   insert(task: QueuedTask): InsertResult {
-    const existing = this.findByIdempotencyKey(task.idempotencyKey);
-    if (existing) return { inserted: false, existing };
-
     const priority = normalizePriority(task.routingHints?.priority);
-    this.db
+    // Use INSERT OR IGNORE so the SELECT+INSERT is atomic — concurrent processes
+    // sharing the SQLite file cannot both INSERT the same idempotency_key and
+    // produce a SQLITE_CONSTRAINT_UNIQUE throw (AUDIT-IFleet-453c5d53).
+    const result = this.db
       .prepare(
-        `INSERT INTO tasks (id, source_kind, source_data, repo, brief, title, routing_hints,
-                            state, state_meta, idempotency_key, created_at, priority, mode)
+        `INSERT OR IGNORE INTO tasks (id, source_kind, source_data, repo, brief, title, routing_hints,
+                                      state, state_meta, idempotency_key, created_at, priority, mode)
          VALUES (@id, @source_kind, @source_data, @repo, @brief, @title, @routing_hints,
                  @state, @state_meta, @idempotency_key, @created_at, @priority, @mode)`,
       )
@@ -331,6 +331,9 @@ export class TaskStore {
         priority,
         mode: task.mode ?? null,
       });
+    if (result.changes === 0) {
+      return { inserted: false, existing: this.findByIdempotencyKey(task.idempotencyKey) ?? undefined };
+    }
     return { inserted: true };
   }
 
@@ -619,8 +622,54 @@ export class TaskStore {
     };
   }
 
+  /**
+   * Fetch all PR decisions across all repos, newest first.
+   * Used by the reviewer-prefs pipeline which needs cross-repo data.
+   * Callers should supply a limit; default 50 000 matches historical usage
+   * (AUDIT-IFleet-8986c35b — avoids as-any cast against the private db field).
+   */
+  getAllPrDecisions(limit = 50_000): PrDecision[] {
+    const VALID_VERDICTS = new Set<string>(['merged', 'rejected', 'abandoned']);
+    const rows = this.db
+      .prepare(
+        `SELECT id, task_id, repo, pr_number, verdict, reviewer_login, merged_at,
+                created_at, fingerprint
+           FROM pr_decisions
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT @limit`,
+      )
+      .all({ limit }) as Array<{
+        id: string;
+        task_id: string;
+        repo: string;
+        pr_number: number;
+        verdict: string;
+        reviewer_login: string | null;
+        merged_at: number | null;
+        created_at: number;
+        fingerprint: string | null;
+      }>;
+    return rows.map((r) => {
+      if (!VALID_VERDICTS.has(r.verdict)) {
+        throw new Error(`getAllPrDecisions: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+      }
+      return {
+        id: r.id,
+        taskId: r.task_id,
+        repo: r.repo,
+        prNumber: r.pr_number,
+        verdict: r.verdict as PrVerdict,
+        reviewerLogin: r.reviewer_login,
+        mergedAt: r.merged_at,
+        createdAt: r.created_at,
+        fingerprint: r.fingerprint,
+      };
+    });
+  }
+
   /** Fetch all PR decisions for a repo, newest first. */
   getPrDecisionsByRepo(repo: string, limit = 100): PrDecision[] {
+    const VALID_VERDICTS = new Set<string>(['merged', 'rejected', 'abandoned']);
     const rows = this.db
       .prepare(
         `SELECT * FROM pr_decisions WHERE repo = @repo ORDER BY created_at DESC, rowid DESC LIMIT @limit`,
@@ -636,17 +685,22 @@ export class TaskStore {
         created_at: number;
         fingerprint: string | null;
       }>;
-    return rows.map((r) => ({
-      id: r.id,
-      taskId: r.task_id,
-      repo: r.repo,
-      prNumber: r.pr_number,
-      verdict: r.verdict as PrVerdict,
-      reviewerLogin: r.reviewer_login,
-      mergedAt: r.merged_at,
-      createdAt: r.created_at,
-      fingerprint: r.fingerprint,
-    }));
+    return rows.map((r) => {
+      if (!VALID_VERDICTS.has(r.verdict)) {
+        throw new Error(`getPrDecisionsByRepo: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+      }
+      return {
+        id: r.id,
+        taskId: r.task_id,
+        repo: r.repo,
+        prNumber: r.pr_number,
+        verdict: r.verdict as PrVerdict,
+        reviewerLogin: r.reviewer_login,
+        mergedAt: r.merged_at,
+        createdAt: r.created_at,
+        fingerprint: r.fingerprint,
+      };
+    });
   }
 
   /**

@@ -3,6 +3,19 @@ import { buildSigningPayload, signPayload, verifyPayload } from '../contracts/hm
 import type { QueueAdapter } from './types.js';
 
 /**
+ * Thrown by onSprintGoal handlers when the caller's request is malformed
+ * (missing required Discord-source fields, duplicate dedup keys, etc.).
+ * The HTTP layer catches this and returns 400 Bad Request rather than 500.
+ * (AUDIT-IFleet-2fdb1535)
+ */
+export class ControlPlaneValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ControlPlaneValidationError';
+  }
+}
+
+/**
  * Server-internal command type used for JSON parsing and dispatch.
  * Canonical client-facing contract lives in {@link src/contracts/control-plane-client.ts}.
  * The two types differ: this one flattens Discord-source fields directly onto each variant;
@@ -281,6 +294,15 @@ async function handleRequest(
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ ok: true, type: command.type, ...result }));
     } catch (err) {
+      // Validation errors from the handler are the caller's fault — 400, not 500.
+      // (AUDIT-IFleet-2fdb1535)
+      if (err instanceof ControlPlaneValidationError) {
+        if (!res.headersSent) {
+          res.statusCode = 400;
+          res.end(err.message);
+        }
+        return;
+      }
       console.error('[control-plane] sprint_goal handler failed:', err);
       if (!res.headersSent) {
         res.statusCode = 500;
