@@ -1,0 +1,107 @@
+{
+  "run_at": "2026-07-14T04:18:39Z",
+  "branch": "audit/nightly-2026-07-14",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-ff177eeb",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
+      "description": "findLabelAddedAt used octokit.paginate() with no termination guard, fetching every page of events for an issue. On a long-lived issue with many events this causes unnecessary API quota consumption and latency. Fixed by switching to paginate.iterator() with a MAX_PAGES=10 cap (1000 events), tracking the latest labeled event across all pages.",
+      "file_globs": ["src/queue/github.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14"
+    },
+    {
+      "id": "AUDIT-IFleet-8485d061",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "DockerSandboxRunner falls back to in-worktree execution without requiring IFLEET_ALLOW_SANDBOX_FALLBACK in non-production environments",
+      "description": "sandbox.ts only required IFLEET_ALLOW_SANDBOX_FALLBACK when NODE_ENV=production. In development/test environments with Docker unavailable, it silently fell back to in-worktree execution. This means untrusted code from AI-generated patches could run directly on the host filesystem. Fixed by removing the NODE_ENV guard — IFLEET_ALLOW_SANDBOX_FALLBACK is now required in ALL environments.",
+      "file_globs": ["src/agents/verifier/sandbox.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14"
+    },
+    {
+      "id": "AUDIT-IFleet-d2de0aca",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "DockerSandboxRunner forces --user root in Docker container, defeating image-level user hardening",
+      "description": "buildDockerArgs() passed '--user', 'root' to every docker run invocation. This overrides any non-root USER set in the verifier Docker image, running sandboxed code as root inside the container. Fixed by removing the --user root flags and letting the image's own USER directive apply.",
+      "file_globs": ["src/agents/verifier/sandbox.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14"
+    },
+    {
+      "id": "AUDIT-IFleet-ff8faf70",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
+      "description": "appendCostRecord used a bare fs.appendFile with no serialization. Multiple concurrent pipeline phases (architect/editor/reviewer) all appending at once could interleave partial lines, producing malformed NDJSON that readCostLog silently skips. Fixed by adding a module-level per-file promise-chain queue so appends serialize without blocking the event loop.",
+      "file_globs": ["src/utils/costs.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14"
+    },
+    {
+      "id": "AUDIT-IFleet-56e677cf",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
+      "description": "When PipelineInput.sprintId is absent (all factory.ts task runs), logCosts fell back to input.task.id as the sprintId. This caused summarizeCosts() to bucket every standalone task run under a fake sprint matching the task's issue number, making sprint totals meaningless. Fixed by using 'task:<id>' prefix so task-level costs aggregate separately from sprint costs.",
+      "file_globs": ["src/pipeline/runner.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14"
+    },
+    {
+      "id": "AUDIT-IFleet-c9e1f803",
+      "severity": "COSMETIC",
+      "category": "logic",
+      "title": "audit-runner.ts markFindingsClosed batch path skips per-fingerprint dedup that appendToClosedJson uses",
+      "description": "appendToClosedJson filters out duplicate fingerprints before appending, but the batch path in markFindingsClosed pushed all records directly into cdata.closures without the same check. On repeated audit runs this could produce duplicate closure records in closed.json. Fixed by adding equivalent Set-based dedup to the batch path.",
+      "file_globs": ["packages/orchestrator-core/src/discord/audit-runner.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14"
+    },
+    {
+      "id": "AUDIT-IFleet-2fdb1535",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "sprint_goal missing required fields return 500 instead of 4xx (fixed by monorepo refactor)",
+      "description": "The original finding was in src/queue/control-plane.ts (now removed). The refactored code in packages/orchestrator-core/src/queue/control-plane.ts properly throws from parseCommand() which the HTTP handler catches and converts to 400. The path referenced in this finding no longer exists.",
+      "file_globs": ["packages/orchestrator-core/src/queue/control-plane.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14",
+      "notes": "Fixed by Phase 1c monorepo refactor (PR #421), not by this audit run directly."
+    },
+    {
+      "id": "AUDIT-IFleet-202b928c",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "TaskStore insert never persists the attempts column it relies on (fixed by monorepo refactor)",
+      "description": "The original finding was in src/queue/store.ts (now removed). The refactored code in packages/orchestrator-core/src/queue/store.ts uses DEFAULT 0 in the ALTER TABLE migration so all new rows get attempts=0 correctly. The path referenced in this finding no longer exists.",
+      "file_globs": ["packages/orchestrator-core/src/queue/store.ts"],
+      "parallel_safe": true,
+      "status": "fixed",
+      "closed_at": "2026-07-14T04:18:39Z",
+      "closing_pr": "audit/nightly-2026-07-14",
+      "notes": "Fixed by Phase 1c monorepo refactor (PR #421), not by this audit run directly."
+    }
+  ],
+  "open_count_after": 10,
+  "fixed_this_run": 8,
+  "notes": "6 code fixes applied directly; 2 findings (2fdb1535, 202b928c) closed as fixed-by-refactor (the referenced source paths no longer exist). Test mock for octokit.paginate updated to add .iterator async-generator method after findLabelAddedAt fix changed from paginate() to paginate.iterator()."
+}

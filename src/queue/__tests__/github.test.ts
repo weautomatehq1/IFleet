@@ -99,7 +99,7 @@ function makeState(issues: FakeIssue[]): MockState {
 
 /**
  * Extended mock with events support for sweepCooldowns tests.
- * `findLabelAddedAt` uses `octokit.paginate(octokit.issues.listEvents, ...)`.
+ * `findLabelAddedAt` uses `octokit.paginate.iterator(octokit.issues.listEvents, ...)`.
  * The base mock routes all `issue_number` paginate calls to comments — this
  * version routes `listEvents` calls to the events table instead.
  */
@@ -138,6 +138,28 @@ function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
       return wanted.every((w) => have.includes(w));
     });
   };
+
+  async function* paginateIterator(
+    fn: unknown,
+    params: { labels?: string; issue_number?: number },
+  ): AsyncGenerator<{ data: unknown[] }> {
+    let data: unknown[];
+    if (fn === listEvents && params.issue_number !== undefined) {
+      data = state.events.filter((e) => e.issue === params.issue_number);
+    } else if (params.issue_number !== undefined) {
+      data = state.comments.filter((c) => c.issue === params.issue_number);
+    } else {
+      data = state.issues.filter((i) => {
+        if (!params.labels) return true;
+        const wanted = params.labels.split(',');
+        const have = i.labels.map((l) => (typeof l === 'string' ? l : l.name ?? ''));
+        return wanted.every((w) => have.includes(w));
+      });
+    }
+    yield { data };
+  }
+
+  (paginate as unknown as Record<string, unknown>).iterator = paginateIterator;
 
   return {
     paginate,

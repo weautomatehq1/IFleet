@@ -577,7 +577,7 @@ function maybeMarkAuditFindingReopened(input: PipelineInput): void {
 
 async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promise<void> {
   if (!input.repoRoot) return;
-  const sprintId = input.sprintId ?? input.task.id;
+  const sprintId = input.sprintId ?? `task:${input.task.id}`;
   const roleSpec: Record<string, { model: string; provider: string }> = {
     architect: input.routing.architect,
     editor: input.routing.editor,
