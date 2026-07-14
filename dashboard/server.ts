@@ -20,7 +20,7 @@ const TASKS_DB =
 const STATE_DB =
   process.env['DASHBOARD_STATE_DB'] ?? join(homedir(), '.omc', 'ifleet', 'state.db');
 
-const TERMINAL_SPRINT_KINDS = new Set(['failed', 'completed', 'cancelled', 'aborted']);
+const TERMINAL_SPRINT_KINDS = new Set(['failed', 'completed', 'cancelled']);
 
 export interface DashboardServerOptions {
   port?: number;
@@ -84,7 +84,8 @@ export function listActiveSprints(stateDb: Database.Database) {
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
-        ORDER BY updated_at DESC`,
+        ORDER BY updated_at DESC
+        LIMIT 500`,
     )
     .all() as SprintRow[];
   return rows

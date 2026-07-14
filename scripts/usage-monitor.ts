@@ -31,17 +31,20 @@ const DISCORD_CHANNEL_ID =
 // Max entries per 5-hour block (Claude API billing window). Configurable via
 // CCUSAGE_BLOCK_CAP; legacy IFLEET_BLOCK_CAP kept as fallback so VPS configs
 // that pre-date the rename keep working. Default 1000.
-const BLOCK_CAP = parseInt(
+const _blockCapRaw = parseInt(
   process.env.CCUSAGE_BLOCK_CAP ?? process.env.IFLEET_BLOCK_CAP ?? '1000',
   10,
 );
+const BLOCK_CAP = Number.isFinite(_blockCapRaw) ? _blockCapRaw : (console.warn('[usage-monitor] CCUSAGE_BLOCK_CAP is not a valid integer — using default 1000'), 1000);
 // Max entries per 7-day window (Claude API billing cycle). Same dual-name
 // pattern as BLOCK_CAP. Default 20000.
-const WEEKLY_CAP = parseInt(
+const _weeklyCapRaw = parseInt(
   process.env.CCUSAGE_WEEKLY_CAP ?? process.env.IFLEET_WEEKLY_CAP ?? '20000',
   10,
 );
-const ALERT_THRESHOLD = parseFloat(process.env.CCUSAGE_ALERT_THRESHOLD ?? '0.8');
+const WEEKLY_CAP = Number.isFinite(_weeklyCapRaw) ? _weeklyCapRaw : (console.warn('[usage-monitor] CCUSAGE_WEEKLY_CAP is not a valid integer — using default 20000'), 20000);
+const _alertThresholdRaw = parseFloat(process.env.CCUSAGE_ALERT_THRESHOLD ?? '0.8');
+const ALERT_THRESHOLD = Number.isFinite(_alertThresholdRaw) ? _alertThresholdRaw : (console.warn('[usage-monitor] CCUSAGE_ALERT_THRESHOLD is not a valid number — using default 0.8'), 0.8);
 
 // Where .ifleet/usage/<date>.json rows are written. Defaults to the repo root
 // relative to this script (two directories up from scripts/).
@@ -114,7 +117,13 @@ export async function fetchCcusageBlocks(): Promise<CcusageOutput> {
     args = ['--yes', 'ccusage', 'blocks', '--json'];
   }
   const { stdout } = await execFileAsync(cmd, args, { timeout: 30_000 });
-  return JSON.parse(stdout) as CcusageOutput;
+  try {
+    return JSON.parse(stdout) as CcusageOutput;
+  } catch {
+    throw new Error(
+      `ccusage output is not valid JSON — raw output: ${stdout.slice(0, 500)}`,
+    );
+  }
 }
 
 // ---- analysis --------------------------------------------------------------

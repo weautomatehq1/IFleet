@@ -139,6 +139,8 @@ describe('DockerSandboxRunner', () => {
   });
 
   it('runs all configured phases via the fallback path when docker is down', async () => {
+    const prev = process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
+    process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = '1';
     const dir = makeWorktree({
       scripts: { build: 'echo build', typecheck: 'echo tc', lint: 'echo lint', test: 'echo test' },
     });
@@ -158,10 +160,14 @@ describe('DockerSandboxRunner', () => {
       expect(result.phases?.length ?? 0).toBeGreaterThanOrEqual(5);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+      if (prev === undefined) delete process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
+      else process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = prev;
     }
   });
 
   it('marks status partial when no test script is present', async () => {
+    const prev = process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
+    process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = '1';
     const dir = makeWorktree({
       scripts: { build: 'echo build', typecheck: 'echo tc', lint: 'echo lint' },
     });
@@ -182,10 +188,14 @@ describe('DockerSandboxRunner', () => {
       expect(testPhase?.skipped).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+      if (prev === undefined) delete process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
+      else process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = prev;
     }
   });
 
   it('reports failed on a tsc red phase and stops the chain', async () => {
+    const prev = process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
+    process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = '1';
     const dir = makeWorktree({
       scripts: { build: 'echo', typecheck: 'tsc', lint: 'eslint', test: 'vitest' },
     });
@@ -204,6 +214,8 @@ describe('DockerSandboxRunner', () => {
       expect(result.phases?.some((p) => p.kind === 'test' && !p.skipped)).toBeFalsy();
     } finally {
       rmSync(dir, { recursive: true, force: true });
+      if (prev === undefined) delete process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'];
+      else process.env['IFLEET_ALLOW_SANDBOX_FALLBACK'] = prev;
     }
   });
 

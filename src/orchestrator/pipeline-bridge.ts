@@ -148,10 +148,16 @@ export class PipelineBridge implements WorkerAdapter {
   async spawn(taskId: TaskId, brief: string, opts: SpawnOpts): Promise<SpawnHandle> {
     const bootstrap = await this.factory(taskId, brief, opts);
     const workerId = bootstrap.workerId ?? 'pipeline';
-    const abortController = bootstrap.abortController;
-
-    if (!abortController) {
-      console.warn(`[PipelineBridge] taskId=${taskId} — no abortController in bootstrap; cancellation will be a no-op`);
+    const abortController = bootstrap.abortController ?? new AbortController();
+    if (!bootstrap.abortController) {
+      // The factory did not provide an abortController. A default one is created
+      // so cancel() has something to signal, but the inner runner will not
+      // observe it unless bootstrap.input also carries the same signal. Add
+      // abortController to the PipelineRunBootstrap to make cancellation work
+      // end-to-end.
+      console.warn(
+        `[PipelineBridge] taskId=${taskId} — factory returned no abortController; inner runner will not observe cancellation signal`,
+      );
     }
 
     const done = this.execute(taskId, workerId, bootstrap);
