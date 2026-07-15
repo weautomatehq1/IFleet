@@ -244,9 +244,15 @@ async function handleAuditFix(
     return;
   }
 
+  // Limit auto-dispatch batch size to avoid flooding the task store.
+  // A worker runs one task at a time; queuing more than this at once
+  // just blocks them behind each other with no benefit.
+  const AUTO_BATCH_CAP = 10;
+
   const auto = lowerArg === 'auto';
+  const allOpen = auto ? openFindings(index) : [];
   const targets = auto
-    ? openFindings(index)
+    ? allOpen.slice(0, AUTO_BATCH_CAP)
     : index.findings.filter((f) => f.id === rawArg);
 
   if (auto && targets.length === 0) {
@@ -348,7 +354,8 @@ async function handleAuditFix(
     }
   }
 
-  await interaction.editReply(formatAuditFixReply(auto, rawArg, queued, failed, lastAck));
+  const skipped = auto ? Math.max(0, allOpen.length - AUTO_BATCH_CAP) : 0;
+  await interaction.editReply(formatAuditFixReply(auto, rawArg, queued, failed, lastAck, skipped));
 }
 
 function formatAuditFixReply(
@@ -357,6 +364,7 @@ function formatAuditFixReply(
   queued: string[],
   failed: string[],
   lastAck: ControlPlaneAck | undefined,
+  skipped = 0,
 ): string {
   if (auto) {
     if (queued.length === 0) {
@@ -365,6 +373,9 @@ function formatAuditFixReply(
     let reply = `Queued ${queued.length} findings. IFleet will open one PR per finding — check back in #ifleet.`;
     if (failed.length > 0) {
       reply += `\n⚠ ${failed.length} failed to queue and were left open.`;
+    }
+    if (skipped > 0) {
+      reply += `\n⏭ ${skipped} remaining findings skipped (batch cap ${queued.length + failed.length}/${queued.length + failed.length + skipped}). Run again to continue.`;
     }
     return reply;
   }
