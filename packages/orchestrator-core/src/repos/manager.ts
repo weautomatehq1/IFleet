@@ -242,7 +242,10 @@ async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
       }
     });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    // `code` is null when git was killed by a signal (OOM, SIGKILL, timeout).
+    // Fall back to 128 (conventional "killed by signal" exit) so callers throw
+    // rather than treating a partially-written git dir as success.
+    child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 128 : 0), stdout, stderr }));
   });
 }
 

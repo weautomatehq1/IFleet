@@ -128,12 +128,12 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     },
     onApprove: async (taskId) => {
       // approve requires the in-process ControlPlaneApprovalGate that only the
-      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
-      // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
-      );
+      // daemon owns (pure in-memory; no DB polling). Throwing here returns 500
+      // so the caller knows the command was NOT processed — a silent 202 would
+      // imply success when nothing happened (AUDIT-IFleet-185399bf fix).
+      const msg = `approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`;
+      console.error(`[control-plane] ${msg}`);
+      throw new Error(msg);
     },
     onCancel: async (taskId, reason) => {
       // Partial action only: marks the task blocked in the store, but does NOT
@@ -146,19 +146,19 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       );
       store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });
     },
-    // verify / force_pr require the in-process verifier + orchestrator wiring
-    // that only the daemon owns. If they reach this public entry, log loudly
-    // but do not throw — a throw after res.json(202) produces an unhandled
-    // exception log with no useful recovery path (AUDIT-IFleet-185399bf).
     onVerify: async (taskId) => {
-      console.error(
-        `[control-plane] verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
-      );
+      // verify requires the in-process verifier + orchestrator wiring that only
+      // the daemon owns. Throw so the caller gets 500 rather than a silent 202
+      // that implies success (AUDIT-IFleet-185399bf fix).
+      const msg = `verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`;
+      console.error(`[control-plane] ${msg}`);
+      throw new Error(msg);
     },
     onForcePr: async (taskId) => {
-      console.error(
-        `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
-      );
+      // Same as verify — daemon-only; throw to surface the mis-routing.
+      const msg = `force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`;
+      console.error(`[control-plane] ${msg}`);
+      throw new Error(msg);
     },
     onStatus: () => null,
   });
@@ -175,8 +175,9 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       store.close();
     }
   };
-  const handleSignal = () =>
+  const handleSignal = (): void => {
     shutdown().then(() => process.exit(0)).catch(() => process.exit(1));
+  };
   process.once('SIGTERM', handleSignal);
   process.once('SIGINT', handleSignal);
 

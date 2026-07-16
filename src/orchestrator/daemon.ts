@@ -250,7 +250,7 @@ async function main(): Promise<void> {
   // AUDIT-IFleet-e96f2978.
   let shutdownErrors = 0;
   const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
-  void runTickLoop(
+  runTickLoop(
     unified,
     orchestrator,
     () => running,
@@ -259,7 +259,10 @@ async function main(): Promise<void> {
     discordOut,
     unifiedToSprintId,
     verifierCtx,
-  );
+  ).catch((err: unknown) => {
+    console.error('[daemon] tick loop fatal — triggering shutdown:', err);
+    void shutdown('tick-crash');
+  });
 
   orchestrator.start();
   console.warn(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);

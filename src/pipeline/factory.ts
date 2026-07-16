@@ -139,6 +139,14 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     // for read-only discovery.
     'Bash(find)',
     'Bash(find *)',
+    // Block inline code execution via `node -e`/`--eval` — these are the
+    // primary escape hatches from the permission list (e.g. `node -e
+    // "require('child_process').execSync('git push ...')"` would bypass
+    // the git deny entries above). Legitimate node invocations go through
+    // pnpm/npx scripts and don't need inline eval. Deny takes precedence
+    // over the `Bash(node *)` allow above.
+    'Bash(node -e *)',
+    'Bash(node --eval *)',
     'Bash(sudo *)',
     'Bash(chmod *)',
     'Bash(chown *)',
