@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
 import { extractAuditFindingId } from '../audit/types.js';
@@ -383,7 +383,14 @@ export class Orchestrator {
     for (const id of this.activeSprintIds) {
       const flag = join(this.killFlagDir, id, 'cancel.flag');
       if (existsSync(flag)) {
-        void this.cancelSprint(id, 'kill flag detected');
+        // Delete the flag before cancelling so repeated polls don't fire
+        // cancelSprint again and cause an "invalid sprint transition" rejection.
+        try { rmSync(flag, { force: true }); } catch { /* ignore */ }
+        void this.cancelSprint(id, 'kill flag detected').catch((err) => {
+          console.warn(
+            `[orchestrator] cancelSprint(${id}) after kill flag failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       }
     }
   }
@@ -396,7 +403,18 @@ export class Orchestrator {
       const result = await this.outbox.drainOnce({
         send: async (_channel, payload) => {
           const parsed = JSON.parse(payload) as { content?: string; url?: string };
-          const targetUrl = parsed.url ?? url;
+          // Only allow discord.com webhook URLs from the outbox payload to
+          // prevent SSRF: an attacker with local DB write access could otherwise
+          // redirect webhook POSTs to an arbitrary host (AUDIT-IFleet-6951f1bf).
+          let targetUrl = url;
+          if (parsed.url) {
+            try {
+              const u = new URL(parsed.url);
+              if (u.hostname === 'discord.com' || u.hostname.endsWith('.discord.com')) {
+                targetUrl = parsed.url;
+              }
+            } catch { /* invalid URL — fall back to configured webhook */ }
+          }
           const content = parsed.content ?? payload;
           await postDiscordAlert(targetUrl, content);
         },
