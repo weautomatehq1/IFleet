@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-07-13T08:15:00Z",
-  "open_count": 13,
-  "fixed_count": 42,
+  "last_updated": "2026-07-17T04:00:00Z",
+  "open_count": 9,
+  "fixed_count": 43,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -15,38 +15,21 @@
     "20260707T041832Z.json",
     "20260708T042554Z.json",
     "20260713T000000Z.json",
-    "20260713T043000Z.json"
+    "20260713T043000Z.json",
+    "20260717T040000Z.json"
   ],
   "open_findings": [
-    {
-      "id": "AUDIT-IFleet-ff8faf70",
-      "severity": "IMPORTANT",
-      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
-      "file_globs": ["src/utils/costs.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-2fdb1535",
-      "severity": "IMPORTANT",
-      "title": "sprint_goal missing required fields return 500 instead of 4xx",
-      "file_globs": ["src/queue/control-plane.ts"]
-    },
     {
       "id": "AUDIT-IFleet-634a726e",
       "severity": "IMPORTANT",
       "title": "Git auth token exposed via process args visible to local ps",
-      "file_globs": ["src/repos/manager.ts"]
+      "file_globs": ["packages/orchestrator-core/src/repos/manager.ts"]
     },
     {
       "id": "AUDIT-IFleet-d2de0aca",
       "severity": "IMPORTANT",
       "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
       "file_globs": ["src/agents/verifier/sandbox.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-202b928c",
-      "severity": "IMPORTANT",
-      "title": "TaskStore insert never persists the attempts column it relies on",
-      "file_globs": ["src/queue/store.ts"]
     },
     {
       "id": "AUDIT-IFleet-56e677cf",
@@ -61,24 +44,6 @@
       "file_globs": ["src/classifier/auto-router.ts"]
     },
     {
-      "id": "AUDIT-IFleet-5a520b9e",
-      "severity": "IMPORTANT",
-      "title": "issue-commenter.ts lastCommentId mutable closure races if comment() called before waitForApproval resolves",
-      "file_globs": ["src/queue/issue-commenter.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-ff177eeb",
-      "severity": "IMPORTANT",
-      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
-      "file_globs": ["src/queue/github.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-8485d061",
-      "severity": "IMPORTANT",
-      "title": "DockerSandboxRunner falls back to in-worktree execution without requiring IFLEET_ALLOW_SANDBOX_FALLBACK",
-      "file_globs": ["src/agents/verifier/sandbox.ts"]
-    },
-    {
       "id": "AUDIT-IFleet-3b3ab72a",
       "severity": "IMPORTANT",
       "title": "workers/claude.ts passes full brief as -p argv — visible in ps aux for all pipeline phases",
@@ -89,30 +54,6 @@
       "severity": "IMPORTANT",
       "title": "orchestrator-core package imports back into root src/ via relative paths — breaks package isolation",
       "file_globs": ["packages/orchestrator-core/src/discord/handlers/interaction-create.ts", "packages/orchestrator-core/src/workers/adapters/claude-cli.ts", "packages/orchestrator-core/src/workers/adapters/registry.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-f820fdb9",
-      "severity": "COSMETIC",
-      "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
-      "file_globs": ["src/pipeline/reviewer.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-4de85929",
-      "severity": "COSMETIC",
-      "title": "auto-router in-memory cache never expires — stale routing decisions persist across sprint submissions",
-      "file_globs": ["src/classifier/auto-router.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-20559453",
-      "severity": "COSMETIC",
-      "title": "contracts/hmac.ts verifyPayload has redundant length check after timingSafeEqual",
-      "file_globs": ["src/contracts/hmac.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-2896b739",
-      "severity": "COSMETIC",
-      "title": "server.ts deferringDiscordOut.postTaskCreated always returns empty threadId string without warning",
-      "file_globs": ["src/server.ts"]
     },
     {
       "id": "AUDIT-IFleet-14ec04e8",
@@ -160,6 +101,22 @@
     "AUDIT-IFleet-5b34d4f6",
     "AUDIT-IFleet-8986c35b",
     "AUDIT-IFleet-8e574f48",
-    "AUDIT-IFleet-d1bf88cf"
+    "AUDIT-IFleet-d1bf88cf",
+    "AUDIT-IFleet-2fdb1535",
+    "AUDIT-IFleet-5a520b9e",
+    "AUDIT-IFleet-ff177eeb",
+    "AUDIT-IFleet-8485d061",
+    "AUDIT-IFleet-4de85929",
+    "AUDIT-IFleet-202b928c",
+    "AUDIT-IFleet-2896b739",
+    "AUDIT-IFleet-20559453",
+    "AUDIT-IFleet-ff8faf70",
+    "AUDIT-IFleet-f820fdb9",
+    "AUDIT-IFleet-a1b2c3d4",
+    "AUDIT-IFleet-7c4d3e9a",
+    "AUDIT-IFleet-e5f6g7h8",
+    "AUDIT-IFleet-i9j0k1l2",
+    "AUDIT-IFleet-m3n4o5p6",
+    "AUDIT-IFleet-q7r8s9t0"
   ]
 }

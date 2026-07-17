@@ -40,6 +40,9 @@ export async function handleMessageCreate(
 
   // Strip a leading bot mention (e.g. "<@123> ship login page" → "ship login page").
   const botId = client.user?.id;
+  if (botId && !/^\d+$/.test(botId)) {
+    console.warn('[message-create] unexpected non-numeric botId:', botId);
+  }
   const mentionPattern = botId ? new RegExp(`^<@!?${botId}>\\s*`) : null;
   const brief = mentionPattern ? raw.replace(mentionPattern, '').trim() : raw;
   if (brief.length === 0) return { kind: 'ignored', reason: 'mention-only message' };

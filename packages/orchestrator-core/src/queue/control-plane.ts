@@ -227,7 +227,7 @@ async function handleRequest(
     return;
   }
   if (!nonce) {
-    res.statusCode = 400;
+    res.statusCode = 401;
     res.end('missing nonce header');
     return;
   }

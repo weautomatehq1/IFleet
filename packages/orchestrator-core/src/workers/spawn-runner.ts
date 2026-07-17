@@ -88,6 +88,9 @@ export function runStreaming(opts: RunnerOptions): RunnerHandle {
   sessionDeferred.promise.catch(() => {
     // suppress unhandled rejection if caller never awaits sessionId
   });
+  resultDeferred.promise.catch(() => {
+    // suppress unhandled rejection if caller never awaits result
+  });
 
   const stderrTailLines = opts.stderrTailLines ?? 100;
   const stderrLines: string[] = [];

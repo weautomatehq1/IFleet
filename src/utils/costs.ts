@@ -24,14 +24,19 @@ export interface CostSummary {
   grandTotalUsd: number;
 }
 
+let _appendQueue: Promise<void> = Promise.resolve();
+
 export async function appendCostRecord(repoRoot: string, record: CostRecord): Promise<void> {
   const omcDir = join(repoRoot, '.omc');
   const costFile = join(omcDir, 'costs.json');
-
-  await fs.mkdir(omcDir, { recursive: true });
-
   const line = JSON.stringify(record) + '\n';
-  await fs.appendFile(costFile, line, 'utf-8');
+  const prev = _appendQueue;
+  const next = prev.catch(() => undefined).then(async () => {
+    await fs.mkdir(omcDir, { recursive: true });
+    await fs.appendFile(costFile, line, 'utf-8');
+  });
+  _appendQueue = next.catch(() => undefined);
+  return next;
 }
 
 export async function readCostLog(repoRoot: string): Promise<CostRecord[]> {

@@ -396,12 +396,7 @@ async function handleButton(
   //
   // Routing rationale: #ifleet-proposals is created post-deploy and lives
   // outside channels.json (its id flows in via IFLEET_PROPOSALS_CHANNEL_ID).
-  // Doing the standard `router.resolve(channelId)` deny check here would
-  // reject every proposal button, so we gate on (a) the channel id matches
-  // the env var and (b) the clicker is in IFLEET_PROPOSALS_APPROVER_IDS
-  // (comma-separated Discord user ids). If the approver env is unset, fall
-  // back to the union of allowedUserIds across all router routes so a
-  // first-time deploy can still operate before adding the new env var.
+  // IFLEET_PROPOSALS_APPROVER_IDS is required; if unset all proposal actions are denied (fail-closed).
   if (
     parsed.verb === 'proposal_approve' ||
     parsed.verb === 'proposal_reject' ||
