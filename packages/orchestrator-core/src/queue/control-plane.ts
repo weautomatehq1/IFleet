@@ -330,7 +330,9 @@ async function dispatch(command: ControlCommand, opts: ControlPlaneOptions): Pro
   // `sprint_goal` is handled inline in handleRequest — it never reaches here.
   switch (command.type) {
     case 'sprint_goal':
-      return {};
+      // Exhaustiveness guard only — handleRequest() intercepts sprint_goal before
+      // calling dispatch(), so this branch is unreachable at runtime.
+      throw new Error('sprint_goal must not reach dispatch()');
     case 'run':
       await opts.onRun?.(command.repo);
       return {};
@@ -422,6 +424,7 @@ export function parseCommand(body: string): ControlCommand {
     }
     case 'cancel': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('cancel requires a non-empty taskId');
+      if (parsed.taskId.length > MAX_ID_FIELD_LEN) throw new Error('cancel: taskId exceeds maximum length');
       const cmd: ControlCommand = { type: 'cancel', taskId: parsed.taskId };
       if (typeof parsed.reason === 'string') {
         if (parsed.reason.length > MAX_REASON_LEN) throw new Error('cancel: reason exceeds maximum length');
@@ -449,18 +452,22 @@ export function parseCommand(body: string): ControlCommand {
     }
     case 'status': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('status requires a non-empty taskId');
+      if (parsed.taskId.length > MAX_ID_FIELD_LEN) throw new Error('status: taskId exceeds maximum length');
       return { type: 'status', taskId: parsed.taskId };
     }
     case 'approve': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('approve requires a non-empty taskId');
+      if (parsed.taskId.length > MAX_ID_FIELD_LEN) throw new Error('approve: taskId exceeds maximum length');
       return { type: 'approve', taskId: parsed.taskId };
     }
     case 'verify': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('verify requires a non-empty taskId');
+      if (parsed.taskId.length > MAX_ID_FIELD_LEN) throw new Error('verify: taskId exceeds maximum length');
       return { type: 'verify', taskId: parsed.taskId };
     }
     case 'force_pr': {
       if (typeof parsed.taskId !== 'string' || parsed.taskId.trim().length === 0) throw new Error('force_pr requires a non-empty taskId');
+      if (parsed.taskId.length > MAX_ID_FIELD_LEN) throw new Error('force_pr: taskId exceeds maximum length');
       const cmd: ControlCommand = { type: 'force_pr', taskId: parsed.taskId };
       if (typeof parsed.reason === 'string') {
         if (parsed.reason.length > MAX_REASON_LEN) throw new Error('force_pr: reason exceeds maximum length');

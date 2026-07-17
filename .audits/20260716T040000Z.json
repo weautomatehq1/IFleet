@@ -1,0 +1,135 @@
+{
+  "scanned_at": "2026-07-16T04:00:00Z",
+  "repo": "IFleet",
+  "tool": "claude-audit-agent/nightly",
+  "summary": {
+    "new_findings": 7,
+    "already_fixed": 3,
+    "fixed_this_run": 9
+  },
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-ee37bb6b",
+      "fingerprint": "ee37bb6b",
+      "severity": "IMPORTANT",
+      "status": "fixed",
+      "title": "pollKillSwitch never deletes flag file causing repeated cancelSprint calls and unhandled rejection",
+      "file": "src/orchestrator/index.ts",
+      "line": 382,
+      "description": "pollKillSwitch() detects cancel.flag and calls `void this.cancelSprint(id, 'kill flag detected')` but never deletes the flag file. Every 5-second poll re-fires cancelSprint for the same sprint. On the second call the sprint is already cancelled, causing an 'invalid sprint transition' error that surfaces as an unhandled Promise rejection (Node 15+ exits the process on unhandled rejections). Fix: delete the flag file before calling cancelSprint, and attach a .catch() to the void-cast promise.",
+      "fix_description": "Added rmSync(flag, { force: true }) before cancelSprint call; attached .catch() handler to the void cast; imported rmSync from node:fs.",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-6951f1bf",
+      "fingerprint": "6951f1bf",
+      "severity": "IMPORTANT",
+      "status": "fixed",
+      "title": "drainDiscordOutbox SSRF via parsed.url from SQLite payload bypasses webhook hostname check",
+      "file": "src/orchestrator/index.ts",
+      "line": 399,
+      "description": "drainDiscordOutbox() deserializes payload from SQLite and uses parsed.url as the webhook target without any hostname whitelist. An attacker who can write to the outbox SQLite DB (local access required) can redirect webhook POSTs to an arbitrary URL, exfiltrating payload contents to an attacker-controlled server. Fix: validate parsed.url hostname against the discord.com apex before using it as targetUrl.",
+      "fix_description": "Added URL hostname validation: only allow discord.com or *.discord.com subdomains; any other host falls back to the configured webhook URL.",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-bcbcb9e6",
+      "fingerprint": "bcbcb9e6",
+      "severity": "IMPORTANT",
+      "status": "fixed",
+      "title": "tick setInterval without backpressure enables double-dispatch of same task with multiple workers",
+      "file": "src/orchestrator/sprint.ts",
+      "line": 282,
+      "description": "SprintManager fires runTick() every 1s via setInterval with no backpressure. If briefLoader.loadBrief() is async (cache miss), a concurrent tick can start between registry.acquire() and the store.saveTask() call, both acquiring different workers and both seeing the same task as 'pending', spawning two Claude processes for the same task. Single-seat policy mitigates this in practice but the design is fragile. Fix: re-read the task from the store after any async gap (loadBrief) and bail if it's no longer pending.",
+      "fix_description": "Added fresh task re-read from store after loadBrief() resolves; releases worker and returns if task is no longer pending.",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-9f54012a",
+      "fingerprint": "9f54012a",
+      "severity": "IMPORTANT",
+      "status": "fixed",
+      "title": "usage-monitor parseInt parseFloat produce silent NaN suppressing all budget alerts",
+      "file": "scripts/usage-monitor.ts",
+      "line": 34,
+      "description": "BLOCK_CAP, WEEKLY_CAP, and ALERT_THRESHOLD are parsed from env vars with parseInt/parseFloat. Non-numeric env values (e.g. CCUSAGE_BLOCK_CAP=unlimited) produce NaN. NaN propagates silently through all threshold comparisons (NaN < 1000 = false, NaN > 1000 = false), permanently suppressing all usage alerts without any error message. Fix: add Number.isFinite() validation and throw or fall back to defaults.",
+      "fix_description": "Added isFinite guards after each parse; non-finite values log a warning and fall back to the documented default, preventing silent alert suppression.",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-c6dd8534",
+      "fingerprint": "c6dd8534",
+      "severity": "COSMETIC",
+      "status": "fixed",
+      "title": "accumulateCost bang-costUsd check skips saveSprintSpend for legitimate zero-dollar tasks",
+      "file": "src/orchestrator/sprint.ts",
+      "line": 470,
+      "description": "`if (!costUsd) return` is falsy for both undefined AND 0, so a task that genuinely costs $0.00 (e.g. a cache-only run) causes accumulateCost to bail early without calling saveSprintSpend. The running total in the DB is not persisted for that task, so a process restart loses the $0 contribution from the rolling count. Fix: use `if (costUsd == null)` to distinguish missing from zero.",
+      "fix_description": "Changed `if (!costUsd)` to `if (costUsd == null)` so $0.00 tasks still persist the running total.",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-8f3269f3",
+      "fingerprint": "8f3269f3",
+      "severity": "COSMETIC",
+      "status": "fixed",
+      "title": "control-plane dispatch has dead unreachable sprint_goal case branch",
+      "file": "packages/orchestrator-core/src/queue/control-plane.ts",
+      "line": 332,
+      "description": "`case 'sprint_goal': return {}` in the dispatch() switch is unreachable — sprint_goal is handled inline in handleRequest() before dispatch() is ever called, as noted in the comment above the switch. Dead code adds noise and can mislead future readers into thinking dispatch() handles sprint_goal.",
+      "fix_description": "Removed the unreachable `case 'sprint_goal': return {}` branch from dispatch().",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-96689c84",
+      "fingerprint": "96689c84",
+      "severity": "COSMETIC",
+      "status": "fixed",
+      "title": "cancel approve verify force_pr status taskId fields have no MAX_ID_FIELD_LEN length cap",
+      "file": "packages/orchestrator-core/src/queue/control-plane.ts",
+      "line": 424,
+      "description": "The cancel, approve, verify, force_pr, and status command parsers validate that taskId is a non-empty string but apply no length cap. MAX_ID_FIELD_LEN = 64 is already defined for sprint_goal sub-fields. An oversized taskId (e.g. 100 KB) passes validation, propagates through all downstream handlers, and is stored/logged verbatim. Fix: add `if (parsed.taskId.length > MAX_ID_FIELD_LEN) throw` after each presence check.",
+      "fix_description": "Added MAX_ID_FIELD_LEN length check after each taskId presence validation for cancel, approve, verify, force_pr, and status commands.",
+      "closing_pr": null,
+      "closed_at": "2026-07-16T04:00:00Z"
+    }
+  ],
+  "already_fixed": [
+    {
+      "id": "AUDIT-IFleet-202b928c",
+      "title": "TaskStore insert never persists the attempts column it relies on",
+      "verified_fixed_at": "2026-07-16T04:00:00Z",
+      "note": "Schema has `attempts INTEGER NOT NULL DEFAULT 0`; insert() correctly omits the column and relies on DEFAULT. Verified in packages/orchestrator-core/src/queue/store.ts."
+    },
+    {
+      "id": "AUDIT-IFleet-ff177eeb",
+      "title": "queue/github.ts findLabelAddedAt paginates all issue events with no page count cap",
+      "verified_fixed_at": "2026-07-16T04:00:00Z",
+      "note": "Uses `for (let page = 1; page <= MAX_LABEL_EVENT_PAGES; page++)` cap in src/queue/github.ts."
+    },
+    {
+      "id": "AUDIT-IFleet-4de85929",
+      "title": "auto-router in-memory cache never expires",
+      "verified_fixed_at": "2026-07-16T04:00:00Z",
+      "note": "CACHE_TTL_MS = 10 * 60 * 1000; entries include expiresAt field; lookup checks cached.expiresAt > now. Verified in src/classifier/auto-router.ts."
+    }
+  ],
+  "also_fixed_this_run": [
+    {
+      "id": "AUDIT-IFleet-c9e1f803",
+      "title": "audit-runner.ts markFindingsClosed batch path skips per-fingerprint dedup",
+      "fix": "Added fingerprint dedup check before records.push() in markFindingsClosed."
+    },
+    {
+      "id": "AUDIT-IFleet-f820fdb9",
+      "title": "pipeline/reviewer.ts is a deprecated re-export shim with no enforced removal deadline",
+      "fix": "Deleted src/pipeline/reviewer.ts — confirmed no active TypeScript importers."
+    }
+  ]
+}
