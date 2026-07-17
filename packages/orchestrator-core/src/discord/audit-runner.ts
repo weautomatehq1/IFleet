@@ -350,13 +350,16 @@ export function markFindingsClosed(
     finding.status = status;
     finding.closing_pr = prUrl;
     finding.closed_at = closedAt ?? now;
-    records.push({
-      fingerprint: finding.fingerprint,
-      finding_id: findingId,
-      closed_at: finding.closed_at,
-      closing_pr: prUrl,
-      status: finding.status,
-    });
+    const alreadyQueued = records.some((r) => r.fingerprint === finding.fingerprint);
+    if (!alreadyQueued) {
+      records.push({
+        fingerprint: finding.fingerprint,
+        finding_id: findingId,
+        closed_at: finding.closed_at,
+        closing_pr: prUrl,
+        status: finding.status,
+      });
+    }
     changed++;
   }
   if (changed === 0) return 0;
@@ -374,7 +377,13 @@ export function markFindingsClosed(
         cdata = { closures: [] };
       }
     }
-    cdata.closures.push(...records);
+    const existingFingerprints = new Set(cdata.closures.map((c) => c.fingerprint));
+    for (const r of records) {
+      if (!existingFingerprints.has(r.fingerprint)) {
+        cdata.closures.push(r);
+        existingFingerprints.add(r.fingerprint);
+      }
+    }
     const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
     writeFileSync(tmp, `${JSON.stringify(cdata, null, 2)}\n`, 'utf8');
     renameSync(tmp, closedPath);

@@ -175,8 +175,9 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       store.close();
     }
   };
-  const handleSignal = () =>
-    shutdown().then(() => process.exit(0)).catch(() => process.exit(1));
+  const handleSignal = (): void => {
+    void shutdown().then(() => process.exit(0)).catch(() => process.exit(1));
+  };
   process.once('SIGTERM', handleSignal);
   process.once('SIGINT', handleSignal);
 

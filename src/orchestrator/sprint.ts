@@ -394,6 +394,15 @@ export class SprintManager {
         });
         return;
       }
+      // Re-read from store after the async brief-load gap: a concurrent tick
+      // could have acquired a different worker and dispatched this same task
+      // while we were awaiting loadBrief (AUDIT-IFleet-bcbcb9e6).
+      const refreshed = this.store.loadTask(task.id);
+      if (!refreshed || refreshed.state.kind !== 'pending') {
+        this.registry.release(workerId);
+        return;
+      }
+      task = refreshed;
     }
     const newAttempts = task.attempts + 1;
     const nextTaskState: TaskState = {
@@ -467,7 +476,7 @@ export class SprintManager {
   }
 
   private accumulateCost(sprintId: SprintId, costUsd: number | undefined): number {
-    if (!costUsd) return this.sprintSpend.get(sprintId) ?? 0;
+    if (costUsd == null) return this.sprintSpend.get(sprintId) ?? 0;
     const prev = this.sprintSpend.get(sprintId) ?? 0;
     const next = prev + costUsd;
     this.sprintSpend.set(sprintId, next);
