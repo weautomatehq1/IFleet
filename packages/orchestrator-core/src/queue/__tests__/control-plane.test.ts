@@ -210,7 +210,7 @@ describe('control plane HTTP', () => {
       const headers = signedHeaders('s', body);
       delete headers['x-ifleet-nonce'];
       const res = await fetch(url, { method: 'POST', headers, body });
-      assert.equal(res.status, 400);
+      assert.equal(res.status, 401);
     });
   });
 
