@@ -78,8 +78,11 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   try {
     await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
   } catch (err) {
-    console.warn('[pipeline] editor: git add failed:', err);
-    return;
+    // Propagate so the pipeline's error boundary handles it: a silent return
+    // here causes the caller to see an empty diff and log a misleading
+    // "no diff — possible silent tool-use failure" instead of the real error.
+    // AUDIT-IFleet-e5f6a7b8.
+    throw new Error(`git add -A failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   // `git diff --cached --quiet` exits 1 when there are staged changes; treat
   // that as the signal to commit rather than as an error.

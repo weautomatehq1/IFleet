@@ -89,6 +89,12 @@ export interface SpawnOpts {
    * takes precedence over this field — see claudeChildEnv().
    */
   parentTraceId?: string;
+  /**
+   * Sprint ID owning this task dispatch. Forwarded to PipelineInput.sprintId
+   * so the pipeline's cost logger keys per-task costs under the correct sprint
+   * instead of falling back to task.id. AUDIT-IFleet-56e677cf.
+   */
+  sprintId?: string;
 }
 
 export interface SpawnHandle {
