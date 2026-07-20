@@ -1,7 +1,7 @@
 {
-  "last_updated": "2026-07-16T04:00:00Z",
-  "open_count": 9,
-  "fixed_count": 60,
+  "last_updated": "2026-07-19T04:00:00Z",
+  "open_count": 10,
+  "fixed_count": 66,
   "audits": [
     "2026-05-31T04:10:52Z.json",
     "2026-06-07T041244Z.json",
@@ -13,6 +13,7 @@
     "20260701T040000Z.json",
     "20260704T040000Z.json",
     "20260707T041832Z.json",
+    "20260719T040000Z.json",
     "20260708T042554Z.json",
     "20260713T000000Z.json",
     "20260713T043000Z.json",
@@ -36,12 +37,6 @@
       "severity": "IMPORTANT",
       "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
       "file_globs": ["src/agents/verifier/sandbox.ts"]
-    },
-    {
-      "id": "AUDIT-IFleet-56e677cf",
-      "severity": "IMPORTANT",
-      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
-      "file_globs": ["src/pipeline/runner.ts"]
     },
     {
       "id": "AUDIT-IFleet-6dbc02a1",
@@ -72,6 +67,18 @@
       "severity": "IMPORTANT",
       "title": "orchestrator-core package imports back into root src/ via relative paths — breaks package isolation",
       "file_globs": ["packages/orchestrator-core/src/discord/handlers/interaction-create.ts", "packages/orchestrator-core/src/workers/adapters/claude-cli.ts", "packages/orchestrator-core/src/workers/adapters/registry.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-b7c8d9e0",
+      "severity": "IMPORTANT",
+      "title": "durationMs computed from wrong timestamp when sprint is paused — sprint metrics report inflated durations",
+      "file_globs": ["src/orchestrator/sprint.ts"]
+    },
+    {
+      "id": "AUDIT-IFleet-f1a2b3c4",
+      "severity": "IMPORTANT",
+      "title": "pendingCount derived from stale in-memory snapshot — can double-dispatch tasks already in-flight",
+      "file_globs": ["src/orchestrator/sprint.ts"]
     }
   ],
   "fixed_findings": [
@@ -118,6 +125,12 @@
     "AUDIT-IFleet-8f3269f3",
     "AUDIT-IFleet-96689c84",
     "AUDIT-IFleet-c9e1f803",
-    "AUDIT-IFleet-f820fdb9"
+    "AUDIT-IFleet-f820fdb9",
+    "AUDIT-IFleet-a1b2c3d4",
+    "AUDIT-IFleet-e5f6a7b8",
+    "AUDIT-IFleet-c9d0e1f2",
+    "AUDIT-IFleet-56e677cf",
+    "AUDIT-IFleet-d3e4f5a6",
+    "AUDIT-IFleet-e2f3a4b5"
   ]
 }

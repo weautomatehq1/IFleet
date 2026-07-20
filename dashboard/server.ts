@@ -20,7 +20,9 @@ const TASKS_DB =
 const STATE_DB =
   process.env['DASHBOARD_STATE_DB'] ?? join(homedir(), '.omc', 'ifleet', 'state.db');
 
-const TERMINAL_SPRINT_KINDS = new Set(['failed', 'completed', 'cancelled', 'aborted']);
+// 'aborted' is not a valid SprintState kind — the state machine uses 'cancelled'.
+// AUDIT-IFleet-e2f3a4b5.
+const TERMINAL_SPRINT_KINDS = new Set(['failed', 'completed', 'cancelled']);
 
 export interface DashboardServerOptions {
   port?: number;

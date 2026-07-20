@@ -1,0 +1,93 @@
+{
+  "run_at": "2026-07-19T04:00:00Z",
+  "repo": "weautomatehq1/IFleet",
+  "branch": "audit/nightly-2026-07-19",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-a1b2c3d4",
+      "severity": "CRITICAL",
+      "title": "unifiedToPipelineTask hardcodes labels:[] — routing hints silently dropped for all unified-queue tasks",
+      "file": "src/orchestrator/pipeline-bridge.ts",
+      "line": 129,
+      "description": "unifiedToPipelineTask always sets labels:[] when converting a UnifiedQueuedTask to pipeline shape. The pipeline classifier reads task.labels to derive priority, category, severity, model, and autonomy overrides. Empty labels mean all routing signals from Discord slash-command tasks (and any unified-queue task) are silently discarded, so e.g. a 'priority:high category:security' Discord task runs at default model/priority instead of Opus/high.",
+      "fix": "Reconstruct synthetic label strings from task.routingHints using a routingHintsToLabels() helper so the classifier can re-derive the same routing decision.",
+      "status": "fixed",
+      "fixed_in_commit": "audit/nightly-2026-07-19"
+    },
+    {
+      "id": "AUDIT-IFleet-e5f6a7b8",
+      "severity": "CRITICAL",
+      "title": "git add -A failure silently swallowed in commitEditorChanges — caller sees empty diff, masks real error",
+      "file": "src/pipeline/editor.ts",
+      "line": 80,
+      "description": "commitEditorChanges() catches git add -A errors, logs a warning, and returns early. The caller then runs git diff --cached which exits 0 (nothing staged), reports 'no diff — possible silent tool-use failure', and the pipeline continues as if no changes were made. The real error (e.g. git lock, disk full, path out-of-tree) is hidden.",
+      "fix": "Re-throw the caught error with a descriptive message so the pipeline's error boundary handles it correctly.",
+      "status": "fixed",
+      "fixed_in_commit": "audit/nightly-2026-07-19"
+    },
+    {
+      "id": "AUDIT-IFleet-c9d0e1f2",
+      "severity": "CRITICAL",
+      "title": "postDiscordAlert has no request timeout — Discord outage can hang the orchestrator tick loop indefinitely",
+      "file": "src/orchestrator/index.ts",
+      "line": 518,
+      "description": "postDiscordAlert uses a raw https.request with no timeout option and no req.setTimeout() call. If Discord's servers stall mid-response (connection accepted but no bytes), the Promise never resolves and the drainDiscordOutbox caller will hang, blocking the orchestrator tick loop until the OS-level TCP keepalive fires (minutes to hours).",
+      "fix": "Add req.setTimeout(15000, () => req.destroy()) to cap the request at 15 seconds.",
+      "status": "fixed",
+      "fixed_in_commit": "audit/nightly-2026-07-19"
+    },
+    {
+      "id": "AUDIT-IFleet-56e677cf",
+      "severity": "IMPORTANT",
+      "title": "runner.ts logCosts uses task.id as sprintId fallback, corrupting sprint-level cost aggregation",
+      "file": "src/pipeline/runner.ts",
+      "line": 580,
+      "description": "PipelineInput.sprintId is optional and never set by makeProductionFactory (factory.ts:315-330). The runner falls back to task.id for cost logging, so all per-task costs land in a fake sprint keyed by task ID instead of the real sprint ID. This breaks the budget-pause trigger (SprintManager checks sprintSpend by sprint ID) and makes cost dashboards show every task as its own sprint.",
+      "fix": "Thread sprintId through SpawnOpts → factory → PipelineInput. SprintManager already has task.sprintId at the spawn call site.",
+      "status": "fixed",
+      "fixed_in_commit": "audit/nightly-2026-07-19"
+    },
+    {
+      "id": "AUDIT-IFleet-d3e4f5a6",
+      "severity": "IMPORTANT",
+      "title": "watchForNew seen-set in GitHubQueue grows unbounded — memory leak over long-running sessions",
+      "file": "src/queue/github.ts",
+      "line": 435,
+      "description": "GitHubQueue.watchForNew() maintains a 'seen' Set of task IDs to avoid double-dispatch. The set is never pruned. A daemon running for months with high issue throughput will accumulate thousands of IDs in RAM. On GitHub Free tier with 6-second polling this adds ~500 IDs/day. No GC, no cap.",
+      "fix": "Cap the seen set at a fixed size (e.g. 500) by deleting the oldest entry when the limit is exceeded, or use a time-based expiry keyed to the GitHub created_at timestamp.",
+      "status": "fixed",
+      "fixed_in_commit": "audit/nightly-2026-07-19"
+    },
+    {
+      "id": "AUDIT-IFleet-b7c8d9e0",
+      "severity": "IMPORTANT",
+      "title": "durationMs computed from wrong timestamp when sprint is paused — sprint metrics report inflated durations",
+      "file": "src/orchestrator/sprint.ts",
+      "line": 239,
+      "description": "When a sprint is paused and then resumed, durationMs is computed as (now - sprint.state.startedAt) rather than accounting for the accumulated pause time. A sprint paused for 2 hours and then run for 10 minutes will report a 2h10m duration instead of 10 minutes. This inflates cost-per-minute metrics and misleads the budget tracker.",
+      "fix": "Accumulate elapsed time into a separate accumulatedMs field on pause, then compute durationMs as accumulatedMs + (now - resumedAt) so pause windows are excluded.",
+      "status": "open"
+    },
+    {
+      "id": "AUDIT-IFleet-f1a2b3c4",
+      "severity": "IMPORTANT",
+      "title": "pendingCount derived from stale in-memory snapshot — can double-dispatch tasks already in-flight",
+      "file": "src/orchestrator/sprint.ts",
+      "line": 356,
+      "description": "SprintManager.pendingCount() reads from an in-memory snapshot that is not reconciled against the store when the daemon restarts. If the daemon crashes mid-sprint, the in-memory map is empty but the store has tasks in 'running' state. pendingCount() returns 0, tick() dispatches new tasks for the same issues, and the pipeline runs twice for the same issue.",
+      "fix": "Load the running-task count from the store (tasks with state.kind === 'running' for this sprint) rather than from the in-memory map at construction time.",
+      "status": "open"
+    },
+    {
+      "id": "AUDIT-IFleet-e2f3a4b5",
+      "severity": "COSMETIC",
+      "title": "TERMINAL_SPRINT_KINDS includes 'aborted' which is not a valid SprintState kind",
+      "file": "dashboard/server.ts",
+      "line": 23,
+      "description": "The Set TERMINAL_SPRINT_KINDS = new Set(['failed', 'completed', 'cancelled', 'aborted']) includes 'aborted', but the SprintState union only has 'cancelled' as a terminal cancellation state. 'aborted' is never written to the store, so the Set member is dead code that also misleads readers about the sprint state machine.",
+      "fix": "Remove 'aborted' from TERMINAL_SPRINT_KINDS.",
+      "status": "fixed",
+      "fixed_in_commit": "audit/nightly-2026-07-19"
+    }
+  ]
+}
