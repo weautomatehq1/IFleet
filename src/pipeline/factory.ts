@@ -327,6 +327,9 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
       approver: resolved.approver ?? fallbackApprover,
       repoRoot: resolved.repoRoot,
       reviewerMaxRounds: 3,
+      // Thread sprint ID from SpawnOpts so logCosts keys costs under the real
+      // sprint rather than falling back to task.id. AUDIT-IFleet-56e677cf.
+      ...(spawnOpts.sprintId ? { sprintId: spawnOpts.sprintId } : {}),
     };
 
     return {

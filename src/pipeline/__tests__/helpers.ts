@@ -1,3 +1,7 @@
+import { execSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   GitOps,
   IssueCommenter,
@@ -185,6 +189,7 @@ export function buildPipelineInput(opts: BuildInputOpts): {
   verify: MockVerifyRunner;
   issues: MockIssueCommenter;
   pr: MockPrOpener;
+  cleanupWorktree: () => void;
 } {
   const workerPool = makeMockWorkerPool(opts.scripted);
   const verify = makeMockVerifyRunner(opts.verify ?? [{ ok: true, failures: [] }]);
@@ -193,10 +198,16 @@ export function buildPipelineInput(opts: BuildInputOpts): {
   const git = makeMockGit();
   const controller = new AbortController();
   const signal = opts.abortSignal ?? controller.signal;
+  // Create a real git repo so commitEditorChanges (which calls execFileAsync
+  // git add / git commit directly) doesn't fail with ENOENT. AUDIT-IFleet-e5f6a7b8.
+  const worktreePath = mkdtempSync(join(tmpdir(), 'ifleet-test-'));
+  execSync('git init', { cwd: worktreePath, stdio: 'ignore' });
+  execSync('git config user.email "test@test.com"', { cwd: worktreePath, stdio: 'ignore' });
+  execSync('git config user.name "Test"', { cwd: worktreePath, stdio: 'ignore' });
   const input: PipelineInput = {
     task: makeTask(opts.task),
     workerPool,
-    worktreePath: '/tmp/worktree',
+    worktreePath,
     routing: makeRouting(opts.routing),
     abortSignal: signal,
     verify,
@@ -208,7 +219,8 @@ export function buildPipelineInput(opts: BuildInputOpts): {
     approver: '@monstersebas1',
     ...(opts.repoRoot !== undefined && { repoRoot: opts.repoRoot }),
   };
-  return { input, workerPool, verify, issues, pr };
+  const cleanupWorktree = () => { try { rmSync(worktreePath, { recursive: true, force: true }); } catch { /* ignore */ } };
+  return { input, workerPool, verify, issues, pr, cleanupWorktree };
 }
 
 export const PLAN_OUTPUT = `1) Files: src/hello.ts

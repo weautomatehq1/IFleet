@@ -433,7 +433,7 @@ export class SprintManager {
         parentTraceId = nanoid(21);
         this.sprintTraceIds.set(task.sprintId, parentTraceId);
       }
-      const handle = await this.adapter.spawn(task.id, brief, { parentTraceId });
+      const handle = await this.adapter.spawn(task.id, brief, { parentTraceId, sprintId: task.sprintId });
       this.store.saveTask({
         ...task,
         brief,

@@ -432,6 +432,10 @@ export class GitHubQueue implements QueueAdapter {
   }
 
   watchForNew(callback: (task: QueuedTask) => void): { stop: () => void } {
+    // Cap the seen set to avoid unbounded memory growth on long-running daemons.
+    // 500 entries covers ~1 day of polling at GitHub Free tier limits with ample
+    // headroom; oldest entries are evicted first. AUDIT-IFleet-d3e4f5a6.
+    const SEEN_MAX = 500;
     const seen = new Set<string>();
     let stopped = false;
     let timer: NodeJS.Timeout | null = null;
@@ -445,12 +449,14 @@ export class GitHubQueue implements QueueAdapter {
             if (task.labels.includes(LABEL_IN_FLIGHT)) continue;
             if (seen.has(task.id)) continue;
             if (!isAuthorAllowed(repo, task.author)) {
+              if (seen.size >= SEEN_MAX) seen.delete(seen.values().next().value as string);
               seen.add(task.id);
               console.warn(
                 `[queue] watch: skipping ${task.repo}#${task.issueNumber}: author "${task.author}" not in allowedAuthors`,
               );
               continue;
             }
+            if (seen.size >= SEEN_MAX) seen.delete(seen.values().next().value as string);
             seen.add(task.id);
             callback(task);
           }

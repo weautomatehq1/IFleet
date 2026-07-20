@@ -532,6 +532,9 @@ function postDiscordAlert(webhookUrl: string, content: string): Promise<void> {
       console.warn('[orchestrator] discord alert failed:', err.message);
       resolve();
     });
+    // Cap at 15 s so a stalled Discord connection never blocks the tick loop.
+    // AUDIT-IFleet-c9d0e1f2.
+    req.setTimeout(15_000, () => req.destroy());
     req.write(body);
     req.end();
   });

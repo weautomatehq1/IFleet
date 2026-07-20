@@ -180,7 +180,9 @@ test('decodeBridgeBrief converts a unified discord-sourced task into a legacy pi
   assert.equal(decoded?.body, 'Fix the thing');
   assert.equal(decoded?.repo, 'org/repo');
   assert.equal(decoded?.autonomy, 'review');
-  assert.deepEqual(decoded?.labels, []);
+  // Labels are now reconstructed from routingHints so the pipeline classifier
+  // can re-derive the same routing decision. AUDIT-IFleet-a1b2c3d4.
+  assert.deepEqual(decoded?.labels, ['autonomy:review', 'verify:none']);
 });
 
 test('decodeBridgeBrief converts a unified github-sourced task into a legacy pipeline task', () => {

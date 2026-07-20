@@ -1,4 +1,5 @@
 import type { QueuedTask as UnifiedQueuedTask } from '@wahq/orchestrator-core/contracts/task';
+import type { RoutingHints } from '@wahq/orchestrator-core/contracts/routing';
 import type {
   PipelineInput,
   PipelineResult,
@@ -126,13 +127,38 @@ function unifiedToPipelineTask(task: UnifiedQueuedTask): QueuedTask {
     title: task.title,
     body: task.brief,
     autonomy,
-    labels: [],
+    // Reconstruct label strings from routingHints so the pipeline classifier
+    // can re-derive the same routing decision. Without this, all unified-queue
+    // tasks (Discord source + any future source) run at default model/priority
+    // regardless of their explicit routing signals. AUDIT-IFleet-a1b2c3d4.
+    labels: task.routingHints ? routingHintsToLabels(task.routingHints) : [],
     // Propagate per-task mode unconditionally (including explicit `null`) so
     // operators can pin "no mode" via Discord slash-command. Without this, an
     // explicit `mode:ralph` on a unified-shape brief silently degraded to the
     // standard prompt. Closes AUDIT-IFleet-88fe0722 / AUDIT-IFleet-33c47c45.
     mode: task.mode ?? null,
   };
+}
+
+function routingHintsToLabels(hints: RoutingHints): string[] {
+  const labels: string[] = [];
+  if (hints.priority !== 'normal') labels.push(`priority:${hints.priority}`);
+  if (hints.model) labels.push(`model:${hints.model}`);
+  if (hints.autonomy !== 'auto') labels.push(`autonomy:${hints.autonomy}`);
+  if (hints.category) labels.push(`category:${hints.category}`);
+  if (hints.severity) labels.push(`severity:${hints.severity}`);
+  if (hints.verify.length === 0) {
+    labels.push('verify:none');
+  } else {
+    const defaultKinds = ['typecheck', 'lint', 'test'];
+    const isDefault =
+      hints.verify.length === defaultKinds.length &&
+      defaultKinds.every((k) => hints.verify.includes(k as never));
+    if (!isDefault) {
+      for (const v of hints.verify) labels.push(`verify:${v}`);
+    }
+  }
+  return labels;
 }
 
 /**
