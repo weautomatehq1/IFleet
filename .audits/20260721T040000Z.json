@@ -1,0 +1,94 @@
+{
+  "run_id": "20260721T040000Z",
+  "timestamp": "2026-07-21T04:00:00Z",
+  "repo": "weautomatehq1/IFleet",
+  "branch": "audit/nightly-2026-07-21",
+  "summary": {
+    "critical": 0,
+    "important_new": 0,
+    "important_fixed": 3,
+    "cosmetic": 0,
+    "carried_open": 7
+  },
+  "new_findings": [],
+  "fixed_findings": [
+    {
+      "id": "AUDIT-IFleet-f1a2b3c4",
+      "severity": "IMPORTANT",
+      "title": "pendingCount derived from stale in-memory snapshot — can double-dispatch tasks already in-flight",
+      "file": "src/orchestrator/sprint.ts",
+      "line": 356,
+      "fix": "Changed tasks.filter to freshTasks.filter so pendingCount reflects the post-dispatch store state, preventing double-dispatch of in-flight tasks.",
+      "closed_at": "2026-07-21T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-d2de0aca",
+      "severity": "IMPORTANT",
+      "title": "DockerSandboxRunner mounts worktree as root with no read-only flag",
+      "file": "src/agents/verifier/sandbox.ts",
+      "line": 558,
+      "fix": "buildDockerArgs now appends :ro to the worktree volume mount for all phases except install (needsNetwork===true), preventing container escape writes to the worktree during build/typecheck/lint/test phases.",
+      "closed_at": "2026-07-21T04:00:00Z"
+    },
+    {
+      "id": "AUDIT-IFleet-8485d061",
+      "severity": "IMPORTANT",
+      "title": "DockerSandboxRunner falls back to in-worktree execution without requiring IFLEET_ALLOW_SANDBOX_FALLBACK",
+      "file": "src/agents/verifier/sandbox.ts",
+      "line": 235,
+      "fix": "Added isTestMode field (true when cfg.spawnFn is injected by tests). The fallback guard now checks !this.isTestMode instead of NODE_ENV==='production', so the IFLEET_ALLOW_SANDBOX_FALLBACK requirement applies in all non-test environments including dev and staging.",
+      "closed_at": "2026-07-21T04:00:00Z"
+    }
+  ],
+  "open_findings": [
+    {
+      "id": "AUDIT-IFleet-ff8faf70",
+      "severity": "IMPORTANT",
+      "title": "Concurrent cost-log appends can interleave and corrupt costs.json lines",
+      "file": "src/utils/costs.ts",
+      "note": "Requires atomic write refactor with tmp+rename; deferred — low frequency in practice"
+    },
+    {
+      "id": "AUDIT-IFleet-634a726e",
+      "severity": "IMPORTANT",
+      "title": "Git auth token exposed via process args visible to local ps",
+      "file": "src/repos/manager.ts",
+      "note": "Requires git credential helper integration; tracked, no quick fix"
+    },
+    {
+      "id": "AUDIT-IFleet-6dbc02a1",
+      "severity": "IMPORTANT",
+      "title": "defaultHaikuCall passes full prompt as argv — visible in ps aux",
+      "file": "src/classifier/auto-router.ts",
+      "note": "Requires stdin pipe refactor; comment in code acknowledges acceptable risk for classifier"
+    },
+    {
+      "id": "AUDIT-IFleet-5a520b9e",
+      "severity": "IMPORTANT",
+      "title": "issue-commenter.ts lastCommentId mutable closure races if comment() called before waitForApproval resolves",
+      "file": "src/queue/issue-commenter.ts",
+      "note": "Latent — not currently exploitable in linear pipeline; deferred"
+    },
+    {
+      "id": "AUDIT-IFleet-3b3ab72a",
+      "severity": "IMPORTANT",
+      "title": "workers/claude.ts passes full brief as -p argv — visible in ps aux",
+      "file": "packages/orchestrator-core/src/workers/claude.ts",
+      "note": "Requires stdin pipe to claude CLI; tracked upstream"
+    },
+    {
+      "id": "AUDIT-IFleet-26262db9",
+      "severity": "IMPORTANT",
+      "title": "orchestrator-core package imports back into root src/ via relative paths — breaks package isolation",
+      "file": "packages/orchestrator-core/src/discord/handlers/interaction-create.ts",
+      "note": "Requires cross-package refactor; tracked as architectural debt"
+    },
+    {
+      "id": "AUDIT-IFleet-b7c8d9e0",
+      "severity": "IMPORTANT",
+      "title": "durationMs computed from wrong timestamp when sprint is paused",
+      "file": "src/orchestrator/sprint.ts",
+      "note": "Metrics only; deferred pending sprint metrics refactor"
+    }
+  ]
+}
