@@ -147,17 +147,16 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });
     },
     // verify / force_pr require the in-process verifier + orchestrator wiring
-    // that only the daemon owns. If they reach this public entry, log loudly
-    // but do not throw — a throw after res.json(202) produces an unhandled
-    // exception log with no useful recovery path (AUDIT-IFleet-185399bf).
+    // that only the daemon owns. Throw so dispatch() returns 500 rather than
+    // silently accepting the request with 202 (AUDIT-IFleet-17ccde1d).
     onVerify: async (taskId) => {
-      console.error(
-        `[control-plane] verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new Error(
+        `verify(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onForcePr: async (taskId) => {
-      console.error(
-        `[control-plane] force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new Error(
+        `force_pr(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onStatus: () => null,
@@ -165,10 +164,10 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
 
   await cp.start();
   const url = `http://127.0.0.1:${port}`;
-  console.warn(`[control-plane] listening on ${url}`);
+  console.log(`[control-plane] listening on ${url}`);
 
   const shutdown = async (): Promise<void> => {
-    console.warn('[control-plane] shutting down');
+    console.log('[control-plane] shutting down');
     try {
       await cp.stop();
     } finally {

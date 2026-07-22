@@ -1,6 +1,8 @@
 {
+  "audit_id": "audit-20260722T041728Z",
   "repo": "IFleet",
-  "last_updated": "2026-07-22T04:31:00Z",
+  "scanned_at": "2026-07-22T04:17:28Z",
+  "scanner": "claude-sonnet-4-6-nightly",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -125,9 +127,9 @@
       ],
       "fix_sketch": "Add fromState='in_flight' as the fourth argument to store.updateState() in markCancelled, and check the returned boolean to skip sourceFor(task).markFailed() when the state was not updated.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -157,9 +159,9 @@
       ],
       "fix_sketch": "Move exclude.add(next.id) to before the if (exclude.has(next.id)) break check, or remove the redundant guard since excludeIds handles dedup at the source.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -189,9 +191,9 @@
       ],
       "fix_sketch": "Add .unref() on the interval timer so it does not prevent Node.js from exiting when no other work is pending.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -269,9 +271,9 @@
       ],
       "fix_sketch": "Also scrub BRIEF_DATA_MARKER_OPEN from user input alongside the existing BRIEF_DATA_MARKER_CLOSE scrub.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -301,9 +303,9 @@
       ],
       "fix_sketch": "Add cachedPool.on('error', (err) => console.error('[kg-pool] idle client error:', err)) after creating the pool.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -333,9 +335,9 @@
       ],
       "fix_sketch": "Return HTTP 503 with a descriptive body from these handlers on the public server, or remove them from the public server entirely.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -365,9 +367,9 @@
       ],
       "fix_sketch": "Call nonceStore.destroy() only after server.close() resolves (inside the close callback), ensuring all in-flight requests complete before the nonce store is torn down.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -383,7 +385,7 @@
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": "2026-07-22T04:17:28Z",
       "closing_pr": null
     },
     {
@@ -400,7 +402,7 @@
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": "2026-07-22T04:17:28Z",
       "closing_pr": null
     },
     {
@@ -415,9 +417,9 @@
       ],
       "fix_sketch": "Use console.log for informational messages and reserve console.warn for genuinely unexpected but non-fatal conditions.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -447,9 +449,9 @@
       ],
       "fix_sketch": "Add explicit .catch((err) => console.error('[repo-manager] lock cleanup error:', err)) after settled.then() call sites.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -463,17 +465,10 @@
       ],
       "fix_sketch": "Add a comment explaining this is a stub pending the Agent SDK migration (referencing AGENTS.md).",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     }
-  ],
-  "by_severity": {
-    "CRITICAL": 5,
-    "IMPORTANT": 18,
-    "COSMETIC": 4
-  },
-  "open_count": 14,
-  "fixed_count": 13
+  ]
 }

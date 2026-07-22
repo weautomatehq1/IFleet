@@ -173,6 +173,8 @@ export class GitRepoManager implements RepoManager {
     // as new repos are introduced over a long-running daemon's lifetime.
     void settled.then(() => {
       if (this.perRepoLock.get(key) === settled) this.perRepoLock.delete(key);
+    }).catch((err) => {
+      console.error('[repo-manager] lock cleanup error:', err);
     });
     return next;
   }
