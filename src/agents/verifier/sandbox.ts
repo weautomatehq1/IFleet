@@ -115,6 +115,7 @@ export class DockerSandboxRunner implements SandboxRunner {
   private readonly rawLogSink: SandboxConfig['rawLogSink'];
   private readonly spawnFn: typeof spawn;
   private readonly envDir: string;
+  private readonly isTestMode: boolean;
 
   constructor(cfg: SandboxConfig = {}) {
     this.image = cfg.image ?? DEFAULT_IMAGE;
@@ -126,6 +127,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     this.rawLogSink = cfg.rawLogSink;
     this.spawnFn = cfg.spawnFn ?? spawn;
     this.envDir = cfg.envDir ?? join(process.cwd(), '.ifleet', 'verify-env');
+    this.isTestMode = cfg.spawnFn !== undefined;
   }
 
   async run(input: VerifierRunInput): Promise<VerifierRunResult> {
@@ -232,7 +234,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     }
 
     const dockerOk = await this.probeDocker();
-    if (!dockerOk && process.env['NODE_ENV'] === 'production' && !process.env['IFLEET_ALLOW_SANDBOX_FALLBACK']) {
+    if (!dockerOk && !this.isTestMode && !process.env['IFLEET_ALLOW_SANDBOX_FALLBACK']) {
       const finishedAt = this.now();
       return {
         runId,
@@ -557,7 +559,7 @@ function buildDockerArgs(
   }
   args.push(
     '-v',
-    `${worktreePath}:/work`,
+    `${worktreePath}:/work${needsNetwork ? '' : ':ro'}`,
     '-w',
     '/work',
     image,

@@ -353,7 +353,7 @@ export class SprintManager {
     }
 
     // Pause if pending tasks exist but all workers are rate-cap blocked.
-    const pendingCount = tasks.filter((t) => t.state.kind === 'pending').length;
+    const pendingCount = freshTasks.filter((t) => t.state.kind === 'pending').length;
     const sprintHasRunning = Array.from(this.running.values()).some((r) => r.sprintId === sprintId);
     if (pendingCount > 0 && !sprintHasRunning && !this.pickWorker()) {
       await this.checkRateLimit(sprintId);
