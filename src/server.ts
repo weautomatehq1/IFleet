@@ -164,10 +164,10 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
 
   await cp.start();
   const url = `http://127.0.0.1:${port}`;
-  console.log(`[control-plane] listening on ${url}`);
+  console.warn(`[control-plane] listening on ${url}`);
 
   const shutdown = async (): Promise<void> => {
-    console.log('[control-plane] shutting down');
+    console.warn('[control-plane] shutting down');
     try {
       await cp.stop();
     } finally {

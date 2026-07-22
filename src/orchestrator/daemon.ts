@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const githubToken = requireEnv('GITHUB_TOKEN');
   const port = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
 
-  console.log('[daemon] booting IFleet daemon');
+  console.warn('[daemon] booting IFleet daemon');
 
   // -------- Persistent state --------
   const store = new TaskStore(defaultTasksDbPath(), { extensions: IFLEET_STORE_EXTENSIONS });
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
   // -------- Routing / repos --------
   const router = FileChannelRouter.fromFile(channelsPath);
-  console.log(`[daemon] loaded ${router.list().length} channel route(s)`);
+  console.warn(`[daemon] loaded ${router.list().length} channel route(s)`);
   const reposMap = loadReposConfig(resolvePath(repoRoot, 'config', 'repos.json'));
 
   // -------- Discord client (input) --------
@@ -236,11 +236,11 @@ async function main(): Promise<void> {
   });
 
   await cp.start();
-  console.log(`[daemon] control plane listening on ${controlPlaneUrl}`);
+  console.warn(`[daemon] control plane listening on ${controlPlaneUrl}`);
 
   // -------- Boot Discord client --------
   await client.login(discordToken);
-  console.log('[daemon] discord client logged in');
+  console.warn('[daemon] discord client logged in');
   registerProposerDiscordClient(client);
 
   // -------- Tick loop: drain pending → submitSprint --------
@@ -262,7 +262,7 @@ async function main(): Promise<void> {
   );
 
   orchestrator.start();
-  console.log(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);
+  console.warn(`[daemon] orchestrator started — polling every ${tickIntervalMs}ms`);
 
   // -------- Graceful shutdown --------
   const shutdown = async (sig: string): Promise<void> => {
