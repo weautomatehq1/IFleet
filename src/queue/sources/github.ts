@@ -28,7 +28,7 @@ export class GitHubIssuesSource implements TaskSource {
       if (drainCount++ >= MAX_DRAIN) break;
       const next = await this.queue.pickNext({ excludeIds: Array.from(exclude) });
       if (!next) break;
-      if (exclude.has(next.id)) break;
+      if (exclude.has(next.id)) continue;
       exclude.add(next.id);
       const unified = legacyToUnified(next);
       const res = store.insert(unified);

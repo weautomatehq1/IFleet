@@ -191,8 +191,13 @@ export function createControlPlane(opts: ControlPlaneOptions): ControlPlane {
       }),
     stop: () =>
       new Promise<void>((resolve, reject) => {
-        nonceStore.destroy();
-        server.close((err) => (err ? reject(err) : resolve()));
+        // Destroy nonce store AFTER server.close() so in-flight requests that
+        // still call registerOrReject() don't hit a destroyed ledger
+        // (AUDIT-IFleet-6e7fa111).
+        server.close((err) => {
+          nonceStore.destroy();
+          if (err) reject(err); else resolve();
+        });
       }),
   };
 }
