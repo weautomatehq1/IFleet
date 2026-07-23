@@ -53,6 +53,10 @@ export function getKgPool(overrideUrl?: string): Pool {
       : undefined,
   };
   cachedPool = new Pool(config);
+  // Prevent pg idle-client errors from crashing the process (AUDIT-IFleet-de10142f).
+  cachedPool.on('error', (err) => {
+    console.error('[kg-pool] idle client error:', err);
+  });
   return cachedPool;
 }
 

@@ -238,7 +238,9 @@ export class SprintManager {
       next.kind === 'completed'
         ? {
             ...basePayload,
-            durationMs: current.state.kind === 'running' ? now - current.state.startedAt : 0,
+            durationMs: current.state.kind === 'running'
+              ? (current.state.elapsedMs ?? 0) + (now - current.state.startedAt)
+              : 0,
             prs: next.prs,
           }
         : basePayload;
@@ -353,7 +355,8 @@ export class SprintManager {
     }
 
     // Pause if pending tasks exist but all workers are rate-cap blocked.
-    const pendingCount = tasks.filter((t) => t.state.kind === 'pending').length;
+    // Use freshTasks (post-dispatch) so dispatched tasks don't inflate the count.
+    const pendingCount = freshTasks.filter((t) => t.state.kind === 'pending').length;
     const sprintHasRunning = Array.from(this.running.values()).some((r) => r.sprintId === sprintId);
     if (pendingCount > 0 && !sprintHasRunning && !this.pickWorker()) {
       await this.checkRateLimit(sprintId);
@@ -523,6 +526,7 @@ export class SprintManager {
       at: this.now(),
       reason: `budget limit $${limit.toFixed(2)} reached (spent $${spentUsd.toFixed(2)})`,
       startedAt: sprint.state.startedAt,
+      elapsedMs: (sprint.state.elapsedMs ?? 0) + (this.now() - sprint.state.startedAt),
     });
     this.emit({
       ts: this.now(),
@@ -560,6 +564,7 @@ export class SprintManager {
       at: now,
       reason: `rate cap reached, waiting until ${new Date(resetAt).toISOString()}`,
       startedAt: sprint.state.startedAt,
+      elapsedMs: (sprint.state.elapsedMs ?? 0) + (now - sprint.state.startedAt),
     });
     this.emit({
       ts: now,
@@ -714,8 +719,11 @@ export class SprintManager {
     if (sprint.state.kind !== 'paused') {
       throw new Error(`cannot resume sprint in state ${sprint.state.kind}`);
     }
-    const startedAt = sprint.state.startedAt ?? this.now();
-    const updated = this.transition(id, { kind: 'running', startedAt });
+    const updated = this.transition(id, {
+      kind: 'running',
+      startedAt: this.now(),
+      elapsedMs: sprint.state.elapsedMs ?? 0,
+    });
     this.emit({
       ts: this.now(),
       sprintId: id,

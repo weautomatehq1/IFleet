@@ -74,9 +74,12 @@ export const BRIEF_DATA_MARKER_CLOSE = 'USER_BRIEF_END>>>';
  * single `-p` argument to `claude`.
  */
 export function wrapBriefAsData(instruction: string, brief: string): string {
-  // Scrub any literal close-marker the user typed so a brief can't fake the
-  // end-of-data sentinel and resume the instruction layer.
-  const sanitized = brief.replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
+  // Scrub both markers so a brief can't fake the end-of-data sentinel (close
+  // marker) or create confusing nested block structure (open marker) that could
+  // cause the model to treat instruction-layer text as data (AUDIT-IFleet-c812af1d).
+  const sanitized = brief
+    .replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)')
+    .replaceAll(BRIEF_DATA_MARKER_OPEN, 'USER_BRIEF_BEGIN (escaped)');
   return [
     instruction.trim(),
     '',
@@ -100,6 +103,8 @@ export function wrapBriefAsData(instruction: string, brief: string): string {
  * instruction layer; only the block between the markers is data.
  */
 export function quoteAsUserData(brief: string): string {
-  const sanitized = brief.replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)');
+  const sanitized = brief
+    .replaceAll(BRIEF_DATA_MARKER_CLOSE, 'USER_BRIEF_END (escaped)')
+    .replaceAll(BRIEF_DATA_MARKER_OPEN, 'USER_BRIEF_BEGIN (escaped)');
   return [BRIEF_DATA_MARKER_OPEN, sanitized, BRIEF_DATA_MARKER_CLOSE].join('\n');
 }

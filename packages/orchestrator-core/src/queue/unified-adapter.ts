@@ -105,6 +105,18 @@ export class UnifiedQueueAdapter {
    * need the source-level distinction should watch for the 🛑 broadcast.
    */
   async markCancelled(task: QueuedTask, reason: string): Promise<void> {
+    // Guard against overwriting terminal states (done/failed/blocked) without
+    // restricting to in_flight only — operators may cancel a pending task before
+    // dispatch (AUDIT-IFleet-b504d26d).
+    const current = this.store.getById(task.id);
+    if (!current) {
+      console.warn(`[unified-queue] markCancelled skipped for ${task.id} — task not found`);
+      return;
+    }
+    if (current.state === 'done' || current.state === 'failed' || current.state === 'blocked') {
+      console.warn(`[unified-queue] markCancelled skipped for ${task.id} — already terminal (${current.state})`);
+      return;
+    }
     this.store.updateState(task.id, 'blocked', { reason, cancelled: true, completedAt: Date.now() });
     try {
       await this.sourceFor(task).markFailed(task, reason);
