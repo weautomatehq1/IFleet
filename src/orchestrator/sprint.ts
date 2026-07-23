@@ -238,7 +238,9 @@ export class SprintManager {
       next.kind === 'completed'
         ? {
             ...basePayload,
-            durationMs: current.state.kind === 'running' ? now - current.state.startedAt : 0,
+            durationMs: current.state.kind === 'running'
+              ? (current.state.accumulatedMs ?? 0) + (now - current.state.startedAt)
+              : 0,
             prs: next.prs,
           }
         : basePayload;
@@ -518,11 +520,12 @@ export class SprintManager {
     }
     const sprint = this.store.loadSprint(sprintId);
     if (!sprint || sprint.state.kind !== 'running') return false;
+    const pausedAt = this.now();
     this.transition(sprintId, {
       kind: 'paused',
-      at: this.now(),
+      at: pausedAt,
       reason: `budget limit $${limit.toFixed(2)} reached (spent $${spentUsd.toFixed(2)})`,
-      startedAt: sprint.state.startedAt,
+      accumulatedMs: (sprint.state.accumulatedMs ?? 0) + (pausedAt - sprint.state.startedAt),
     });
     this.emit({
       ts: this.now(),
@@ -559,7 +562,7 @@ export class SprintManager {
       kind: 'paused',
       at: now,
       reason: `rate cap reached, waiting until ${new Date(resetAt).toISOString()}`,
-      startedAt: sprint.state.startedAt,
+      accumulatedMs: (sprint.state.accumulatedMs ?? 0) + (now - sprint.state.startedAt),
     });
     this.emit({
       ts: now,
@@ -714,8 +717,12 @@ export class SprintManager {
     if (sprint.state.kind !== 'paused') {
       throw new Error(`cannot resume sprint in state ${sprint.state.kind}`);
     }
-    const startedAt = sprint.state.startedAt ?? this.now();
-    const updated = this.transition(id, { kind: 'running', startedAt });
+    const resumedAt = this.now();
+    const updated = this.transition(id, {
+      kind: 'running',
+      startedAt: resumedAt,
+      accumulatedMs: sprint.state.accumulatedMs,
+    });
     this.emit({
       ts: this.now(),
       sprintId: id,
