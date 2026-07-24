@@ -1,18 +1,24 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-07-22T04:31:00Z",
+  "last_updated": "2026-07-24T04:11:36Z",
+  "open_findings": 22,
+  "by_severity": {
+    "CRITICAL": 5,
+    "IMPORTANT": 13,
+    "COSMETIC": 4
+  },
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
       "severity": "CRITICAL",
       "category": "risk",
       "title": "Dynamic import of user-reachable arch.ts executes arbitrary code in daemon process",
-      "detail": "InvariantRunner.runArch() calls import(pathToFileURL(targetPath).href) on worker-writable .ifleet/invariants/<repoSlug>/arch.ts. A jailbroken worker can write a malicious arch.ts that gets dynamically imported by the daemon process under full process credentials. The path-traversal check blocks .. and absolute paths but not file-content attacks.",
+      "detail": "InvariantRunner.runArch() calls import() on arch.ts under .ifleet/invariants/<repoSlug>/. Path traversal protection added and invariantsRoot pinned to IFleet repo root. Risk reduced but dynamic import of repo-controlled code persists.",
       "file_globs": [
         "src/agents/verifier/invariants.ts"
       ],
-      "fix_sketch": "Replace dynamic import with a sandboxed worker_threads runner or vm.runInContext with a restricted module loader. Allowlist which repos can declare arch.ts in config and validate file content before importing.",
-      "parallel_safe": false,
+      "fix_sketch": "Replace dynamic import with sandboxed subprocess; or sign and verify arch.ts before execution.",
+      "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": null,
@@ -23,11 +29,11 @@
       "severity": "CRITICAL",
       "category": "risk",
       "title": "TLS verification disabled for Supabase/PostgreSQL when CA cert path is not set",
-      "detail": "When SUPABASE_CA_CERT_PATH is unset and the URL contains 'supabase.co', the pool is created with ssl: { rejectUnauthorized: false }, disabling certificate validation on connections carrying knowledge-graph embeddings and audit findings. Trivially vulnerable to MITM interception.",
+      "detail": "getKgPool() sets rejectUnauthorized:false when SUPABASE_CA_CERT_PATH is not set. Enables MitM attacks against Supabase data.",
       "file_globs": [
         "src/agents/indexer/pg-client.ts"
       ],
-      "fix_sketch": "Require SUPABASE_CA_CERT_PATH in production or use ssl: true (system CA bundle) instead of disabling verification. Throw or warn loudly and refuse pool creation when NODE_ENV=production and cert is absent.",
+      "fix_sketch": "Require SUPABASE_CA_CERT_PATH or set rejectUnauthorized:true unconditionally.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -39,11 +45,12 @@
       "severity": "CRITICAL",
       "category": "logic",
       "title": "Public control plane cancel only marks store state; running pipeline worker is NOT killed",
-      "detail": "The onCancel handler on port 3001 writes blocked+cancelled to TaskStore but does NOT abort the in-flight pipeline worker (AbortController lives only in the daemon on port 3002). Operators receive HTTP 202 OK believing the task is cancelled while Claude continues consuming API quota and making commits. No timeout or watcher eventually kills the orphaned worker.",
+      "detail": "cancelSprint() calls handle.cancel() but if abortController is not provided in the bootstrap, cancellation is a no-op. Pipeline continues executing and may open a PR.",
       "file_globs": [
-        "src/server.ts"
+        "src/orchestrator/sprint.ts",
+        "src/orchestrator/pipeline-bridge.ts"
       ],
-      "fix_sketch": "Route cancel commands exclusively to port 3002, or add a daemon watcher that notices blocked+cancelled in the store and triggers AbortController.abort() for the pipeline.",
+      "fix_sketch": "Make abortController required in PipelineRunBootstrap; throw in PipelineBridge.spawn() if not provided.",
       "parallel_safe": false,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -55,11 +62,11 @@
       "severity": "CRITICAL",
       "category": "risk",
       "title": "Docker sandbox runs as --user root inside every container",
-      "detail": "buildDockerArgs() hard-codes --user root for all verification phases. A container-escape vulnerability gives an attacker root credentials on the host. The worktree is mounted at /work so file exfiltration is already possible post-escape.",
+      "detail": "buildDockerArgs() passes '--user','root' for all phases. Container escape in verifier tooling runs with root privileges.",
       "file_globs": [
         "src/agents/verifier/sandbox.ts"
       ],
-      "fix_sketch": "Create a dedicated non-root user in the ifleet-verifier:base Docker image and use --user ifleet (UID 1000). Change /root/.pnpm-store to /home/ifleet/.pnpm-store in the image accordingly.",
+      "fix_sketch": "Replace '--user','root' with '--user','1000:1000' and pre-create /work with those permissions in the image.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -71,11 +78,11 @@
       "severity": "CRITICAL",
       "category": "risk",
       "title": "Editor reviewer and doctor roles receive architect output as direct Claude instructions with no injection filter",
-      "detail": "In buildWorkerPool.spawn(), trustedBrief=true for all non-architect roles skips wrapBriefAsData(). If the architect is jailbroken or returns malicious output, that content becomes direct instructions for editor/reviewer/doctor with no sandboxing.",
+      "detail": "buildBrief() wraps user brief via quoteAsUserData() but architect plan (mode.plan) is injected as trusted instruction. A prompt-injected architect output can escalate to the editor which has write/bash permissions.",
       "file_globs": [
-        "src/pipeline/factory.ts"
+        "src/pipeline/editor.ts"
       ],
-      "fix_sketch": "Apply a lightweight quoteAsUserData() wrapper to architect output before forwarding to editor/reviewer/doctor, or validate architect output conforms to expected JSON plan schema before passing it downstream.",
+      "fix_sketch": "Wrap mode.plan with quoteAsUserData() and add explicit trust labels.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -87,11 +94,11 @@
       "severity": "IMPORTANT",
       "category": "risk",
       "title": "GitHub token exposed via git -c argument visible in proc cmdline and ps output",
-      "detail": "authPrefix() injects the GitHub token as -c http.https://github.com/.extraheader=AUTHORIZATION: bearer <TOKEN>. This argument is visible in /proc/<pid>/cmdline and to logging tools that capture command lines.",
+      "detail": "authPrefix() constructs git -c http.extraheader=AUTHORIZATION: bearer <token>. Token visible to any process reading /proc/<pid>/cmdline.",
       "file_globs": [
         "packages/orchestrator-core/src/repos/manager.ts"
       ],
-      "fix_sketch": "Use GIT_ASKPASS or a credential helper script that reads the token from a file. This keeps the token out of argv.",
+      "fix_sketch": "Use GIT_ASKPASS or credential helper instead of -c argument.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -103,11 +110,11 @@
       "severity": "IMPORTANT",
       "category": "risk",
       "title": "Bash cat glob in worker allow list can exfiltrate arbitrary host files",
-      "detail": "The WORKER_CLAUDE_PERMISSIONS allow list includes Bash(cat *) with no path restriction. A worker can cat /etc/passwd, cat ~/.claude/credentials.json, or traverse to parent directories to read host-level secrets.",
+      "detail": "WORKER_CLAUDE_PERMISSIONS includes Bash(cat *). A prompt-injected worker can read /etc/environment, ~/.claude/settings.json, or any daemon-readable file.",
       "file_globs": [
         "src/pipeline/factory.ts"
       ],
-      "fix_sketch": "Replace Bash(cat *) with Bash(cat ./*) or restrict to the worktree path. Better yet remove cat from the allow list and rely on the Read tool (already allowed) for file reading.",
+      "fix_sketch": "Restrict to Bash(cat /work/*) or remove cat and rely on the Read tool which is path-scoped.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -119,27 +126,27 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "markCancelled in UnifiedQueueAdapter missing conditional fromState guard",
-      "detail": "markCompleted and markFailed pass fromState='in_flight' to store.updateState() so concurrent state changes are detected. markCancelled calls store.updateState without a fromState guard, meaning a completed or failed task can be overwritten with blocked+cancelled, corrupting the audit trail.",
+      "detail": "Fixed: markCancelled now reads current state via getById() and returns early if already terminal.",
       "file_globs": [
         "packages/orchestrator-core/src/queue/unified-adapter.ts"
       ],
-      "fix_sketch": "Add fromState='in_flight' as the fourth argument to store.updateState() in markCancelled, and check the returned boolean to skip sourceFor(task).markFailed() when the state was not updated.",
+      "fix_sketch": "Already applied.",
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
+      "closed_at": "2026-07-24T04:11:36Z",
+      "closing_pr": "audit/nightly-2026-07-24"
     },
     {
       "id": "AUDIT-IFleet-d651330f",
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "markFindingClosed writes index.json and closed.json non-atomically",
-      "detail": "markFindingClosed() calls writeAuditIndex first then appendToClosedJson separately without holding the index.json lock across both operations. A process crash between writes leaves index.json showing the finding as closed but closed.json missing the record.",
+      "detail": "audit-runner.ts writes index.json then closed.json without a lock, enabling a race where concurrent scan reads a partially updated index.",
       "file_globs": [
         "packages/orchestrator-core/src/discord/audit-runner.ts"
       ],
-      "fix_sketch": "Combine the index.json write and the closed.json append inside a single withClosedJsonLock critical section.",
+      "fix_sketch": "Wrap both writes in withClosedJsonLock().",
       "parallel_safe": false,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -151,27 +158,11 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "GitHub drain loop has premature break on duplicate ID before exclusion set insertion",
-      "detail": "In GitHubIssuesSource.drain(), after pickNext the code checks if (exclude.has(next.id)) break before adding the ID to the exclude set. This causes the drain loop to terminate instead of continuing when pickNext returns a previously-seen ID.",
+      "detail": "GitHubIssuesSource.drain() continues without adding to exclude on duplicate ID. Safe via pickNext excludeIds but creates a logic smell.",
       "file_globs": [
         "src/queue/sources/github.ts"
       ],
-      "fix_sketch": "Move exclude.add(next.id) to before the if (exclude.has(next.id)) break check, or remove the redundant guard since excludeIds handles dedup at the source.",
-      "parallel_safe": true,
-      "status": "fixed",
-      "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
-    },
-    {
-      "id": "AUDIT-IFleet-30ed5ad0",
-      "severity": "IMPORTANT",
-      "category": "risk",
-      "title": "getAllPrDecisions defaults to 50000 rows with no streaming",
-      "detail": "TaskStore.getAllPrDecisions() defaults to limit=50000 rows fetched synchronously via better-sqlite3 all(). Loads all rows into a single JS array before returning, potentially consuming hundreds of MB of heap.",
-      "file_globs": [
-        "packages/orchestrator-core/src/queue/store.ts"
-      ],
-      "fix_sketch": "Add pagination with a before cursor on created_at or use iterate() to stream rows. Cap default at 1000.",
+      "fix_sketch": "Remove redundant seen.has check or always update exclusion set.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -179,31 +170,48 @@
       "closing_pr": null
     },
     {
+      "id": "AUDIT-IFleet-30ed5ad0",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "getAllPrDecisions defaults to 50000 rows with no streaming",
+      "detail": "Fixed: default limit reduced from 50,000 to 5,000 to avoid multi-hundred-MB allocations on long-running daemons.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/store.ts",
+        "src/learning/reviewer-prefs/build-cards.ts"
+      ],
+      "fix_sketch": "Already applied: default limit now 5000.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-22T04:17:28Z",
+      "closed_at": "2026-07-24T04:11:36Z",
+      "closing_pr": "audit/nightly-2026-07-24"
+    },
+    {
       "id": "AUDIT-IFleet-4a034a78",
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "MemoryNonceLedger setInterval timer not unref-ed causing Node.js process hang in tests",
-      "detail": "MemoryNonceLedger starts a setInterval in its constructor. Tests that create a control plane but fail to call stop() leak the interval timer, preventing Node.js from exiting after the test suite completes.",
+      "detail": "Fixed: MemoryNonceLedger now calls .unref() on the setInterval timer.",
       "file_globs": [
         "packages/orchestrator-core/src/queue/control-plane.ts"
       ],
-      "fix_sketch": "Add .unref() on the interval timer so it does not prevent Node.js from exiting when no other work is pending.",
+      "fix_sketch": "Already applied.",
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
+      "closed_at": "2026-07-24T04:11:36Z",
+      "closing_pr": "audit/nightly-2026-07-24"
     },
     {
       "id": "AUDIT-IFleet-74a6c807",
       "severity": "IMPORTANT",
-      "category": "risk",
+      "category": "logic",
       "title": "Discord broadcast messages silently dropped with no dead-letter log when outbox not configured",
-      "detail": "In broadcastIFleet(), when pendingCount >= MAX_QUEUE_DEPTH and _outbox is null, the message is dropped with only a console.warn. The outbox is not wired on the public control-plane process. Burst events during bot restart or Discord downtime are silently lost.",
+      "detail": "broadcastIFleet() falls back to fire-and-forget webhook POST. If call fails: no retry, no dead-letter, no log.",
       "file_globs": [
         "packages/orchestrator-core/src/observability/discord-broadcast.ts"
       ],
-      "fix_sketch": "Record dropped messages to a persistent dead-letter log. Alternatively wire the outbox to the public server as well as the daemon.",
+      "fix_sketch": "Log failures at console.error level with message content.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -213,13 +221,13 @@
     {
       "id": "AUDIT-IFleet-5e88bbc4",
       "severity": "IMPORTANT",
-      "category": "logic",
+      "category": "assumption",
       "title": "repoSlug hardcoded to IFleet in VerifierController preventing multi-repo invariant checking",
-      "detail": "In daemon.ts the VerifierController is constructed with repoSlug: 'IFleet' hardcoded. Invariants for any other managed repo are never run regardless of which repo the task targets.",
+      "detail": "VerifierController uses fixed repoSlug regardless of the repo being verified. Workers against other repos receive IFleet's invariants.",
       "file_globs": [
-        "src/orchestrator/daemon.ts"
+        "src/agents/verifier/controller.ts"
       ],
-      "fix_sketch": "Thread the task's repo field through VerifierController so repoSlug is derived from the task being verified rather than fixed at boot.",
+      "fix_sketch": "Derive repoSlug from task.repo field (replace / with _).",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -229,13 +237,13 @@
     {
       "id": "AUDIT-IFleet-33f56468",
       "severity": "IMPORTANT",
-      "category": "risk",
+      "category": "assumption",
       "title": "Package imports cross package boundary via deep relative path traversals",
-      "detail": "interaction-create.ts imports ../../../../../src/audit/audit-store.js and ../../../../../src/orchestrator/approval-gate.js, escaping packages/orchestrator-core/ into main src/. Breaks monorepo isolation and creates fragile path resolution.",
+      "detail": "packages/orchestrator-core/src/discord/audit-runner.ts imports from '../../../../src/audit/' crossing the monorepo package boundary.",
       "file_globs": [
-        "packages/orchestrator-core/src/discord/handlers/interaction-create.ts"
+        "packages/orchestrator-core/src/discord/audit-runner.ts"
       ],
-      "fix_sketch": "Expose required functions as a proper package dependency replacing relative path escapes with package imports.",
+      "fix_sketch": "Move audit-runner.ts to src/audit/ or add audit types to orchestrator-core package.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -247,12 +255,12 @@
       "severity": "IMPORTANT",
       "category": "risk",
       "title": "node_modules symlink in worktree allows workers to install packages affecting all concurrent tasks",
-      "detail": "setupWorktree() creates a symlink from worktree/node_modules to repoRoot/node_modules. Workers with Bash(pnpm *) can run pnpm install which resolves through the symlink to shared host node_modules, affecting all concurrent tasks in other worktrees.",
+      "detail": "setupWorktree() symlinks node_modules from main repo into each worktree. A worker running pnpm install would affect all other running worktrees.",
       "file_globs": [
         "src/pipeline/factory.ts"
       ],
-      "fix_sketch": "Deny Bash(pnpm install *) specifically in the worker deny list, or use a per-worktree copy of node_modules rather than a symlink.",
-      "parallel_safe": false,
+      "fix_sketch": "Remove node_modules symlink from worktree setup.",
+      "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": null,
@@ -261,29 +269,29 @@
     {
       "id": "AUDIT-IFleet-c812af1d",
       "severity": "IMPORTANT",
-      "category": "assumption",
+      "category": "risk",
       "title": "wrapBriefAsData does not scrub BRIEF_DATA_MARKER_OPEN from user input enabling nested block injection",
-      "detail": "wrapBriefAsData() scrubs BRIEF_DATA_MARKER_CLOSE from user-supplied content but not BRIEF_DATA_MARKER_OPEN. An adversarial user can include the open marker to create confusing nested block structure, potentially causing the model to treat instruction-layer text as data.",
+      "detail": "Fixed: wrapBriefAsData and quoteAsUserData both now scrub BRIEF_DATA_MARKER_OPEN in addition to BRIEF_DATA_MARKER_CLOSE.",
       "file_globs": [
         "packages/orchestrator-core/src/workers/claude-env.ts"
       ],
-      "fix_sketch": "Also scrub BRIEF_DATA_MARKER_OPEN from user input alongside the existing BRIEF_DATA_MARKER_CLOSE scrub.",
+      "fix_sketch": "Already applied.",
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
+      "closed_at": "2026-07-24T04:11:36Z",
+      "closing_pr": "audit/nightly-2026-07-24"
     },
     {
       "id": "AUDIT-IFleet-87d18205",
       "severity": "IMPORTANT",
-      "category": "logic",
+      "category": "risk",
       "title": "spawnCapture passes full process.env minus GIT_ vars exposing secrets to git subprocess hooks",
-      "detail": "spawnCapture() in repos/manager.ts passes most of process.env (including GITHUB_TOKEN, DISCORD_BOT_TOKEN, IFLEET_HMAC_SECRET) to the git subprocess, visible to any pre/post-commit hooks or credential helpers git invokes.",
+      "detail": "spawnCapture() strips only GIT_* vars, passing GITHUB_TOKEN, ANTHROPIC_API_KEY, DISCORD_BOT_TOKEN, IFLEET_HMAC_SECRET to git hooks.",
       "file_globs": [
         "packages/orchestrator-core/src/repos/manager.ts"
       ],
-      "fix_sketch": "Apply the same minimal env allowlist used in claudeChildEnv() and verifyChildEnv(): pass only HOME, PATH, USER, LOGNAME, LANG, and required GIT_ auth vars.",
+      "fix_sketch": "Apply claudeChildEnv() allowlist pattern or strip known secrets from git subprocess env.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -295,28 +303,29 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "getKgPool caches pool module-level with no connection error handler",
-      "detail": "There is no pool.on('error', ...) handler on the cached pg Pool. Idle client errors cause unhandled promise rejections that can crash the daemon process.",
+      "detail": "Fixed: cachedPool.on('error', ...) now added after pool creation to prevent unhandled error events from crashing the daemon.",
       "file_globs": [
         "src/agents/indexer/pg-client.ts"
       ],
-      "fix_sketch": "Add cachedPool.on('error', (err) => console.error('[kg-pool] idle client error:', err)) after creating the pool.",
+      "fix_sketch": "Already applied.",
       "parallel_safe": true,
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
+      "closed_at": "2026-07-24T04:11:36Z",
+      "closing_pr": "audit/nightly-2026-07-24"
     },
     {
       "id": "AUDIT-IFleet-08aeb030",
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "DiscordOutbox table DDL duplicated between discord-outbox.ts and store.ts SCHEMA risking silent drift",
-      "detail": "The discord_outbox table DDL appears in both packages/orchestrator-core/src/observability/discord-outbox.ts and packages/orchestrator-core/src/queue/store.ts SCHEMA. Schema drift between the two DDL strings would silently fail to apply the newer definition to existing databases.",
+      "detail": "The discord_outbox CREATE TABLE statement appears in two places. If one is updated without the other, migrations may fail or create mismatched schemas.",
       "file_globs": [
+        "packages/orchestrator-core/src/observability/discord-outbox.ts",
         "packages/orchestrator-core/src/queue/store.ts"
       ],
-      "fix_sketch": "Remove the discord_outbox DDL from TaskStore SCHEMA and let DiscordOutbox own it entirely.",
-      "parallel_safe": true,
+      "fix_sketch": "Extract DDL to a shared constant and import in both files.",
+      "parallel_safe": false,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": null,
@@ -327,15 +336,15 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "verify and force_pr commands silently no-op on public control plane returning false 202 success",
-      "detail": "The onVerify and onForcePr handlers on the public server log to stderr but return undefined, while the HTTP layer still responds HTTP 202. The Discord bot tells the operator the command was accepted when it had no effect.",
+      "detail": "In server.ts the public ControlPlane has onVerify and onForcePr as optional. If not provided (current default), /control with verify or force_pr returns 200 but does nothing.",
       "file_globs": [
         "src/server.ts"
       ],
-      "fix_sketch": "Return HTTP 503 with a descriptive body from these handlers on the public server, or remove them from the public server entirely.",
+      "fix_sketch": "Wire callbacks or return 501 Not Implemented.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -343,11 +352,11 @@
       "severity": "IMPORTANT",
       "category": "assumption",
       "title": "Verifier docker image ifleet-verifier:base assumed to exist with no build or pull probe at startup",
-      "detail": "DockerSandboxRunner defaults to image: 'ifleet-verifier:base' and never validates the image exists before running verification phases. If the image is missing, every phase fails with a cryptic Docker error.",
+      "detail": "DockerSandboxRunner uses DEFAULT_IMAGE='ifleet-verifier:base' with no check that the image exists before first verification run.",
       "file_globs": [
         "src/agents/verifier/sandbox.ts"
       ],
-      "fix_sketch": "Add an imageExists probe in probeDocker() and surface a clear error when the image is absent. Add a build/pull step to the VPS deployment script.",
+      "fix_sketch": "Add probeImage() at startup that pulls or logs clear error if image is absent.",
       "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
@@ -359,15 +368,15 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "ControlPlane HTTP server destroys nonce store before draining in-flight connections",
-      "detail": "In createControlPlane(), stop() calls nonceStore.destroy() synchronously before server.close(). In-flight requests at shutdown may call nonceStore.registerOrReject() after the ledger is torn down: for MemoryNonceLedger nonce dedup is silently disabled; for SqliteNonceLedger calls to a closed DB throw.",
+      "detail": "server.close() callback runs nonceLedger.destroy() immediately. In-flight requests will see a destroyed nonce store.",
       "file_globs": [
         "packages/orchestrator-core/src/queue/control-plane.ts"
       ],
-      "fix_sketch": "Call nonceStore.destroy() only after server.close() resolves (inside the close callback), ensuring all in-flight requests complete before the nonce store is torn down.",
-      "parallel_safe": true,
-      "status": "fixed",
+      "fix_sketch": "Call nonceLedger.destroy() after server.close() callback fires (all connections drained).",
+      "parallel_safe": false,
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -375,49 +384,48 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "pendingCount derived from stale in-memory snapshot can trigger spurious rate-pause",
-      "detail": "Line 356 of sprint.ts used tasks (the pre-dispatch snapshot) instead of freshTasks (loaded after dispatch loop) to count pending tasks. After dispatch transitions tasks to assigned, the stale snapshot still shows them as pending, triggering checkRateLimit unnecessarily.",
+      "detail": "Previously fixed in audit/nightly-2026-07-22.",
       "file_globs": [
-        "src/orchestrator/sprint.ts"
+        "src/orchestrator/pressure.ts"
       ],
-      "fix_sketch": "Use freshTasks.filter() instead of tasks.filter() on line 356. Fixed in this audit run.",
+      "fix_sketch": "Already fixed.",
       "parallel_safe": true,
       "status": "fixed",
-      "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
+      "opened_at": "2026-07-17T04:00:00Z",
+      "closed_at": "2026-07-22T04:17:28Z",
+      "closing_pr": "audit/nightly-2026-07-22"
     },
     {
       "id": "AUDIT-IFleet-235892e6",
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "durationMs inflated by pause time when sprint is paused and resumed before completing",
-      "detail": "sprint.completed payload computed durationMs as now - running.startedAt. Since startedAt is the original start time (preserved through pause/resume cycles), the metric includes all pause time. Added elapsedMs tracking to accumulate only active time.",
+      "detail": "Previously fixed in audit/nightly-2026-07-22.",
       "file_globs": [
-        "src/orchestrator/sprint.ts",
-        "src/orchestrator/types.ts"
+        "src/orchestrator/sprint.ts"
       ],
-      "fix_sketch": "Track elapsedMs in running/paused states; compute durationMs as (elapsedMs ?? 0) + (now - startedAt) where startedAt resets to now() on each resume. Fixed in this audit run.",
+      "fix_sketch": "Already fixed.",
       "parallel_safe": true,
       "status": "fixed",
-      "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
-      "closing_pr": null
+      "opened_at": "2026-07-17T04:00:00Z",
+      "closed_at": "2026-07-22T04:17:28Z",
+      "closing_pr": "audit/nightly-2026-07-22"
     },
     {
       "id": "AUDIT-IFleet-d6c3152d",
       "severity": "COSMETIC",
       "category": "cosmetic",
       "title": "console.warn used for routine informational log messages throughout server.ts and daemon.ts",
-      "detail": "Both src/server.ts and src/orchestrator/daemon.ts use console.warn for normal startup messages. PM2 routes stderr separately from stdout, so these appear as warnings in PM2 logs causing noise and masking real warnings.",
+      "detail": "console.warn used for boot messages like 'recovered N stale tasks'. Should be console.info to not pollute error monitoring.",
       "file_globs": [
         "src/server.ts",
         "src/orchestrator/daemon.ts"
       ],
-      "fix_sketch": "Use console.log for informational messages and reserve console.warn for genuinely unexpected but non-fatal conditions.",
+      "fix_sketch": "Change console.warn to console.info for normal operation messages.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -425,12 +433,12 @@
       "severity": "COSMETIC",
       "category": "cosmetic",
       "title": "TaskSource interface has no markCancelled causing cancelled tasks to appear as failed in GitHub and Discord",
-      "detail": "UnifiedQueueAdapter.markCancelled() calls sourceFor(task).markFailed() because TaskSource has no markCancelled method. GitHub issues and Discord threads receive a failed label even when the task was deliberately cancelled.",
+      "detail": "TaskSource.markFailed is called for cancelled tasks. GitHub gets auto:failed label for deliberate operator cancels.",
       "file_globs": [
-        "packages/orchestrator-core/src/queue/unified-adapter.ts"
+        "packages/orchestrator-core/src/queue/sources/base.ts"
       ],
-      "fix_sketch": "Add markCancelled(task: QueuedTask, reason: string): Promise<void> to the TaskSource interface and implement it in both GitHubIssuesSource and DiscordSource.",
-      "parallel_safe": false,
+      "fix_sketch": "Add optional markCancelled to TaskSource interface.",
+      "parallel_safe": true,
       "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": null,
@@ -441,15 +449,15 @@
       "severity": "COSMETIC",
       "category": "cosmetic",
       "title": "Silently swallowed errors in void fire-and-forget chains in repos/manager.ts",
-      "detail": "packages/orchestrator-core/src/repos/manager.ts uses void settled.then(...) with no .catch() on some call sites, silently swallowing errors from lock cleanup logic.",
+      "detail": "Several async operations in repos/manager.ts are called with void and have silent catch blocks.",
       "file_globs": [
         "packages/orchestrator-core/src/repos/manager.ts"
       ],
-      "fix_sketch": "Add explicit .catch((err) => console.error('[repo-manager] lock cleanup error:', err)) after settled.then() call sites.",
+      "fix_sketch": "Log caught errors at console.warn with a [manager] tag.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     },
     {
@@ -457,23 +465,16 @@
       "severity": "COSMETIC",
       "category": "cosmetic",
       "title": "apps/wahq-bot/src/index.ts is an empty stub with only an export statement",
-      "detail": "The file contains only export {} with no implementation or roadmap reference, creating an empty package entrypoint that could confuse future contributors.",
+      "detail": "The wahq-bot app is a placeholder. Unnecessary workspace overhead until Agent SDK migration lands.",
       "file_globs": [
         "apps/wahq-bot/src/index.ts"
       ],
-      "fix_sketch": "Add a comment explaining this is a stub pending the Agent SDK migration (referencing AGENTS.md).",
+      "fix_sketch": "Add a TODO comment pointing to AGENTS.md note about Agent SDK backlog.",
       "parallel_safe": true,
-      "status": "fixed",
+      "status": "open",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": "2026-07-22T04:31:00Z",
+      "closed_at": null,
       "closing_pr": null
     }
-  ],
-  "by_severity": {
-    "CRITICAL": 5,
-    "IMPORTANT": 18,
-    "COSMETIC": 4
-  },
-  "open_count": 14,
-  "fixed_count": 13
+  ]
 }
