@@ -625,10 +625,11 @@ export class TaskStore {
   /**
    * Fetch all PR decisions across all repos, newest first.
    * Used by the reviewer-prefs pipeline which needs cross-repo data.
-   * Callers should supply a limit; default 50 000 matches historical usage
-   * (AUDIT-IFleet-8986c35b — avoids as-any cast against the private db field).
+   * Callers should supply an explicit limit. Default reduced to 5 000 to
+   * avoid multi-hundred-MB allocations on long-running daemons
+   * (AUDIT-IFleet-30ed5ad0).
    */
-  getAllPrDecisions(limit = 50_000): PrDecision[] {
+  getAllPrDecisions(limit = 5_000): PrDecision[] {
     const VALID_VERDICTS = new Set<string>(['merged', 'rejected', 'abandoned']);
     const rows = this.db
       .prepare(
