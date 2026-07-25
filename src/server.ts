@@ -130,9 +130,10 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
       // approve requires the in-process ControlPlaneApprovalGate that only the
       // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
       // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      // Throw so dispatch() returns 500 rather than silently accepting with 202
+      // (AUDIT-IFleet-f3c87d12).
+      throw new Error(
+        `approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onCancel: async (taskId, reason) => {

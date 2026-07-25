@@ -649,11 +649,15 @@ export class TaskStore {
         created_at: number;
         fingerprint: string | null;
       }>;
-    return rows.map((r) => {
+    // Warn-and-skip on invalid verdict to avoid a single corrupt row killing
+    // the entire result set (AUDIT-IFleet-9b4f7a3d).
+    const results: PrDecision[] = [];
+    for (const r of rows) {
       if (!VALID_VERDICTS.has(r.verdict)) {
-        throw new Error(`getAllPrDecisions: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+        console.warn(`getAllPrDecisions: invalid verdict in DB row ${r.id}: "${r.verdict}" — skipping`);
+        continue;
       }
-      return {
+      results.push({
         id: r.id,
         taskId: r.task_id,
         repo: r.repo,
@@ -663,8 +667,9 @@ export class TaskStore {
         mergedAt: r.merged_at,
         createdAt: r.created_at,
         fingerprint: r.fingerprint,
-      };
-    });
+      });
+    }
+    return results;
   }
 
   /** Fetch all PR decisions for a repo, newest first. */
@@ -685,11 +690,15 @@ export class TaskStore {
         created_at: number;
         fingerprint: string | null;
       }>;
-    return rows.map((r) => {
+    // Warn-and-skip on invalid verdict to avoid a single corrupt row killing
+    // the entire result set (AUDIT-IFleet-9b4f7a3d).
+    const results: PrDecision[] = [];
+    for (const r of rows) {
       if (!VALID_VERDICTS.has(r.verdict)) {
-        throw new Error(`getPrDecisionsByRepo: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+        console.warn(`getPrDecisionsByRepo: invalid verdict in DB row ${r.id}: "${r.verdict}" — skipping`);
+        continue;
       }
-      return {
+      results.push({
         id: r.id,
         taskId: r.task_id,
         repo: r.repo,
@@ -699,8 +708,9 @@ export class TaskStore {
         mergedAt: r.merged_at,
         createdAt: r.created_at,
         fingerprint: r.fingerprint,
-      };
-    });
+      });
+    }
+    return results;
   }
 
   /**

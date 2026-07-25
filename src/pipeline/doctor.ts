@@ -133,9 +133,11 @@ function persistFingerprint(path: string, hash: string, tag: string): void {
 }
 
 export function parseDiagnosis(raw: string): DoctorDiagnosis {
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
+  // Balanced-brace scan instead of first-'{'/last-'}' heuristic — the
+  // heuristic breaks when LLM output contains bare braces before the JSON
+  // payload (e.g. TypeScript error codes like "{TS2345}") (AUDIT-IFleet-c9f2e4a1).
+  const json = extractFirstJsonObject(raw);
+  if (!json) {
     return {
       rootCause: 'doctor returned no JSON',
       proposedFix: '',
@@ -145,7 +147,7 @@ export function parseDiagnosis(raw: string): DoctorDiagnosis {
     };
   }
   try {
-    const parsed: unknown = JSON.parse(raw.slice(start, end + 1));
+    const parsed: unknown = JSON.parse(json);
     if (typeof parsed !== 'object' || parsed === null) throw new Error('not an object');
     const obj = parsed as Record<string, unknown>;
     const rootCause = typeof obj.rootCause === 'string' ? obj.rootCause : '';
@@ -163,4 +165,37 @@ export function parseDiagnosis(raw: string): DoctorDiagnosis {
       raw,
     };
   }
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    const start = text.indexOf('{', searchFrom);
+    if (start === -1) return null;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let end = -1;
+    for (let j = start; j < text.length; j++) {
+      const ch = text[j];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { end = j; break; }
+      }
+    }
+    if (end === -1) return null;
+    const slice = text.slice(start, end + 1);
+    try {
+      JSON.parse(slice);
+      return slice;
+    } catch {
+      searchFrom = start + 1;
+    }
+  }
+  return null;
 }

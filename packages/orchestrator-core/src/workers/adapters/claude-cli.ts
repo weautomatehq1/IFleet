@@ -145,11 +145,21 @@ function pickModel(
 }
 
 function loadWorkerConfig(configPath: string, workerId: string): WorkerConfig | undefined {
+  let raw: string;
   try {
-    const raw = readFileSync(configPath, 'utf8');
+    raw = readFileSync(configPath, 'utf8');
+  } catch {
+    return undefined;
+  }
+  try {
     const parsed = JSON.parse(raw) as { workers?: ReadonlyArray<WorkerConfig> };
     return parsed.workers?.find((w) => w.id === workerId);
-  } catch {
+  } catch (err) {
+    // Parse failure is actionable — log so operators can fix the config file.
+    // File-not-found (above) is expected in dev/test environments (AUDIT-IFleet-4c9e2b1f).
+    console.warn(
+      `[claude-cli] workers config parse error at ${configPath}: ${err instanceof Error ? err.message : String(err)} — using fallback model`,
+    );
     return undefined;
   }
 }

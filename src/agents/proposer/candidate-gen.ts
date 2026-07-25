@@ -66,11 +66,17 @@ export interface GenerateCandidatesDeps {
   warn?: (line: string) => void;
 }
 
+// Request timeout for Anthropic API calls. Haiku with 4096 max_tokens
+// consistently completes well under 30 s; 60 s guards against hangs without
+// false-firing on slow batches. (AUDIT-IFleet-d5a4ca07)
+const ANTHROPIC_REQUEST_TIMEOUT_MS = 60_000;
+
 export class AnthropicCompleter implements LlmCompleter {
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
-  constructor(opts: { apiKey?: string; fetchImpl?: typeof fetch } = {}) {
+  constructor(opts: { apiKey?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {}) {
     const key = opts.apiKey ?? process.env.ANTHROPIC_API_KEY;
     if (!key) {
       throw new Error(
@@ -80,6 +86,7 @@ export class AnthropicCompleter implements LlmCompleter {
     }
     this.apiKey = key;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? ANTHROPIC_REQUEST_TIMEOUT_MS;
   }
 
   async complete(opts: {
@@ -88,20 +95,28 @@ export class AnthropicCompleter implements LlmCompleter {
     model: string;
     maxTokens: number;
   }): Promise<string> {
-    const resp = await this.fetchImpl(ANTHROPIC_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: opts.model,
-        max_tokens: opts.maxTokens,
-        system: opts.systemPrompt,
-        messages: [{ role: 'user', content: opts.userPrompt }],
-      }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let resp: Response;
+    try {
+      resp = await this.fetchImpl(ANTHROPIC_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: opts.model,
+          max_tokens: opts.maxTokens,
+          system: opts.systemPrompt,
+          messages: [{ role: 'user', content: opts.userPrompt }],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       throw new Error(`Anthropic ${resp.status}: ${text.slice(0, 400)}`);

@@ -50,6 +50,15 @@ function mockOctokit(state: MockState): unknown {
       return wanted.every((w) => have.includes(w));
     });
   };
+  // iterator variant used by findStatusComment (page-capped paginate)
+  (paginate as unknown as Record<string, unknown>).iterator = async function* (
+    _fn: unknown,
+    params: { issue_number?: number },
+  ): AsyncGenerator<{ data: unknown[] }> {
+    yield { data: params.issue_number !== undefined
+      ? state.comments.filter((c) => c.issue === params.issue_number)
+      : [] };
+  };
 
   return {
     paginate,
@@ -139,6 +148,15 @@ function mockOctokitWithEvents(state: MockStateWithEvents): unknown {
       const have = i.labels.map((l) => (typeof l === 'string' ? l : l.name ?? ''));
       return wanted.every((w) => have.includes(w));
     });
+  };
+  // iterator variant used by findStatusComment (page-capped paginate)
+  (paginate as unknown as Record<string, unknown>).iterator = async function* (
+    _fn: unknown,
+    p: { issue_number?: number },
+  ): AsyncGenerator<{ data: unknown[] }> {
+    yield { data: p.issue_number !== undefined
+      ? state.comments.filter((c) => c.issue === p.issue_number)
+      : [] };
   };
 
   return {

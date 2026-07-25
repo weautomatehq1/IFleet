@@ -46,6 +46,15 @@ describe('doctor', () => {
     );
     expect(d.requiresNewBrief).toBe(true);
   });
+
+  it('skips bare braces before the JSON payload (AUDIT-IFleet-c9f2e4a1)', () => {
+    const d = parseDiagnosis(
+      'Type error {TS2345} in file.ts\n{"rootCause":"oops","proposedFix":"fix","confidence":0.8,"requiresNewBrief":false}',
+    );
+    expect(d.rootCause).toBe('oops');
+    expect(d.confidence).toBe(0.8);
+    expect(d.requiresNewBrief).toBe(false);
+  });
 });
 
 describe('runDoctor fingerprint integration', () => {

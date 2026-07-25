@@ -590,6 +590,8 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
     architect: input.routing.architect,
     editor: input.routing.editor,
     reviewer: input.routing.reviewer,
+    // Doctor is explicitly spawned with the architect spec (see runDoctor call
+    // above). Cost records reflect the model that actually ran (AUDIT-IFleet-8e3b9f4a).
     doctor: input.routing.architect,
   };
   for (const attempt of attempts) {

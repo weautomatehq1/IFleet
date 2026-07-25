@@ -150,12 +150,12 @@ export class DiscordOutbox {
     return { sent, retried, failed };
   }
 
-  deadLetterEntries(): OutboxEntry[] {
+  deadLetterEntries(limit = 500): OutboxEntry[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM discord_outbox WHERE state = 'failed' ORDER BY created_at DESC`,
+        `SELECT * FROM discord_outbox WHERE state = 'failed' ORDER BY created_at DESC LIMIT @limit`,
       )
-      .all() as OutboxRow[];
+      .all({ limit }) as OutboxRow[];
 
     return rows.map((r) => ({
       id: r.id,

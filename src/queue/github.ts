@@ -542,16 +542,27 @@ export class GitHubQueue implements QueueAdapter {
   private async findStatusComment(task: QueuedTask): Promise<number | null> {
     const [owner, name] = task.repo.split('/');
     if (!owner || !name) throw new Error(`invalid repo on task: ${task.repo}`);
-    const comments = await this.octokit.paginate(this.octokit.issues.listComments, {
-      owner,
-      repo: name,
-      issue_number: task.issueNumber,
-      per_page: 100,
-    });
-    for (let i = comments.length - 1; i >= 0; i--) {
-      const c = comments[i];
-      if (c && typeof c.body === 'string' && c.body.startsWith(STATUS_MARKER)) {
-        return c.id;
+    // Cap pagination to 10 pages (1 000 comments) — issues with heavy comment
+    // history can otherwise drive unbounded API calls (AUDIT-IFleet-d8a6e05c).
+    const PAGE_CAP = 10;
+    let pagesRead = 0;
+    for await (const response of this.octokit.paginate.iterator(
+      this.octokit.issues.listComments,
+      { owner, repo: name, issue_number: task.issueNumber, per_page: 100 },
+    )) {
+      pagesRead += 1;
+      if (pagesRead > PAGE_CAP) {
+        console.warn(
+          `[github-source] findStatusComment page cap (${PAGE_CAP}) reached for ${task.repo}#${task.issueNumber}`,
+        );
+        break;
+      }
+      const page = response.data;
+      for (let i = page.length - 1; i >= 0; i--) {
+        const c = page[i];
+        if (c && typeof c.body === 'string' && c.body.startsWith(STATUS_MARKER)) {
+          return c.id;
+        }
       }
     }
     return null;
@@ -587,7 +598,10 @@ function toTask(repo: RepoRef, issue: IssueLike): QueuedTask {
     .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
     .filter((s): s is string => s.length > 0);
   const parsedAt = Date.parse(issue.created_at);
-  const createdAt = Number.isFinite(parsedAt) ? parsedAt : Date.now();
+  if (!Number.isFinite(parsedAt)) {
+    console.warn(`[github-source] toTask: unparseable created_at "${issue.created_at}" for issue #${issue.number} — using 0 to avoid false-recency`);
+  }
+  const createdAt = Number.isFinite(parsedAt) ? parsedAt : 0;
   return {
     id: issue.node_id,
     repo: `${repo.owner}/${repo.name}`,
