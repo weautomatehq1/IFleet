@@ -549,12 +549,28 @@ export class SprintManager {
     if (!allBlocked) return;
 
     const now = this.now();
-    const futureSlots = workers
-      .map((w) => this.pressure.nextAvailableSlot(w.id))
-      .filter((r) => r > now);
-    if (futureSlots.length === 0) return;
+    const rawSlots = workers.map((w) => this.pressure.nextAvailableSlot(w.id));
+    // Exclude Infinity values — those come from permanently auth-failed workers
+    // (markAuthFailed sets pausedUntil = Infinity). Mixing them into Math.min
+    // would yield Infinity as resetAt, which serialises as a DB integer overflow
+    // and renders 'Invalid Date' in broadcast messages. If ALL slots are Infinity
+    // (every worker permanently auth-failed), emit a dedicated event instead of
+    // a rate-pause so operators get an actionable diagnostic.
+    const finiteSlots = rawSlots.filter((r) => r > now && isFinite(r));
+    if (finiteSlots.length === 0) {
+      const allAuthFailed = rawSlots.every((r) => !isFinite(r));
+      if (allAuthFailed) {
+        this.emit({
+          ts: now,
+          sprintId,
+          kind: 'sprint.auth_failed',
+          payload: { message: 'all workers permanently auth-failed; sprint cannot resume automatically' },
+        });
+      }
+      return;
+    }
 
-    const resetAt = Math.min(...futureSlots);
+    const resetAt = Math.min(...finiteSlots);
     this.rateLimitResetAt.set(sprintId, resetAt);
     // Persist so a restart while the sprint is rate-paused does not forget
     // when to auto-resume.
@@ -585,15 +601,17 @@ export class SprintManager {
       const task = this.store.loadTask(taskId);
       if (!task) return;
       const spentUsd = this.accumulateCost(task.sprintId, result.totalCostUsd);
+      // Capture once so state.at, updatedAt, and emit.ts are identical.
+      const completedAt = this.now();
       switch (result.exitCode) {
         case 0:
           this.store.saveTask({
             ...task,
-            state: { kind: 'completed', at: this.now(), pr: result.pr },
-            updatedAt: this.now(),
+            state: { kind: 'completed', at: completedAt, pr: result.pr },
+            updatedAt: completedAt,
           });
           this.emit({
-            ts: this.now(),
+            ts: completedAt,
             sprintId: task.sprintId,
             taskId,
             workerId: entry.workerId,
@@ -604,11 +622,11 @@ export class SprintManager {
         case 2:
           this.store.saveTask({
             ...task,
-            state: { kind: 'cancelled', at: this.now(), reason: result.error ?? 'cancelled by worker' },
-            updatedAt: this.now(),
+            state: { kind: 'cancelled', at: completedAt, reason: result.error ?? 'cancelled by worker' },
+            updatedAt: completedAt,
           });
           this.emit({
-            ts: this.now(),
+            ts: completedAt,
             sprintId: task.sprintId,
             taskId,
             workerId: entry.workerId,
@@ -619,11 +637,11 @@ export class SprintManager {
         case 3:
           this.store.saveTask({
             ...task,
-            state: { kind: 'failed', at: this.now(), error: result.error ?? 'blocked_by_reviewer' },
-            updatedAt: this.now(),
+            state: { kind: 'failed', at: completedAt, error: result.error ?? 'blocked_by_reviewer' },
+            updatedAt: completedAt,
           });
           this.emit({
-            ts: this.now(),
+            ts: completedAt,
             sprintId: task.sprintId,
             taskId,
             workerId: entry.workerId,
@@ -636,13 +654,13 @@ export class SprintManager {
             ...task,
             state: {
               kind: 'failed',
-              at: this.now(),
+              at: completedAt,
               error: result.error ?? `exit ${result.exitCode}`,
             },
-            updatedAt: this.now(),
+            updatedAt: completedAt,
           });
           this.emit({
-            ts: this.now(),
+            ts: completedAt,
             sprintId: task.sprintId,
             taskId,
             workerId: entry.workerId,
@@ -657,15 +675,16 @@ export class SprintManager {
       this.running.delete(taskId);
       const task = this.store.loadTask(taskId);
       const message = err instanceof Error ? err.message : String(err);
+      const failedAt = this.now();
       if (task) {
         this.store.saveTask({
           ...task,
-          state: { kind: 'failed', at: this.now(), error: message },
-          updatedAt: this.now(),
+          state: { kind: 'failed', at: failedAt, error: message },
+          updatedAt: failedAt,
         });
       }
       this.emit({
-        ts: this.now(),
+        ts: failedAt,
         sprintId: entry.sprintId,
         taskId,
         workerId: entry.workerId,
@@ -744,6 +763,13 @@ export class SprintManager {
       cancels.push(entry.handle.cancel().catch(() => undefined));
     }
     await Promise.allSettled(cancels);
+
+    // TOCTOU guard (AUDIT-IFleet-cancelSprint-toctou): a task may have
+    // completed while we awaited handle.cancel(), transitioning the sprint to
+    // `completed` or `failed`. Re-read before calling transition() to avoid
+    // the "invalid sprint transition completed → cancelled" throw.
+    const fresh = this.store.loadSprint(id);
+    if (!fresh || TERMINAL_STATES.has(fresh.state.kind)) return fresh ?? sprint;
 
     return this.transition(id, {
       kind: 'cancelled',

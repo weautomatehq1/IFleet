@@ -51,7 +51,13 @@ export class DefaultPipelineRunner implements PipelineRunner {
   private async _run(input: PipelineInput, attempts: AttemptRecord[]): Promise<PipelineResult> {
     const baseBranch = input.baseBranch ?? 'main';
     const reviewerMaxRounds = input.reviewerMaxRounds ?? DEFAULT_REVIEWER_MAX_ROUNDS;
-    const approver = input.approver ?? '@monstersebas1';
+    // AUDIT-IFleet-runner-approver: removed hardcoded '@monstersebas1' fallback.
+    // Factory.ts always provides approver from config; direct callers must set
+    // PipelineInput.approver or IFLEET_DEFAULT_APPROVER.
+    const approver = input.approver ?? process.env['IFLEET_DEFAULT_APPROVER'];
+    if (!approver) {
+      throw new Error('runner: approver is required — set PipelineInput.approver or IFLEET_DEFAULT_APPROVER env');
+    }
 
     const poolProviders = new Set([
       input.routing.architect.provider,

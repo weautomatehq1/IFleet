@@ -83,6 +83,10 @@ async function main(): Promise<void> {
   const client: Client = createDiscordClient({
     router,
     controlPlane: controlPlaneClient,
+    // Intentional no-op: the daemon routes all task-ID resolution through the
+    // control-plane HTTP API. The Discord client's message-ID→task-ID path is
+    // unused here; returning null causes the client to fall back to the
+    // control-plane lookup on every reaction/reply event.
     resolveTaskIdFromMessage: async () => null,
   });
 
@@ -90,7 +94,7 @@ async function main(): Promise<void> {
   const discordOut = new DiscordOutAdapter({
     client,
     router,
-    fallbackChannelId: process.env['DISCORD_FALLBACK_CHANNEL_ID'] ?? undefined,
+    fallbackChannelId: process.env['DISCORD_FALLBACK_CHANNEL_ID'],
   });
 
   // Open the orchestrator's StateStore early so we can wire the
