@@ -43,7 +43,7 @@ export interface DiscordSourceOptions {
    * `StateStore.appendEvent({kind: 'discord.post_failed', ...})` so operators
    * can query why a thread suddenly stopped updating. See #165 audit.
    */
-  onPostFailed?: (taskId: string, method: 'markPicked' | 'markCompleted' | 'markFailed' | 'markBlocked' | 'resolveThread', reason: string) => void;
+  onPostFailed?: (taskId: string, method: 'markPicked' | 'markCompleted' | 'markFailed' | 'markBlocked' | 'markCancelled' | 'resolveThread', reason: string) => void;
 }
 
 export class DiscordSource implements TaskSource {
@@ -171,6 +171,15 @@ export class DiscordSource implements TaskSource {
       return;
     }
     await this.opts.out.postFailed(tid, `Blocked — missing capability: ${capability}`);
+  }
+
+  async markCancelled(task: QueuedTask, reason: string): Promise<void> {
+    const tid = await this.resolveThread(task);
+    if (!tid) {
+      this.opts.onPostFailed?.(task.id, 'markCancelled', `no threadId (cancelled, reason: ${reason})`);
+      return;
+    }
+    await this.opts.out.postFailed(tid, `Cancelled: ${reason}`);
   }
 
   /**

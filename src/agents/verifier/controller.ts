@@ -191,9 +191,12 @@ export class VerifierController {
   private async runInvariants(ctx: TaskRunContext): Promise<VerifierFailure[]> {
     if (!ctx.worktreePath || !existsSync(ctx.worktreePath)) return [];
     try {
+      // Derive the slug from the task's repoUrl so multi-repo invariants work.
+      // Falls back to the constructor-supplied default. (AUDIT-IFleet-5e88bbc4)
+      const repoSlug = repoSlugFromUrl(ctx.repoUrl) ?? this.repoSlug;
       const opts: { worktreePath: string; repoSlug: string; invariantsRoot?: string } = {
         worktreePath: ctx.worktreePath,
-        repoSlug: this.repoSlug,
+        repoSlug,
       };
       if (this.invariantsRoot) opts.invariantsRoot = this.invariantsRoot;
       return await this.invariants.run(opts);
@@ -256,4 +259,14 @@ function serializeResult(result: VerifierRunResult): Record<string, unknown> {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function repoSlugFromUrl(repoUrl: string): string | null {
+  try {
+    const u = new URL(repoUrl);
+    const last = u.pathname.replace(/\.git$/, '').split('/').filter(Boolean).at(-1);
+    return last ?? null;
+  } catch {
+    return null;
+  }
 }

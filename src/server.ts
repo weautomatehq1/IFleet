@@ -135,16 +135,13 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
         `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
-    onCancel: async (taskId, reason) => {
-      // Partial action only: marks the task blocked in the store, but does NOT
-      // abort the in-flight pipeline worker. The worker keeps running until its
-      // own timeout because the AbortController + ApprovalGate wiring lives
-      // exclusively in the daemon (port 3002). Route cancel to CONTROL_PLANE_PORT
-      // 3002 for full cancellation. AUDIT-IFleet-c841a3e8.
-      console.error(
-        `[control-plane] cancel(${taskId}) on public port: store marked blocked but running pipeline NOT killed — route to CONTROL_PLANE_PORT 3002 for full cancellation`,
+    // AUDIT-IFleet-d381b403: cancel requires the in-process AbortController that
+    // only the daemon owns (port 3002). Returning 202 here was a lie — the
+    // pipeline kept running. Throw so the caller gets 500 and knows to re-route.
+    onCancel: async (taskId) => {
+      throw new Error(
+        `cancel(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002 for full cancellation (port 3001 cannot abort the running pipeline worker)`,
       );
-      store.updateState(taskId, 'blocked', { reason: reason ?? 'cancelled', cancelled: true });
     },
     // verify / force_pr require the in-process verifier + orchestrator wiring
     // that only the daemon owns. Throw so dispatch() returns 500 rather than

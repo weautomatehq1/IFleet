@@ -10,6 +10,7 @@
 // HTTP path so both the cron + daemon use the same wire format, and it
 // fails LOUD (warn on unset env) instead of silently no-oping.
 
+import { appendFileSync } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import type { DiscordOutbox } from './discord-outbox.js';
@@ -53,9 +54,25 @@ const UNSET_KEY = '__unset__';
 // messages. Closes AUDIT-IFleet-77ddf58c.
 let _outbox: DiscordOutbox | null = null;
 
+// File path for dropped-message dead-letter log. When set, messages that are
+// dropped because the in-memory queue is full AND no outbox is configured are
+// appended here as newline-delimited JSON so they are not silently lost.
+// (AUDIT-IFleet-74a6c807)
+let _deadLetterPath: string | null = null;
+
 /** Wire a durable outbox so broadcasts survive Discord downtime. */
 export function setDiscordOutbox(outbox: DiscordOutbox | null): void {
   _outbox = outbox;
+}
+
+/**
+ * Configure a dead-letter file for dropped messages. When the in-memory queue
+ * is full and no outbox is wired, dropped messages are appended here as
+ * newline-delimited JSON (`{ droppedAt, content }`). Pass `null` to disable.
+ * (AUDIT-IFleet-74a6c807)
+ */
+export function setDeadLetterPath(path: string | null): void {
+  _deadLetterPath = path;
 }
 
 function getState(key: string): BroadcastState {
@@ -132,8 +149,21 @@ export function broadcastIFleet(msg: string): void {
         console.warn('[broadcast] outbox.enqueue failed (overflow path) — dropping message:', err);
       }
     } else {
+      // No outbox — write to dead-letter file so the drop is auditable.
+      // (AUDIT-IFleet-74a6c807)
+      if (_deadLetterPath) {
+        try {
+          appendFileSync(
+            _deadLetterPath,
+            `${JSON.stringify({ droppedAt: new Date().toISOString(), content: truncated })}\n`,
+            'utf8',
+          );
+        } catch (writeErr) {
+          console.warn('[broadcast] dead-letter write failed:', writeErr);
+        }
+      }
       console.warn(
-        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message`,
+        `[broadcast] queue depth ${state.pendingCount} >= ${MAX_QUEUE_DEPTH} — dropping message (no outbox configured; wire setDeadLetterPath to persist drops)`,
       );
     }
     return;
@@ -260,4 +290,5 @@ function sendNowAsync(url: string, msg: string): Promise<void> {
 export function __resetBroadcastStateForTests(): void {
   stateByUrl.clear();
   _outbox = null;
+  _deadLetterPath = null;
 }

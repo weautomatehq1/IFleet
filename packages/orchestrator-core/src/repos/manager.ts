@@ -4,6 +4,20 @@ import { dirname, join } from 'node:path';
 import type { ChannelRoute } from '@wahq/orchestrator-core/contracts/channel-router';
 import { isGitDir, pathExists } from './fs-utils.js';
 
+// Minimal env allowlist for git subprocesses. Secrets (GITHUB_TOKEN,
+// DISCORD_BOT_TOKEN, ANTHROPIC_API_KEY, IFLEET_HMAC_SECRET …) must never
+// reach git hooks or credential helpers. (AUDIT-IFleet-87d18205)
+const GIT_ENV_ALLOWLIST = ['PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TZ', 'TERM'] as const;
+
+function minimalGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const key of GIT_ENV_ALLOWLIST) {
+    const val = source[key];
+    if (typeof val === 'string') out[key] = val;
+  }
+  return out;
+}
+
 export interface RepoManager {
   /** Ensure the canonical clone exists at workDir/main. Clones if missing, fetches if exists. */
   ensureClone(route: ChannelRoute): Promise<{ path: string }>;
@@ -183,8 +197,10 @@ export class GitRepoManager implements RepoManager {
     args: string[],
     opts: { withAuth: boolean; allowFail?: boolean },
   ): Promise<RunResult> {
-    const finalArgs = opts.withAuth && this.token ? this.authPrefix().concat(args) : args;
-    const result = await spawnCapture(this.gitBin, finalArgs);
+    // AUDIT-IFleet-b5e6ddb1: pass auth via GIT_CONFIG env vars (invisible to
+    // /proc/<pid>/cmdline and ps) instead of -c http.extraheader= argv args.
+    const env = opts.withAuth && this.token ? this.authEnv() : minimalGitEnv();
+    const result = await spawnCapture(this.gitBin, args, env);
     if (!opts.allowFail && result.code !== 0) {
       // git can echo the Authorization header back under GIT_TRACE or when
       // a credential helper logs verbosely — scrub both stderr and stdout
@@ -199,13 +215,15 @@ export class GitRepoManager implements RepoManager {
     return result;
   }
 
-  private authPrefix(): string[] {
-    // -c http.extraheader=... is passed inline so the token never lands in .git/config.
-    // (Token is still visible to local `ps` — acceptable on the dedicated VPS.)
-    return [
-      '-c',
-      `http.https://github.com/.extraheader=AUTHORIZATION: bearer ${this.token}`,
-    ];
+  private authEnv(): NodeJS.ProcessEnv {
+    // Pass GitHub auth via GIT_CONFIG_* env vars so the token never appears in
+    // argv, /proc/<pid>/cmdline, or ps output. (AUDIT-IFleet-b5e6ddb1)
+    return {
+      ...minimalGitEnv(),
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+      GIT_CONFIG_VALUE_0: `AUTHORIZATION: bearer ${this.token}`,
+    };
   }
 }
 
@@ -215,14 +233,11 @@ export class GitRepoManager implements RepoManager {
 
 const OUTPUT_CAP_BYTES = 2 * 1024 * 1024; // 2 MB — mirrors spawn-util.ts cap
 
-async function spawnCapture(bin: string, args: string[]): Promise<RunResult> {
+// env is always the caller-supplied minimal env; fallback to minimalGitEnv()
+// so even unauthenticated calls never forward secrets. (AUDIT-IFleet-87d18205)
+async function spawnCapture(bin: string, args: string[], env?: NodeJS.ProcessEnv): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    // Strip GIT_* vars so a parent pre-push hook's GIT_DIR/GIT_WORK_TREE
-    // doesn't leak into child git processes and redirect them to the wrong repo.
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
-    );
-    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: env ?? minimalGitEnv() });
     let stdout = '';
     let stderr = '';
     let stdoutBytes = 0;
