@@ -74,6 +74,10 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
   };
 }
 
+// Patterns matching sensitive paths that must never be staged.
+// Checked case-insensitively against the filename component.
+const SENSITIVE_PATH_RE = /(?:^|[\\/])(?:\.env(?:\.[^/\\]*)?|[^/\\]*\.(?:pem|key|p12|pfx|secret)|[^/\\]*(?:credentials?|password)[^/\\]*)$/i;
+
 async function commitEditorChanges(worktreePath: string, taskTitle?: string): Promise<void> {
   try {
     await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
@@ -83,6 +87,21 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
     // "no diff — possible silent tool-use failure" instead of the real error.
     // AUDIT-IFleet-e5f6a7b8.
     throw new Error(`git add -A failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // AUDIT-IFleet-editor-denylist: unstage any sensitive paths that slipped
+  // through .gitignore (e.g. .env files written by Claude tools mid-task).
+  try {
+    const { stdout: stagedOutput } = await execFileAsync(
+      'git', ['diff', '--cached', '--name-only', '-z'], { cwd: worktreePath },
+    );
+    const staged = stagedOutput.split('\0').filter(Boolean);
+    const sensitive = staged.filter((f) => SENSITIVE_PATH_RE.test(f));
+    if (sensitive.length > 0) {
+      console.warn('[pipeline] editor: unstaging sensitive path(s):', sensitive);
+      await execFileAsync('git', ['restore', '--staged', '--', ...sensitive], { cwd: worktreePath });
+    }
+  } catch (err) {
+    console.warn('[pipeline] editor: denylist check failed:', err instanceof Error ? err.message : String(err));
   }
   // `git diff --cached --quiet` exits 1 when there are staged changes; treat
   // that as the signal to commit rather than as an error.

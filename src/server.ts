@@ -128,11 +128,12 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     },
     onApprove: async (taskId) => {
       // approve requires the in-process ControlPlaneApprovalGate that only the
-      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
-      // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      // daemon owns (pure in-memory; no DB polling). Throw so dispatch() returns
+      // 500 rather than silently accepting the request with 202 (false success)
+      // that leaves the architect blocked indefinitely. Matches onVerify and
+      // onForcePr behaviour. AUDIT-IFleet-server-onApprove.
+      throw new Error(
+        `approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
       );
     },
     onCancel: async (taskId, reason) => {

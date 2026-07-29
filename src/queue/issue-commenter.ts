@@ -20,13 +20,19 @@ function normalizeLogin(login: string): string {
   return login.replace(/^@/, '').toLowerCase();
 }
 
+// Max backoff cap: 5 minutes regardless of pollIntervalMs.
+const MAX_BACKOFF_MS = 5 * 60 * 1000;
+
 export function createIssueCommenter(
   octokit: Octokit,
   owner: string,
   repo: string,
   options: IssueCommenterOptions = {},
 ): IssueCommenter {
-  let lastCommentId: number | null = null;
+  // AUDIT-IFleet-issue-commenter-lastCommentId: use a per-issue map instead of
+  // a single shared mutable so concurrent tasks polling different issues don't
+  // stomp each other's comment ID.
+  const lastCommentIdByIssue = new Map<number, number>();
   const factoryApprovers = (options.approvers ?? [])
     .map(normalizeLogin)
     .filter((s) => s.length > 0);
@@ -39,19 +45,19 @@ export function createIssueCommenter(
         issue_number: issueNumber,
         body,
       });
-      lastCommentId = res.data.id;
+      lastCommentIdByIssue.set(issueNumber, res.data.id);
     },
 
     async waitForApproval(
-      _issueNumber: number,
+      issueNumber: number,
       opts: WaitForApprovalOpts,
     ): Promise<boolean> {
-      if (lastCommentId === null) {
+      const commentId = lastCommentIdByIssue.get(issueNumber) ?? null;
+      if (commentId === null) {
         throw new Error(
-          'waitForApproval called before comment() — no plan comment to poll for reactions',
+          `waitForApproval called before comment() for issue #${issueNumber} — no plan comment to poll for reactions`,
         );
       }
-      const commentId = lastCommentId;
       const approverSet = new Set<string>(factoryApprovers);
       if (opts.approver) approverSet.add(normalizeLogin(opts.approver));
       if (approverSet.size === 0) {
@@ -62,6 +68,9 @@ export function createIssueCommenter(
       const deadline = Date.now() + opts.timeoutMs;
       let consecutiveApiErrors = 0;
       const MAX_CONSECUTIVE_API_ERRORS = 5;
+      // AUDIT-IFleet-issue-commenter-backoff: exponential backoff with ±25% jitter
+      // to avoid thundering-herd when many tasks are waiting for HITL approval.
+      let currentInterval = opts.pollIntervalMs;
 
       while (Date.now() < deadline) {
         if (opts.abortSignal.aborted) return false;
@@ -81,6 +90,9 @@ export function createIssueCommenter(
             return approverSet.has(login.toLowerCase());
           });
           if (approved) return true;
+
+          // Back off exponentially after each unsuccessful poll (cap at MAX_BACKOFF_MS).
+          currentInterval = Math.min(currentInterval * 2, MAX_BACKOFF_MS);
         } catch (err) {
           consecutiveApiErrors++;
           console.warn(
@@ -92,11 +104,15 @@ export function createIssueCommenter(
               `waitForApproval: GitHub API failed ${MAX_CONSECUTIVE_API_ERRORS} consecutive times — aborting HITL poll`,
             );
           }
+          // On transient API errors, don't grow the backoff — retry sooner.
+          currentInterval = opts.pollIntervalMs;
         }
 
         const remaining = deadline - Date.now();
         if (remaining <= 0) return false;
-        const sleepFor = Math.min(opts.pollIntervalMs, remaining);
+        // Apply ±25% jitter so concurrent pollers don't align to the same tick.
+        const jitter = currentInterval * 0.25 * (2 * Math.random() - 1);
+        const sleepFor = Math.min(Math.max(currentInterval + jitter, 1000), remaining);
         const slept = await sleepOrAbort(sleepFor, opts.abortSignal);
         if (!slept) return false;
       }

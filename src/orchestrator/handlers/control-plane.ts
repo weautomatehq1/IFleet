@@ -164,10 +164,27 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
       // cancelled:true so metrics/consumers can tell a deliberate cancel apart
       // from a capability block.
       try {
-        store.updateState(resolvedId, 'blocked', {
-          reason: reason ?? 'cancelled via control plane',
-          cancelled: true,
-        });
+        // Pass the fromState guard so the UPDATE is atomic — if the task
+        // completed between the getById check above and this write, the
+        // WHERE state IN ('in_flight','pending') clause ensures we never
+        // overwrite a 'done' record with 'blocked'. AUDIT-IFleet-cp-toctou.
+        const updated =
+          store.updateState(resolvedId, 'blocked', {
+            reason: reason ?? 'cancelled via control plane',
+            cancelled: true,
+          }, 'in_flight') ||
+          store.updateState(resolvedId, 'blocked', {
+            reason: reason ?? 'cancelled via control plane',
+            cancelled: true,
+          }, 'pending');
+        if (!updated) {
+          const fresh = store.getById(resolvedId);
+          if (fresh && fresh.state !== 'blocked') {
+            broadcastIFleet(
+              `⚠ /cancel — task \`${resolvedId}\` already \`${fresh.state}\`; store not modified.`,
+            );
+          }
+        }
       } catch {
         /* row may not exist yet */
       }

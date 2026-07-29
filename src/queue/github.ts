@@ -98,7 +98,10 @@ export function isAuthorAllowed(
   allowAll: boolean = allowAllAuthorsOptIn(),
 ): boolean {
   if (!repo.allowedAuthors || repo.allowedAuthors.length === 0) return allowAll;
-  return repo.allowedAuthors.includes(author);
+  // GitHub usernames are case-insensitive; normalise both sides so a config
+  // entry of 'OctoCAT' matches the API's 'octocat' canonical form.
+  const authorLower = author.toLowerCase();
+  return repo.allowedAuthors.some((a) => a.toLowerCase() === authorLower);
 }
 
 export interface GitHubQueueOptions {
