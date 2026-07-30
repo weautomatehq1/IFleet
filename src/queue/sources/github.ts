@@ -53,6 +53,10 @@ export class GitHubIssuesSource implements TaskSource {
   async markBlocked(task: QueuedTask, capability: string): Promise<void> {
     await this.queue.markCapabilityBlocked(unifiedToLegacyShape(task), [capability]);
   }
+
+  async markCancelled(task: QueuedTask, reason: string): Promise<void> {
+    await this.queue.markFailed(unifiedToLegacyShape(task), `Cancelled: ${reason}`);
+  }
 }
 
 export function legacyToUnified(legacy: LegacyGitHubTask): QueuedTask {

@@ -9,4 +9,5 @@ export interface TaskSource {
   markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void>;
   markFailed(task: QueuedTask, reason: string): Promise<void>;
   markBlocked(task: QueuedTask, capability: string): Promise<void>;
+  markCancelled(task: QueuedTask, reason: string): Promise<void>;
 }

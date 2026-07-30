@@ -96,13 +96,8 @@ export class UnifiedQueueAdapter {
    * must NOT be recorded as 'failed'. This method writes 'blocked'+cancelled:true
    * to the unified store so the row is terminal (pickNext/recoverStale both skip
    * it) but is distinguishable from a genuine pipeline failure.
-   *
-   * Source-side notification still uses markFailed because TaskSource has no
-   * markCancelled method — the source interface is owned by another lane and
-   * adding a new required method would break all existing implementors. The
-   * tradeoff is that GitHub/Discord gets a "failed" label/message while the
-   * canonical store row correctly records a deliberate cancel. Operators who
-   * need the source-level distinction should watch for the 🛑 broadcast.
+   * (AUDIT-IFleet-a752506d: source-side notification now uses markCancelled so
+   * GitHub/Discord show "Cancelled" rather than "failed".)
    */
   async markCancelled(task: QueuedTask, reason: string): Promise<void> {
     // Guard against overwriting terminal states (done/failed/blocked) without
@@ -119,7 +114,7 @@ export class UnifiedQueueAdapter {
     }
     this.store.updateState(task.id, 'blocked', { reason, cancelled: true, completedAt: Date.now() });
     try {
-      await this.sourceFor(task).markFailed(task, reason);
+      await this.sourceFor(task).markCancelled(task, reason);
     } catch (err) {
       console.warn(
         `[unified-queue] markCancelled notification failed for ${task.id} (${task.source.kind}): ${

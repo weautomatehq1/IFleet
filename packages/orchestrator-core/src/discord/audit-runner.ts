@@ -280,6 +280,38 @@ export function appendToClosedJson(indexPath: string, finding: AuditFinding): vo
 }
 
 /**
+ * Inline body of appendToClosedJson — identical logic but WITHOUT acquiring
+ * withClosedJsonLock. Call only when the caller already holds that lock.
+ * (AUDIT-IFleet-d651330f)
+ */
+function appendClosedRecordUnlocked(closedDir: string, finding: AuditFinding): void {
+  const closedPath = join(closedDir, 'closed.json');
+  let data: ClosedIndex = { closures: [] };
+  if (existsSync(closedPath)) {
+    try {
+      data = JSON.parse(readFileSync(closedPath, 'utf8')) as ClosedIndex;
+      if (!Array.isArray(data.closures)) data.closures = [];
+    } catch {
+      data = { closures: [] };
+    }
+  }
+  const record: ClosureRecord = {
+    fingerprint: finding.fingerprint,
+    finding_id: finding.id,
+    closed_at: finding.closed_at ?? new Date().toISOString(),
+    closing_pr: finding.closing_pr ?? null,
+    status: finding.status,
+  };
+  const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+  if (!alreadyRecorded) {
+    data.closures.push(record);
+  }
+  const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
+  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  renameSync(tmp, closedPath);
+}
+
+/**
  * Mark a finding `closed` and record the PR that closed it. Returns `false`
  * (and logs a warning) when the index or the finding is missing, and `false`
  * (silently) when the finding is already in a terminal state — never throws,
@@ -313,8 +345,15 @@ export function markFindingClosed(
   finding.status = 'closed';
   finding.closing_pr = prUrl;
   finding.closed_at = closedAt ?? new Date().toISOString();
-  writeAuditIndex(indexPath, index);
-  appendToClosedJson(indexPath, finding);
+  // AUDIT-IFleet-d651330f: hold the lock across BOTH the index.json write and
+  // the closed.json append so a crash between the two leaves a consistent state.
+  // appendToClosedJson also acquires this lock internally, so we inline the
+  // closed.json write here to avoid deadlock while still holding a single lock.
+  const closedDir = dirname(indexPath);
+  withClosedJsonLock(closedDir, () => {
+    writeAuditIndex(indexPath, index);
+    appendClosedRecordUnlocked(closedDir, finding);
+  });
   return true;
 }
 

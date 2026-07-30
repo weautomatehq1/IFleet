@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-07-22T04:31:00Z",
+  "last_updated": "2026-07-29T00:00:00Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -13,9 +13,9 @@
       ],
       "fix_sketch": "Replace dynamic import with a sandboxed worker_threads runner or vm.runInContext with a restricted module loader. Allowlist which repos can declare arch.ts in config and validate file content before importing.",
       "parallel_safe": false,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -29,9 +29,9 @@
       ],
       "fix_sketch": "Require SUPABASE_CA_CERT_PATH in production or use ssl: true (system CA bundle) instead of disabling verification. Throw or warn loudly and refuse pool creation when NODE_ENV=production and cert is absent.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -45,9 +45,9 @@
       ],
       "fix_sketch": "Route cancel commands exclusively to port 3002, or add a daemon watcher that notices blocked+cancelled in the store and triggers AbortController.abort() for the pipeline.",
       "parallel_safe": false,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -61,9 +61,9 @@
       ],
       "fix_sketch": "Create a dedicated non-root user in the ifleet-verifier:base Docker image and use --user ifleet (UID 1000). Change /root/.pnpm-store to /home/ifleet/.pnpm-store in the image accordingly.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -77,9 +77,9 @@
       ],
       "fix_sketch": "Apply a lightweight quoteAsUserData() wrapper to architect output before forwarding to editor/reviewer/doctor, or validate architect output conforms to expected JSON plan schema before passing it downstream.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -93,9 +93,9 @@
       ],
       "fix_sketch": "Use GIT_ASKPASS or a credential helper script that reads the token from a file. This keeps the token out of argv.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -109,9 +109,9 @@
       ],
       "fix_sketch": "Replace Bash(cat *) with Bash(cat ./*) or restrict to the worktree path. Better yet remove cat from the allow list and rely on the Read tool (already allowed) for file reading.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -141,9 +141,9 @@
       ],
       "fix_sketch": "Combine the index.json write and the closed.json append inside a single withClosedJsonLock critical section.",
       "parallel_safe": false,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -173,9 +173,9 @@
       ],
       "fix_sketch": "Add pagination with a before cursor on created_at or use iterate() to stream rows. Cap default at 1000.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -205,9 +205,9 @@
       ],
       "fix_sketch": "Record dropped messages to a persistent dead-letter log. Alternatively wire the outbox to the public server as well as the daemon.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -221,9 +221,9 @@
       ],
       "fix_sketch": "Thread the task's repo field through VerifierController so repoSlug is derived from the task being verified rather than fixed at boot.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -253,9 +253,9 @@
       ],
       "fix_sketch": "Deny Bash(pnpm install *) specifically in the worker deny list, or use a per-worktree copy of node_modules rather than a symlink.",
       "parallel_safe": false,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -285,9 +285,9 @@
       ],
       "fix_sketch": "Apply the same minimal env allowlist used in claudeChildEnv() and verifyChildEnv(): pass only HOME, PATH, USER, LOGNAME, LANG, and required GIT_ auth vars.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -317,9 +317,9 @@
       ],
       "fix_sketch": "Remove the discord_outbox DDL from TaskStore SCHEMA and let DiscordOutbox own it entirely.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -349,9 +349,9 @@
       ],
       "fix_sketch": "Add an imageExists probe in probeDocker() and surface a clear error when the image is absent. Add a build/pull step to the VPS deployment script.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -431,9 +431,9 @@
       ],
       "fix_sketch": "Add markCancelled(task: QueuedTask, reason: string): Promise<void> to the TaskSource interface and implement it in both GitHubIssuesSource and DiscordSource.",
       "parallel_safe": false,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-29T00:00:00Z",
       "closing_pr": null
     },
     {
@@ -471,9 +471,9 @@
   ],
   "by_severity": {
     "CRITICAL": 5,
-    "IMPORTANT": 18,
+    "IMPORTANT": 20,
     "COSMETIC": 4
   },
-  "open_count": 14,
-  "fixed_count": 13
+  "open_count": 1,
+  "fixed_count": 28
 }

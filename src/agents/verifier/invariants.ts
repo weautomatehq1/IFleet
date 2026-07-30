@@ -20,7 +20,7 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { verifyChildEnv } from '@wahq/orchestrator-core/verify/spawn-util';
 import { parseSemgrepJsonOutput } from './failure-parser.js';
 import type { VerifierFailure } from './types.js';
@@ -124,33 +124,53 @@ export class InvariantRunner {
     const archJsPath = join(invariantsDir, 'arch.js');
     const targetPath = existsSync(archPath) ? archPath : existsSync(archJsPath) ? archJsPath : null;
     if (!targetPath) return [];
-    try {
-      const mod = (await import(pathToFileURL(targetPath).href)) as { default?: unknown };
-      const handler = mod.default;
-      if (typeof handler !== 'function') {
-        return [
-          {
-            kind: 'invariant',
-            message: `${targetPath}: default export is not a function`,
-          },
-        ];
-      }
-      const result = (await handler({ worktreePath })) as ArchViolation[] | void;
-      if (!result || !Array.isArray(result)) return [];
-      return result.map((v) => {
-        const failure: VerifierFailure = {
-          kind: 'invariant',
-          message: v.message,
-        };
-        if (v.file) failure.file = v.file;
-        if (v.line !== undefined) failure.line = v.line;
-        return failure;
-      });
-    } catch (err) {
+
+    // AUDIT-IFleet-5fc6ca57: run arch.ts in a subprocess with stripped env
+    // (verifyChildEnv) so a jailbroken worker cannot exfiltrate daemon secrets
+    // via a malicious arch.ts. The dynamic import previously ran arch.ts inside
+    // the daemon process under full credentials.
+    const runnerPath = fileURLToPath(new URL('./arch-runner-process.ts', import.meta.url));
+    const result = await this.runCommand(
+      process.execPath,
+      ['--import', 'tsx', runnerPath, targetPath, worktreePath],
+      { timeoutMs: 30_000 },
+    );
+    if (result.exitCode === null) {
       return [
         {
           kind: 'invariant',
-          message: `arch.ts threw: ${err instanceof Error ? err.message : String(err)}`,
+          message: `arch.ts runner ${result.timedOut ? 'timed out' : 'crashed (spawn error)'}`,
+        },
+      ];
+    }
+    try {
+      const parsed = JSON.parse(result.output.trim()) as {
+        violations?: unknown[];
+        error?: unknown;
+      };
+      if (parsed.error) {
+        return [
+          {
+            kind: 'invariant',
+            message: `arch.ts threw: ${typeof parsed.error === 'string' ? parsed.error : String(parsed.error)}`,
+          },
+        ];
+      }
+      if (!Array.isArray(parsed.violations)) return [];
+      return (parsed.violations as Array<{ message?: unknown; file?: unknown; line?: unknown }>).map((v) => {
+        const failure: VerifierFailure = {
+          kind: 'invariant',
+          message: typeof v.message === 'string' ? v.message : String(v.message ?? 'unknown violation'),
+        };
+        if (typeof v.file === 'string') failure.file = v.file;
+        if (typeof v.line === 'number') failure.line = v.line;
+        return failure;
+      });
+    } catch {
+      return [
+        {
+          kind: 'invariant',
+          message: `arch.ts runner returned invalid JSON: ${result.output.slice(0, 200)}`,
         },
       ];
     }

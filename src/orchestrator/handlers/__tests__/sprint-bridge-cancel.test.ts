@@ -50,6 +50,7 @@ function mockSource(kind: 'github' | 'discord'): RecordingSource {
     markCompleted: async (t, pr) => { calls.push(`completed:${t.id}:${pr}`); },
     markFailed: async (t, reason) => { calls.push(`failed:${t.id}:${reason}`); },
     markBlocked: async (t, cap) => { calls.push(`blocked:${t.id}:${cap}`); },
+    markCancelled: async (t, reason) => { calls.push(`cancelled:${t.id}:${reason}`); },
   };
   return Object.assign(source, { calls });
 }

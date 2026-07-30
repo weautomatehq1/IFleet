@@ -41,6 +41,9 @@ function mockSource(kind: 'github' | 'discord'): RecordingSource {
     markBlocked: async (t, cap) => {
       calls.push(`blocked:${t.id}:${cap}`);
     },
+    markCancelled: async (t, reason) => {
+      calls.push(`cancelled:${t.id}:${reason}`);
+    },
   };
   return Object.assign(source, { calls });
 }
@@ -209,10 +212,9 @@ describe('UnifiedQueueAdapter', () => {
       assert.equal(row!.state, 'blocked', 'markCancelled records blocked, not failed');
       assert.notEqual(row!.state, 'failed', 'markCancelled must not record failed');
       assert.equal(row!.stateMeta?.['cancelled'], true, 'cancelled:true distinguishes from capability block');
-      // Source-side notification uses markFailed (TaskSource has no markCancelled —
-      // adding a new required method would break all existing implementors).
-      assert.deepEqual(github.calls, ['failed:tc:operator cancelled'],
-        'source receives markFailed for label/thread close-out (tradeoff: source-side still shows "failed")');
+      // Source-side notification now uses markCancelled (AUDIT-IFleet-a752506d).
+      assert.deepEqual(github.calls, ['cancelled:tc:operator cancelled'],
+        'source receives markCancelled so GitHub/Discord shows Cancelled, not failed');
     } finally {
       cleanup();
     }
@@ -251,6 +253,7 @@ describe('UnifiedQueueAdapter', () => {
         markCompleted: async () => {},
         markFailed: async () => {},
         markBlocked: async () => {},
+        markCancelled: async () => {},
       };
       const discord = mockSource('discord');
       const adapter = new UnifiedQueueAdapter(store, { github, discord });

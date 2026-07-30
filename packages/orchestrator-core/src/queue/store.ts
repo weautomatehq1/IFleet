@@ -79,24 +79,10 @@ CREATE TABLE IF NOT EXISTS nonce_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_nonce_ledger_expires ON nonce_ledger(expires_at);
 
--- Discord outbox — durable queue for Discord broadcasts.
--- Enqueued before every broadcastIFleet send; drained every 30s by the
--- Orchestrator. Dead-letters after maxAttempts failures instead of silently
--- dropping. Closes AUDIT-IFleet-77ddf58c.
-CREATE TABLE IF NOT EXISTS discord_outbox (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  channel TEXT NOT NULL,
-  payload TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'pending',
-  attempts INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  created_at INTEGER NOT NULL,
-  last_attempt_at INTEGER,
-  sent_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_discord_outbox_pending
-  ON discord_outbox(state, created_at)
-  WHERE state = 'pending';
+-- discord_outbox DDL removed from this SCHEMA (AUDIT-IFleet-08aeb030):
+-- DiscordOutbox owns its own DDL via db.exec(OUTBOX_SCHEMA) in its constructor.
+-- Duplicating it here risked silent drift between the two DDL strings.
+-- createDiscordOutbox() must be called before any discord_outbox access.
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -625,10 +611,11 @@ export class TaskStore {
   /**
    * Fetch all PR decisions across all repos, newest first.
    * Used by the reviewer-prefs pipeline which needs cross-repo data.
-   * Callers should supply a limit; default 50 000 matches historical usage
-   * (AUDIT-IFleet-8986c35b — avoids as-any cast against the private db field).
+   * AUDIT-IFleet-30ed5ad0: default capped at 1000 rows to prevent loading
+   * hundreds of MB into a single JS array; pass an explicit higher limit when
+   * the full history is genuinely needed.
    */
-  getAllPrDecisions(limit = 50_000): PrDecision[] {
+  getAllPrDecisions(limit = 1_000): PrDecision[] {
     const VALID_VERDICTS = new Set<string>(['merged', 'rejected', 'abandoned']);
     const rows = this.db
       .prepare(

@@ -350,8 +350,22 @@ export class DockerSandboxRunner implements SandboxRunner {
 
   private async probeDocker(): Promise<boolean> {
     try {
-      const result = await this.runCommand(this.dockerBin, ['info'], { timeoutMs: 5_000 });
-      return result.exitCode === 0;
+      const daemonOk = await this.runCommand(this.dockerBin, ['info'], { timeoutMs: 5_000 });
+      if (daemonOk.exitCode !== 0) return false;
+      // AUDIT-IFleet-fcf83bcc: verify the verifier image exists before running
+      // any phase; a missing image causes every phase to fail with a cryptic error.
+      const imageOk = await this.runCommand(
+        this.dockerBin,
+        ['image', 'inspect', '--format', '{{.Id}}', this.image],
+        { timeoutMs: 10_000 },
+      );
+      if (imageOk.exitCode !== 0) {
+        console.error(
+          `[sandbox] Docker image "${this.image}" not found — build or pull it before running the verifier.`,
+        );
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }
@@ -523,7 +537,9 @@ function buildPhaseArgv(kind: VerifierFailureKind, hostFallback = false): string
       // fallback mode so pnpm uses the default user store (AUDIT-IFleet-db1307c7).
       return hostFallback
         ? ['install', '--frozen-lockfile', '--prefer-offline']
-        : ['install', '--frozen-lockfile', '--prefer-offline', '--store-dir', '/root/.pnpm-store'];
+        // AUDIT-IFleet-2ac50cb5: /root/.pnpm-store is inaccessible to the non-root
+        // container user. /tmp is world-writable and survives within the container lifetime.
+        : ['install', '--frozen-lockfile', '--prefer-offline', '--store-dir', '/tmp/.pnpm-store'];
     case 'build':
     case 'typecheck':
     case 'lint':
@@ -549,8 +565,10 @@ function buildDockerArgs(
     `${memoryMb}m`,
     '--network',
     needsNetwork ? 'bridge' : 'none',
+    // AUDIT-IFleet-2ac50cb5: run as non-root so a container escape cannot grant
+    // host root. UID 1000 matches the non-root user in ifleet-verifier:base.
     '--user',
-    'root',
+    '1000:1000',
   ];
   if (envFilePath) {
     args.push('--env-file', envFilePath);

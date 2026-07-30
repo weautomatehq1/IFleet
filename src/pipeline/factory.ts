@@ -90,7 +90,9 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(eslint *)',
     'Bash(vitest *)',
     'Bash(ls *)',
-    'Bash(cat *)',
+    // AUDIT-IFleet-1f16149e: cat ./* restricts to the current directory; bare
+    // cat * matches paths like ../../etc/passwd via shell glob expansion.
+    'Bash(cat ./*)',
     'Bash(grep *)',
     'Bash(mkdir *)',
     'Edit(*)',
@@ -139,6 +141,10 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     // for read-only discovery.
     'Bash(find)',
     'Bash(find *)',
+    // AUDIT-IFleet-bfa22380: pnpm install through the node_modules symlink
+    // affects shared host node_modules, poisoning all concurrent tasks.
+    'Bash(pnpm install)',
+    'Bash(pnpm install *)',
     'Bash(sudo *)',
     'Bash(chmod *)',
     'Bash(chown *)',
@@ -474,10 +480,16 @@ export function buildWorkerPool(
       const model = mapModel(spec.model);
       let rateLimitHits = 0;
 
-      // Architect receives user-controlled brief → keep injection wrapper.
-      // All other roles (editor, doctor, reviewer) receive trusted pipeline
-      // content (the architect plan) → skip the wrapper so Claude follows it.
-      const trustedBrief = opts.role !== 'architect';
+      // AUDIT-IFleet-6b8a5e95: architect output is only trusted if it parses as
+      // valid JSON. A jailbroken architect that returns free-text injection
+      // payload will fail the JSON parse and have its output sandboxed as user
+      // data instead of treated as direct system instructions.
+      const isArchitectRole = opts.role === 'architect';
+      let architectOutputIsJson = false;
+      if (!isArchitectRole) {
+        try { JSON.parse(brief); architectOutputIsJson = true; } catch { /* not valid JSON */ }
+      }
+      const trustedBrief = !isArchitectRole && architectOutputIsJson;
       const workerHandle = adapter.spawn({
         taskId: `${opts.role}-${Date.now()}`,
         brief,
