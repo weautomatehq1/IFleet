@@ -350,8 +350,23 @@ export class DockerSandboxRunner implements SandboxRunner {
 
   private async probeDocker(): Promise<boolean> {
     try {
-      const result = await this.runCommand(this.dockerBin, ['info'], { timeoutMs: 5_000 });
-      return result.exitCode === 0;
+      const infoResult = await this.runCommand(this.dockerBin, ['info'], { timeoutMs: 5_000 });
+      if (infoResult.exitCode !== 0) return false;
+      // Verify the verifier image exists before the first run attempt so callers
+      // get a clear error instead of a cryptic Docker pull failure mid-phase.
+      // Closes AUDIT-IFleet-fcf83bcc.
+      const imageResult = await this.runCommand(
+        this.dockerBin,
+        ['image', 'inspect', '--format', '{{.Id}}', this.image],
+        { timeoutMs: 5_000 },
+      );
+      if (imageResult.exitCode !== 0) {
+        console.error(
+          `[sandbox] Docker image "${this.image}" not found — run "docker build -t ${this.image} ." from the verifier Dockerfile directory. Verification will use fallback mode.`,
+        );
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }

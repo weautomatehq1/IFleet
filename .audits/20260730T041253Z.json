@@ -1,0 +1,169 @@
+{
+  "audit_id": "nightly-2026-07-30",
+  "repo": "IFleet",
+  "scanned_at": "2026-07-30T04:12:53Z",
+  "scanner": "claude-sonnet-4-6 + explore-subagent",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-e1a7b94d",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Discord thread orphaned if store.insert throws after postTaskCreated",
+      "detail": "In DiscordSource.ingest(), postTaskCreated() creates a Discord thread at line 112, then store.insert() is called at line 126. If insert throws (disk-full, UNIQUE violation, etc.) the thread exists in Discord but no task row is in the DB. A retry would create a second thread with no dedup anchor.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "Insert a draft DB row first (possibly with state='pending' and no threadId), then post Discord, then patch the threadId back via patchSource. Alternatively wrap insert in a try/catch and post a deletion-note to the thread on failure.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c9f81a3b",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "getAllPrDecisions throws on any unrecognised verdict row poisoning the full result set",
+      "detail": "store.getAllPrDecisions() used rows.map() with a throw on any unrecognised verdict string. A single legacy or future-schema row caused every caller (bandit trainer, dashboard) to receive an unhandled Error rather than the valid rows.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/store.ts"
+      ],
+      "fix_sketch": "Changed throw to flatMap filter with console.warn so valid rows are still returned and the bad row is logged for investigation.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7a5f8c12",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listActiveSprints loads all sprints with no LIMIT causing unbounded memory growth",
+      "detail": "dashboard/server.ts listActiveSprints() issued SELECT with no LIMIT clause. After extended operation the sprints table accumulates thousands of completed rows; all are loaded into JS and then filtered in application code.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Added LIMIT 500 to the SQL query as a safety cap.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f3e924d8",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "getKgPool(overrideUrl) silently ignores override when pool is already cached",
+      "detail": "pg-client.ts line 31 returns cachedPool immediately before checking overrideUrl. Any call after first initialization silently gets the original pool regardless of the URL passed. Tests relying on overrideUrl to point at a test DB see the production pool instead.",
+      "file_globs": [
+        "src/agents/indexer/pg-client.ts"
+      ],
+      "fix_sketch": "If overrideUrl is provided and differs from the cached pool's connection string, end the old pool and create a new one. Or add a runtime assertion that throws in non-production when the override is silently ignored.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-9a32c5e1",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "bin.ifleet points to a .ts source file with a node (not tsx) shebang",
+      "detail": "package.json bin.ifleet points to packages/orchestrator-core/src/observability/tail-cli.ts. The shebang was #!/usr/bin/env node; Node.js cannot parse TypeScript directly so pnpm link or npm install -g produces SyntaxError on invocation.",
+      "file_globs": [
+        "packages/orchestrator-core/src/observability/tail-cli.ts",
+        "package.json"
+      ],
+      "fix_sketch": "Changed shebang to #!/usr/bin/env tsx so pnpm dlx / global install works. Long-term: point bin at compiled .js output.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-3f4c0d29",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Hardcoded personal username @monstersebas1 as default PR approver in public repo",
+      "detail": "src/pipeline/runner.ts line 54 embeds @monstersebas1 as the approver fallback for every sprint missing an explicit approver. The string appears in plan-review messages, Discord output, and potentially PR bodies in a public repository — a needless PII exposure.",
+      "file_globs": [
+        "src/pipeline/runner.ts"
+      ],
+      "fix_sketch": "Changed fallback to read from IFLEET_DEFAULT_APPROVER env var, with @monstersebas1 as the final default. Operators can now override without a code change.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8b2e6f71",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "resetsAt epoch-seconds assumption in claude.ts has no range sanity check",
+      "detail": "packages/orchestrator-core/src/workers/claude.ts multiplies resetsAt by 1000 assuming epoch seconds. If a future CLI version changes the field to milliseconds, retryDelayMs becomes 1000x too large, hanging the retry loop effectively forever.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/claude.ts"
+      ],
+      "fix_sketch": "Added sanity guard: if the multiplied value implies a delay > 30 min past now, assume the value is already in ms and use it directly.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b7e16d4a",
+      "severity": "COSMETIC",
+      "category": "logic",
+      "title": "TaskStore.list(limit=0) silently returns empty array instead of throwing",
+      "detail": "LIMIT 0 in SQLite returns zero rows. Callers that accidentally compute limit=0 (e.g. a mis-computed page size) see an empty result and may interpret it as 'no tasks in queue' rather than a programming error.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/store.ts"
+      ],
+      "fix_sketch": "Added RangeError guard at the top of list() when limit <= 0.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1e4d8f93",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": ".ts file extensions in ESM import paths in claude-cli.ts",
+      "detail": "packages/orchestrator-core/src/workers/adapters/claude-cli.ts imports with .ts extensions (lines 3-4). Works only because tsx hooks the resolver; native ESM compilation emits .js and the .ts imports fail at runtime with ERR_MODULE_NOT_FOUND.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/adapters/claude-cli.ts"
+      ],
+      "fix_sketch": "Change .ts extensions to .js to match the ESM output convention used throughout the rest of the repo.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5c8a2f09",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Box-Muller in thompson.ts discards second normal variate wasting two trig calls",
+      "detail": "standardNormal() returns only the cos-branch value and discards the sin-branch, wasting one Math.random() call and one trig operation per invocation. No correctness impact at current call volumes.",
+      "file_globs": [
+        "src/agents/bandit/thompson.ts"
+      ],
+      "fix_sketch": "Cache the second variate in a module-level variable and return it on alternate calls (standard Box-Muller optimisation). Low priority — negligible impact.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}

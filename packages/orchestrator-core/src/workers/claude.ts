@@ -191,10 +191,17 @@ function parseClaudeEvent(
   if (type === undefined) return;
 
   // Terminal usage/rate-limit rejection — the CLI emits this then exits
-  // non-zero. `resetsAt` is epoch seconds; normalize to ms.
+  // non-zero. `resetsAt` is epoch seconds; normalize to ms. Guard against a
+  // future CLI version emitting ms directly: if multiplying by 1000 produces a
+  // delay > 30 min, assume the value is already in ms. Closes AUDIT-IFleet-8b2e6f71.
   if (type === 'rate_limit_event' && evt.rate_limit_info?.status === 'rejected') {
     const resetsSec = evt.rate_limit_info.resetsAt;
-    const resetsMs = typeof resetsSec === 'number' ? resetsSec * 1000 : undefined;
+    let resetsMs: number | undefined;
+    if (typeof resetsSec === 'number') {
+      const candidateMs = resetsSec * 1000;
+      const MAX_REASONABLE_DELAY_MS = 30 * 60 * 1000;
+      resetsMs = candidateMs - Date.now() > MAX_REASONABLE_DELAY_MS ? resetsSec : candidateMs;
+    }
     emit({
       kind: 'rate_limit',
       retryDelayMs: resetsMs !== undefined ? Math.max(0, resetsMs - Date.now()) : 0,

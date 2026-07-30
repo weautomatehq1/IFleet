@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 import { FileEventLog } from './event-log.js';
 import type { Event } from './types.js';
 

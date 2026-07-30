@@ -8,11 +8,11 @@ import type { RoutingDecision } from '../contracts/routing.js';
 
 /**
  * Schema-extension hook. Each callback receives the raw better-sqlite3 handle
- * AFTER the core DDL (the 4 core tables + their migrations) has run, so a
+ * AFTER the core DDL (the 3 core tables + their migrations) has run, so a
  * product can add its own tables/columns/indexes without core knowing about
  * them. IFleet passes its bandit tables (`routing_shadow_log`,
  * `bandit_arm_state`) this way; core owns exactly `tasks`, `pr_decisions`,
- * `nonce_ledger`, `discord_outbox`.
+ * `nonce_ledger` (`discord_outbox` is owned by DiscordOutbox).
  */
 export type StoreExtension = (db: Database.Database) => void;
 
@@ -79,24 +79,10 @@ CREATE TABLE IF NOT EXISTS nonce_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_nonce_ledger_expires ON nonce_ledger(expires_at);
 
--- Discord outbox — durable queue for Discord broadcasts.
--- Enqueued before every broadcastIFleet send; drained every 30s by the
--- Orchestrator. Dead-letters after maxAttempts failures instead of silently
--- dropping. Closes AUDIT-IFleet-77ddf58c.
-CREATE TABLE IF NOT EXISTS discord_outbox (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  channel TEXT NOT NULL,
-  payload TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'pending',
-  attempts INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  created_at INTEGER NOT NULL,
-  last_attempt_at INTEGER,
-  sent_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_discord_outbox_pending
-  ON discord_outbox(state, created_at)
-  WHERE state = 'pending';
+-- discord_outbox DDL owned by DiscordOutbox (discord-outbox.ts).
+-- Removed from core SCHEMA to prevent silent drift when the outbox schema
+-- evolves — DiscordOutbox runs its own DDL in its constructor.
+-- Closes AUDIT-IFleet-08aeb030.
 `;
 
 const PRIORITY_ORDER_SQL =
@@ -298,7 +284,8 @@ export class TaskStore {
     // Product schema extensions run LAST, after all core DDL/migrations, so a
     // consumer can add its own tables/columns/indexes (e.g. IFleet's
     // routing_shadow_log + bandit_arm_state) without core owning them. Core
-    // owns exactly: tasks, pr_decisions, nonce_ledger, discord_outbox.
+    // owns exactly: tasks, pr_decisions, nonce_ledger (discord_outbox DDL is
+    // owned by DiscordOutbox — AUDIT-IFleet-08aeb030).
     for (const ext of opts.extensions ?? []) {
       ext(this.db);
     }
@@ -480,6 +467,7 @@ export class TaskStore {
   }
 
   list(filter: ListFilter = {}, limit = 100): QueuedTask[] {
+    if (limit <= 0) throw new RangeError(`list: limit must be positive, got ${limit}`);
     const wheres: string[] = [];
     const params: Record<string, unknown> = { limit };
     if (filter.source) {
@@ -649,11 +637,15 @@ export class TaskStore {
         created_at: number;
         fingerprint: string | null;
       }>;
-    return rows.map((r) => {
+    // Filter (not throw) on unrecognised verdict strings so a single legacy
+    // or future-schema row does not poison the entire result set for callers
+    // like the bandit trainer and the dashboard. Closes AUDIT-IFleet-c9f81a3b.
+    return rows.flatMap((r) => {
       if (!VALID_VERDICTS.has(r.verdict)) {
-        throw new Error(`getAllPrDecisions: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+        console.warn(`[store] getAllPrDecisions: skipping row ${r.id} with unknown verdict "${r.verdict}"`);
+        return [];
       }
-      return {
+      return [{
         id: r.id,
         taskId: r.task_id,
         repo: r.repo,
@@ -663,7 +655,7 @@ export class TaskStore {
         mergedAt: r.merged_at,
         createdAt: r.created_at,
         fingerprint: r.fingerprint,
-      };
+      }];
     });
   }
 

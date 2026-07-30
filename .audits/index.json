@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-07-22T04:31:00Z",
+  "last_updated": "2026-07-30T04:12:53Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -29,10 +29,11 @@
       ],
       "fix_sketch": "Require SUPABASE_CA_CERT_PATH in production or use ssl: true (system CA bundle) instead of disabling verification. Throw or warn loudly and refuse pool creation when NODE_ENV=production and cert is absent.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "partial",
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": null,
-      "closing_pr": null
+      "closing_pr": null,
+      "notes": "2026-07-30: Added loud console.error in production when rejectUnauthorized:false. Full fix requires SUPABASE_CA_CERT_PATH cert deployment on VPS."
     },
     {
       "id": "AUDIT-IFleet-d381b403",
@@ -311,15 +312,15 @@
       "severity": "IMPORTANT",
       "category": "logic",
       "title": "DiscordOutbox table DDL duplicated between discord-outbox.ts and store.ts SCHEMA risking silent drift",
-      "detail": "The discord_outbox table DDL appears in both packages/orchestrator-core/src/observability/discord-outbox.ts and packages/orchestrator-core/src/queue/store.ts SCHEMA. Schema drift between the two DDL strings would silently fail to apply the newer definition to existing databases.",
+      "detail": "The discord_outbox table DDL appeared in both packages/orchestrator-core/src/observability/discord-outbox.ts and packages/orchestrator-core/src/queue/store.ts SCHEMA. Schema drift between the two DDL strings would silently fail to apply the newer definition to existing databases.",
       "file_globs": [
         "packages/orchestrator-core/src/queue/store.ts"
       ],
       "fix_sketch": "Remove the discord_outbox DDL from TaskStore SCHEMA and let DiscordOutbox own it entirely.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-30T04:12:53Z",
       "closing_pr": null
     },
     {
@@ -349,9 +350,9 @@
       ],
       "fix_sketch": "Add an imageExists probe in probeDocker() and surface a clear error when the image is absent. Add a build/pull step to the VPS deployment script.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-07-30T04:12:53Z",
       "closing_pr": null
     },
     {
@@ -401,6 +402,118 @@
       "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": "2026-07-22T04:31:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e1a7b94d",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Discord thread orphaned if store.insert throws after postTaskCreated",
+      "detail": "In DiscordSource.ingest(), postTaskCreated() creates a Discord thread at line 112, then store.insert() is called at line 126. If insert throws (disk-full, UNIQUE violation, etc.) the thread exists in Discord but no task row is in the DB. A retry would create a second thread with no dedup anchor.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "Insert a draft DB row first (possibly with state='pending' and no threadId), then post Discord, then patch the threadId back via patchSource. Alternatively wrap insert in a try/catch and post a deletion-note to the thread on failure.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c9f81a3b",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "getAllPrDecisions throws on unrecognised verdict poisoning the full result set",
+      "detail": "store.getAllPrDecisions() used rows.map() with a throw on any unrecognised verdict string. A single legacy or future-schema row caused every caller (bandit trainer, dashboard) to receive an unhandled Error rather than the valid rows.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/store.ts"
+      ],
+      "fix_sketch": "Changed throw to flatMap filter with console.warn so valid rows are still returned.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7a5f8c12",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listActiveSprints loads all sprints with no LIMIT",
+      "detail": "dashboard/server.ts listActiveSprints() issued SELECT with no LIMIT clause. After extended operation the sprints table accumulates thousands of completed rows loaded into JS before filtering.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Added LIMIT 500 to the SQL query.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f3e924d8",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "getKgPool(overrideUrl) silently ignores override when pool already cached",
+      "detail": "pg-client.ts returns cachedPool before checking overrideUrl. Tests relying on overrideUrl to point at a test DB see the production pool instead.",
+      "file_globs": [
+        "src/agents/indexer/pg-client.ts"
+      ],
+      "fix_sketch": "If overrideUrl differs from the cached pool, end the old pool and create a new one. Or add a runtime assertion.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-9a32c5e1",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "bin.ifleet points to .ts file with node shebang — fails when linked globally",
+      "detail": "package.json bin.ifleet points to tail-cli.ts. The shebang was #!/usr/bin/env node; Node.js cannot parse TypeScript so pnpm link or npm install -g produces SyntaxError.",
+      "file_globs": [
+        "packages/orchestrator-core/src/observability/tail-cli.ts"
+      ],
+      "fix_sketch": "Changed shebang to #!/usr/bin/env tsx.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-3f4c0d29",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Hardcoded personal username @monstersebas1 as default PR approver in public repo",
+      "detail": "src/pipeline/runner.ts line 54 embeds @monstersebas1 as the approver fallback in a public repository.",
+      "file_globs": [
+        "src/pipeline/runner.ts"
+      ],
+      "fix_sketch": "Changed fallback to read from IFLEET_DEFAULT_APPROVER env var, with @monstersebas1 as the final default.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8b2e6f71",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "resetsAt epoch-seconds assumption has no range sanity check in claude.ts",
+      "detail": "claude.ts multiplies resetsAt by 1000 assuming epoch seconds. If a future CLI version changes this to ms, retryDelayMs becomes 1000x too large.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/claude.ts"
+      ],
+      "fix_sketch": "Added sanity guard: delay > 30 min implies value is already ms.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
       "closing_pr": null
     },
     {
@@ -467,13 +580,61 @@
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": "2026-07-22T04:31:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b7e16d4a",
+      "severity": "COSMETIC",
+      "category": "logic",
+      "title": "TaskStore.list(limit=0) silently returns empty array instead of throwing",
+      "detail": "LIMIT 0 in SQLite returns zero rows. Callers that accidentally compute limit=0 see an empty result and may interpret it as 'no tasks in queue'.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/store.ts"
+      ],
+      "fix_sketch": "Added RangeError guard at the top of list() when limit <= 0.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": "2026-07-30T04:12:53Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1e4d8f93",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": ".ts extensions in ESM import paths in claude-cli.ts",
+      "detail": "packages/orchestrator-core/src/workers/adapters/claude-cli.ts imports with .ts extensions. Works only because tsx hooks the resolver; native ESM compilation fails.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/adapters/claude-cli.ts"
+      ],
+      "fix_sketch": "Change .ts extensions to .js.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5c8a2f09",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Box-Muller in thompson.ts discards second normal variate",
+      "detail": "standardNormal() discards the sin-branch variate, wasting one Math.random() call and one trig operation per invocation. No correctness impact.",
+      "file_globs": [
+        "src/agents/bandit/thompson.ts"
+      ],
+      "fix_sketch": "Cache the second variate in a module-level variable and return it on alternate calls.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-07-30T04:12:53Z",
+      "closed_at": null,
+      "closing_pr": null
     }
   ],
   "by_severity": {
     "CRITICAL": 5,
-    "IMPORTANT": 18,
-    "COSMETIC": 4
+    "IMPORTANT": 27,
+    "COSMETIC": 7
   },
-  "open_count": 14,
-  "fixed_count": 13
+  "open_count": 16,
+  "fixed_count": 23
 }

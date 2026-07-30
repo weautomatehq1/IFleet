@@ -86,7 +86,8 @@ export function listActiveSprints(stateDb: Database.Database) {
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
-        ORDER BY updated_at DESC`,
+        ORDER BY updated_at DESC
+        LIMIT 500`,
     )
     .all() as SprintRow[];
   return rows

@@ -45,11 +45,21 @@ export function getKgPool(overrideUrl?: string): Pool {
     connectionTimeoutMillis: 8_000,
     // Supabase direct connection requires TLS. If SUPABASE_CA_CERT_PATH is set,
     // use it with full verification. Otherwise fall back to rejectUnauthorized:false
-    // — acceptable only for Supabase's managed TLS; rotate to pinned cert when possible.
+    // — MITM-vulnerable; set SUPABASE_CA_CERT_PATH in production to pin the cert.
+    // Closes AUDIT-IFleet-303a7e39 (partial: warning; full fix requires cert deployment).
     ssl: url.includes('supabase.co')
       ? process.env['SUPABASE_CA_CERT_PATH']
         ? { ca: readFileSync(process.env['SUPABASE_CA_CERT_PATH'], 'utf8'), rejectUnauthorized: true }
-        : { rejectUnauthorized: false }
+        : (() => {
+            if (process.env['NODE_ENV'] === 'production') {
+              console.error(
+                '[kg-pool] SECURITY WARNING: TLS certificate verification is DISABLED for Supabase. ' +
+                'Set SUPABASE_CA_CERT_PATH to the CA bundle path to enable verification. ' +
+                'Running without cert pinning exposes knowledge-graph data to MITM attacks.',
+              );
+            }
+            return { rejectUnauthorized: false };
+          })()
       : undefined,
   };
   cachedPool = new Pool(config);
