@@ -95,7 +95,11 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   try {
     await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
   } catch (err) {
-    console.warn('[pipeline] editor: git commit failed:', err);
+    // Re-throw so the pipeline's error boundary handles it: a silent return here
+    // causes the caller to see an empty diff and log a misleading "no diff —
+    // possible silent tool-use failure" instead of the real commit error.
+    // Mirrors the git add -A fix at AUDIT-IFleet-e5f6a7b8.
+    throw new Error(`git commit failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

@@ -128,11 +128,11 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     },
     onApprove: async (taskId) => {
       // approve requires the in-process ControlPlaneApprovalGate that only the
-      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
-      // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      // daemon owns (pure in-memory; no DB polling). Throwing here mirrors the
+      // onCancel pattern — the caller gets HTTP 500 and knows to re-route to
+      // port 3002, rather than receiving a silent 202 while the task stays blocked.
+      throw new Error(
+        `approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002 (port 3001 cannot unblock the waiting architect)`,
       );
     },
     // AUDIT-IFleet-d381b403: cancel requires the in-process AbortController that
@@ -220,6 +220,9 @@ function deferringDiscordOut(): DiscordOut {
   };
 }
 
+// server.ts owns only ingestion (sprint_goal commands → TaskStore). Polling,
+// mark* lifecycle methods, and watchForNew are daemon-only — they are no-ops
+// here so the server process does not pick or process tasks directly.
 function noopQueue(): QueueAdapter {
   return {
     pickNext: async () => null,
@@ -228,7 +231,7 @@ function noopQueue(): QueueAdapter {
     markFailed: async () => undefined,
     markCapabilityBlocked: async () => undefined,
     postStatus: async () => undefined,
-    watchForNew: () => ({ stop: () => undefined }),
+    watchForNew: () => ({ stop: (): void => { /* no-op */ } }),
   };
 }
 

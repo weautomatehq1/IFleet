@@ -21,7 +21,7 @@ import type {
   TaskId,
 } from '../../orchestrator/types.js';
 import { InvariantRunner } from './invariants.js';
-import { DockerSandboxRunner, type SandboxRunner } from './sandbox.js';
+import { discardRawLog, DockerSandboxRunner, type SandboxRunner } from './sandbox.js';
 import { VerifierStoreBridge } from './store-bridge.js';
 import type {
   VerifierFailure,
@@ -185,6 +185,9 @@ export class VerifierController {
       kind: statusToEventKind(merged.status),
       payload: serializeResult(merged),
     });
+    // Clean up the temp rawLog file now that the result is persisted and emitted.
+    // Without this, every verifier run leaks a mkdtemp directory under /tmp.
+    discardRawLog(merged.rawLogUrl);
     return merged;
   }
 
@@ -226,7 +229,7 @@ function mergeInvariantFailures(
   return merged;
 }
 
-function statusToEventKind(status: VerifierRunResult['status']): string {
+function statusToEventKind(status: VerifierRunResult['status']): 'verifier.passed' | 'verifier.failed' | 'verifier.timeout' | 'verifier.error' {
   switch (status) {
     case 'passed':
       return 'verifier.passed';

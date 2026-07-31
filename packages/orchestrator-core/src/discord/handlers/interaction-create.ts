@@ -316,7 +316,10 @@ async function handleAuditFix(
       } else {
         failed.push(finding.id);
       }
-    } catch {
+    } catch (err) {
+      console.error(
+        `[audit-fix] dispatch failed for ${finding.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
       failed.push(finding.id);
     }
   }

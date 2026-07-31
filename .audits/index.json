@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-07-31T04:15:15Z",
+  "last_updated": "2026-07-31T04:55:00Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -467,13 +467,158 @@
       "opened_at": "2026-07-22T04:17:28Z",
       "closed_at": "2026-07-22T04:31:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7b35853c",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "onApprove handler returns void \u2014 misrouted approvals silently succeed",
+      "detail": "In src/server.ts, onApprove logged an error but returned void. The control plane saw a resolved handler and returned HTTP 202 Accepted. Operators routing /approve to port 3001 got a success response while the task remained blocked in architect wait state.",
+      "file_globs": [
+        "src/server.ts"
+      ],
+      "fix_sketch": "Mirror onCancel: throw new Error('approve is daemon-only; route to CONTROL_PLANE_PORT 3002'). FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c45c3b55",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "git commit failure swallowed in editor \u2014 caller sees misleading no-diff error",
+      "detail": "In src/pipeline/editor.ts, failed git commit only emitted console.warn and returned normally. The caller computed no committed diff and logged a misleading 'editor produced no diff \u2014 possible silent tool-use failure'. The actual commit error was hidden.",
+      "file_globs": [
+        "src/pipeline/editor.ts"
+      ],
+      "fix_sketch": "Re-throw on commit failure: same pattern as AUDIT-IFleet-e5f6a7b8 for git add. FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-95606356",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "runTickLoop fire-and-forget void \u2014 unhandled rejection silently terminates daemon",
+      "detail": "In src/orchestrator/daemon.ts, void runTickLoop(...) had no .catch() handler. In Node.js 15+, an unhandled promise rejection from the tick loop causes a fatal process crash with no logged context.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Replace void with .catch((err) => { console.error(...); process.exit(1); }). FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-13b84a10",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "DockerSandboxRunner runCommand inherits full process.env including all secrets",
+      "detail": "In src/agents/verifier/sandbox.ts, runCommand() created SpawnOptions without setting env, so git clone/checkout and docker subprocesses inherited the full daemon process.env including ANTHROPIC_API_KEY, IFLEET_HMAC_SECRET, and GITHUB_TOKEN.",
+      "file_globs": [
+        "src/agents/verifier/sandbox.ts"
+      ],
+      "fix_sketch": "Apply env: verifyChildEnv() to SpawnOptions in DockerSandboxRunner.runCommand. FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-4527b061",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "discardRawLog exported but never called \u2014 verifier temp dirs accumulate indefinitely",
+      "detail": "In src/agents/verifier/sandbox.ts, uploadLog() creates a mkdtemp directory per verifier run. discardRawLog() was exported as the cleanup function but had no call sites. On long-running daemons, /tmp filled with ifleet-verifier-* directories.",
+      "file_globs": [
+        "src/agents/verifier/sandbox.ts",
+        "src/agents/verifier/controller.ts"
+      ],
+      "fix_sketch": "Import discardRawLog in controller.ts and call it after bridge.completeRun(merged). FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7eadcb99",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "handleAuditFix catch block swallows dispatch error \u2014 failure reason invisible",
+      "detail": "In packages/orchestrator-core/src/discord/handlers/interaction-create.ts, the catch block on controlPlane.postCommand discarded the error entirely. Discord reported a count of failed findings but no reason.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/handlers/interaction-create.ts"
+      ],
+      "fix_sketch": "Log the caught error before pushing to failed array. FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-50d020f9",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "MCP submit-sprint brief has no max length \u2014 GitHub silently truncates beyond 65536 chars",
+      "detail": "In src/mcp/tools/submit-sprint.ts, the brief field was validated only as z.string().min(1). An MCP client could submit arbitrarily large briefs that GitHub silently truncates.",
+      "file_globs": [
+        "src/mcp/tools/submit-sprint.ts"
+      ],
+      "fix_sketch": "Add .max(65000, 'brief must not exceed 65,000 characters (GitHub issue body limit)') to Zod schema. FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c56d165a",
+      "severity": "COSMETIC",
+      "category": "redo",
+      "title": "statusToEventKind returns string not narrowed union \u2014 loses type safety on event kind",
+      "detail": "In src/agents/verifier/controller.ts, statusToEventKind was typed to return string instead of the narrowed 'verifier.passed' | 'verifier.failed' | 'verifier.timeout' | 'verifier.error' union.",
+      "file_globs": [
+        "src/agents/verifier/controller.ts"
+      ],
+      "fix_sketch": "Narrow return type to the verifier event kind union. FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-85b63cb9",
+      "severity": "COSMETIC",
+      "category": "redo",
+      "title": "noopQueue watchForNew stop arrow returns undefined not void \u2014 type mismatch",
+      "detail": "In src/server.ts, noopQueue() implemented watchForNew's stop as () => undefined rather than () => void as the QueueAdapter interface expects.",
+      "file_globs": [
+        "src/server.ts"
+      ],
+      "fix_sketch": "Change to stop: (): void => { /* no-op */ } and add explanatory comment. FIXED.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-31T04:15:00Z",
+      "closed_at": "2026-07-31T04:15:00Z",
+      "closing_pr": null
     }
   ],
   "by_severity": {
-    "CRITICAL": 5,
-    "IMPORTANT": 20,
-    "COSMETIC": 4
+    "CRITICAL": 8,
+    "IMPORTANT": 24,
+    "COSMETIC": 6
   },
   "open_count": 1,
-  "fixed_count": 28
+  "fixed_count": 37
 }
