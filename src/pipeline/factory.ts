@@ -141,10 +141,19 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     // for read-only discovery.
     'Bash(find)',
     'Bash(find *)',
-    // AUDIT-IFleet-bfa22380: pnpm install through the node_modules symlink
-    // affects shared host node_modules, poisoning all concurrent tasks.
+    // AUDIT-IFleet-bfa22380 / c2npmDeny: any package-manager install through the
+    // node_modules symlink affects shared host node_modules, poisoning all tasks.
+    // All major package managers and npx (which can install implicitly) are blocked.
     'Bash(pnpm install)',
     'Bash(pnpm install *)',
+    'Bash(npm install)',
+    'Bash(npm install *)',
+    'Bash(yarn add)',
+    'Bash(yarn add *)',
+    'Bash(bun add)',
+    'Bash(bun add *)',
+    'Bash(npx)',
+    'Bash(npx *)',
     'Bash(sudo *)',
     'Bash(chmod *)',
     'Bash(chown *)',
@@ -315,7 +324,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const abortController = new AbortController();
 
     const issues: IssueCommenter = createIssueCommenter(opts.octokit, resolved.owner, resolved.name);
-    const pr: PrOpener = buildPrOpener(resolved.repoId, worktreePath, resolved.repoRoot);
+    const pr: PrOpener = buildPrOpener(resolved.repoId, worktreePath);
     const git: GitOps = buildGitOps();
 
     const input: PipelineInput = {
@@ -480,16 +489,10 @@ export function buildWorkerPool(
       const model = mapModel(spec.model);
       let rateLimitHits = 0;
 
-      // AUDIT-IFleet-6b8a5e95: architect output is only trusted if it parses as
-      // valid JSON. A jailbroken architect that returns free-text injection
-      // payload will fail the JSON parse and have its output sandboxed as user
-      // data instead of treated as direct system instructions.
-      const isArchitectRole = opts.role === 'architect';
-      let architectOutputIsJson = false;
-      if (!isArchitectRole) {
-        try { JSON.parse(brief); architectOutputIsJson = true; } catch { /* not valid JSON */ }
-      }
-      const trustedBrief = !isArchitectRole && architectOutputIsJson;
+      // AUDIT-IFleet-6b8a5e95 / AUDIT-IFleet-i7deadBrf: buildBrief() always
+      // produces markdown for editor/reviewer/verifier roles, so JSON.parse
+      // always throws. trustedBrief is always false for non-architect roles.
+      const trustedBrief = false;
       const workerHandle = adapter.spawn({
         taskId: `${opts.role}-${Date.now()}`,
         brief,
@@ -595,7 +598,7 @@ export function normalizeReviewers(reviewers: string[]): string[] {
   return reviewers.map((r) => r.replace(/^@+/, '').trim()).filter((r) => r.length > 0);
 }
 
-function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string): PrOpener {
+function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
   return {
     async open(input) {
       await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath });

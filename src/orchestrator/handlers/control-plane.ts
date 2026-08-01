@@ -3,7 +3,6 @@
 // buildControlPlaneOptions() takes all runtime deps and returns the on* callbacks
 // for createControlPlane(), keeping daemon.ts's main() a thin wiring entry point.
 
-import { Octokit } from '@octokit/rest';
 import { broadcastIFleet } from '@wahq/orchestrator-core/observability/discord-broadcast';
 import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
 import { TaskStore } from '@wahq/orchestrator-core/queue/store';
@@ -33,7 +32,6 @@ export interface ControlPlaneDeps {
   verifierController: VerifierController;
   verifierCtx: TaskContextRegistry;
   unifiedToSprintId: Map<string, SprintId>;
-  octokit: Pick<Octokit, 'rest'>;
 }
 
 type ControlPlaneCallbacks = Pick<
@@ -59,7 +57,6 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
     verifierController,
     verifierCtx,
     unifiedToSprintId,
-    octokit,
   } = deps;
 
   return {
@@ -116,7 +113,6 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
         orchestratorStore,
         unifiedToSprintId,
         verifierCtx,
-        octokit,
       });
     },
 

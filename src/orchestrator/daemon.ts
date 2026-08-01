@@ -111,10 +111,12 @@ async function main(): Promise<void> {
       // Persist as a structured event so operators can query why a Discord
       // thread suddenly stopped updating (resolves the silent-no-op gap
       // flagged in the #165 audit). Tolerant — best effort.
+      // AUDIT-IFleet-i3emptyId: skip when no sprint context exists — appending
+      // with '' as SprintId creates orphaned events that can never be queried.
       try {
         const task = store.getById(taskId);
-        const sprintId = (task as { sprintId?: string } | null)?.sprintId
-          ?? ('' as SprintId);
+        const sprintId = (task as { sprintId?: string } | null)?.sprintId;
+        if (!sprintId) return;
         orchestratorStore.appendEvent({
           ts: Date.now(),
           sprintId: sprintId as SprintId,
@@ -231,7 +233,6 @@ async function main(): Promise<void> {
       verifierController,
       verifierCtx,
       unifiedToSprintId,
-      octokit,
     }),
   });
 

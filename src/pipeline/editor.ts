@@ -92,11 +92,10 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   if (!hasChanges) return;
   const safeTitle = taskTitle ? taskTitle.replace(/[\r\n]+/g, ' ').trim() : '';
   const subject = safeTitle ? `feat: ${safeTitle.slice(0, 72)}` : 'chore: editor changes';
-  try {
-    await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
-  } catch (err) {
-    console.warn('[pipeline] editor: git commit failed:', err);
-  }
+  // AUDIT-IFleet-i1gitCmt: propagate so the pipeline's error boundary handles it.
+  // A silent return here causes the caller to see an empty diff and log the
+  // misleading "no diff — possible silent tool-use failure" red herring.
+  await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
 }
 
 function buildBrief(mode: EditorMode): string {

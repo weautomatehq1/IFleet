@@ -90,7 +90,6 @@ function makeOptions(opts: {
     verifierController: undefined as unknown as ControlPlaneDeps['verifierController'],
     verifierCtx: undefined as unknown as ControlPlaneDeps['verifierCtx'],
     unifiedToSprintId: opts.unifiedToSprintId ?? new Map<string, SprintId>(),
-    octokit: undefined as unknown as ControlPlaneDeps['octokit'],
   };
 
   return { options: buildControlPlaneOptions(deps), approvalResolves, cancelSprintCalls };

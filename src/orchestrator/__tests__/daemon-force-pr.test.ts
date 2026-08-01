@@ -112,47 +112,33 @@ function makeFixture(opts?: {
 }
 
 /**
- * Build deps. `octokit` and a direct-git execFile are passed as TRAPS — if the
- * handler ever calls them the test fails, proving GitHub access flows only
- * through the bridge.
+ * Build deps. The octokit field has been removed from ForcePrDeps
+ * (AUDIT-IFleet-k1depOcto) — force-PR routes exclusively through the bridge,
+ * so octokit is structurally unreachable rather than a runtime trap.
  */
-function makeDeps(fx: Fixture): { deps: ForcePrDeps; broadcastCalls: string[]; octokitCalled: { n: number } } {
+function makeDeps(fx: Fixture): { deps: ForcePrDeps; broadcastCalls: string[] } {
   const broadcastCalls: string[] = [];
-  const octokitCalled = { n: 0 };
-
-  const octokit = {
-    rest: {
-      pulls: {
-        create: async () => {
-          octokitCalled.n++;
-          throw new Error('TRAP: handler must not call octokit.rest.pulls.create');
-        },
-      },
-    },
-  } as unknown as ForcePrDeps['octokit'];
 
   const deps: ForcePrDeps = {
     store: fx.store,
     orchestratorStore: fx.orchestratorStore,
     unifiedToSprintId: fx.unifiedToSprintId,
     verifierCtx: fx.verifierCtx,
-    octokit,
     broadcast: (msg: string) => {
       broadcastCalls.push(msg);
     },
   };
-  return { deps, broadcastCalls, octokitCalled };
+  return { deps, broadcastCalls };
 }
 
 test('handleForcePr — happy path routes through the bridge (no Octokit, no direct git push)', async () => {
   const fx = makeFixture();
   try {
-    const { deps, broadcastCalls, octokitCalled } = makeDeps(fx);
+    const { deps, broadcastCalls } = makeDeps(fx);
     await handleForcePr(fx.taskId, 'operator override', deps);
     assert.equal(fx.openCalls.length, 1, 'bridge open() should be called once');
     assert.equal(fx.openCalls[0]!.headBranch, fx.branch);
     assert.equal(fx.openCalls[0]!.repo, 'weautomatehq1/IFleet');
-    assert.equal(octokitCalled.n, 0, 'handler must NOT call octokit directly');
     assert.equal(broadcastCalls.length, 0, 'success path should not broadcast');
   } finally {
     fx.cleanup();
@@ -267,10 +253,9 @@ test('handleForcePr — "already exists" error is benign (no abort broadcast)', 
 test('handleForcePr — missing bridge handle → audit row logged, open() never reached', async () => {
   const fx = makeFixture({ prOpen: null });
   try {
-    const { deps, broadcastCalls, octokitCalled } = makeDeps(fx);
+    const { deps, broadcastCalls } = makeDeps(fx);
     await handleForcePr(fx.taskId, 'override', deps);
     assert.equal(fx.openCalls.length, 0, 'no bridge to open through');
-    assert.equal(octokitCalled.n, 0, 'must NOT fall back to Octokit');
     assert.equal(broadcastCalls.length, 0);
     const events = fx.orchestratorStore.loadEventsBySprint(fx.sprintId);
     assert.ok(events.map((e) => e.kind).includes('verifier.force_pr'), 'audit row still logged');

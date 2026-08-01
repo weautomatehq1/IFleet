@@ -126,13 +126,13 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
     onRun: () => {
       // Daemon's tick loop picks from the store; no-op here.
     },
+    // AUDIT-IFleet-c1onApprv: approve requires the in-process ControlPlaneApprovalGate
+    // that only the daemon owns. Returning 202 here was a lie — the waiting architect
+    // was never unblocked. Throw so the caller gets 500 and knows to re-route,
+    // matching onCancel/onVerify/onForcePr (AUDIT-IFleet-d381b403 pattern).
     onApprove: async (taskId) => {
-      // approve requires the in-process ControlPlaneApprovalGate that only the
-      // daemon owns (pure in-memory; no DB polling). Writing stateMeta here
-      // does NOT unblock the waiting architect — the daemon gate never sees it.
-      // Log loudly so mis-routed approvals are visible rather than silently lost.
-      console.error(
-        `[control-plane] approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002`,
+      throw new Error(
+        `approve(${taskId}) is daemon-only; route to CONTROL_PLANE_PORT 3002 (port 3001 cannot unblock the in-memory HITL gate)`,
       );
     },
     // AUDIT-IFleet-d381b403: cancel requires the in-process AbortController that

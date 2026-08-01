@@ -4,7 +4,6 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
-import { Octokit } from '@octokit/rest';
 import type { TaskRunContext } from '../../agents/verifier/controller.js';
 import { computeStructuralFingerprint } from '../../agents/verifier/fingerprint.js';
 import { recordOutcome } from '../../agents/bandit/circuit-breaker.js';
@@ -184,8 +183,6 @@ export interface ForcePrDeps {
   orchestratorStore: StateStore;
   unifiedToSprintId: Map<string, SprintId>;
   verifierCtx: TaskContextRegistry;
-  /** @deprecated unused — force-PR now routes through the PrOpener bridge. */
-  octokit?: Pick<Octokit, 'rest'>;
   broadcast?: (msg: string) => void;
 }
 

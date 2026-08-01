@@ -130,6 +130,9 @@ export async function createGitHubQueue(opts: GitHubQueueOptions): Promise<GitHu
 }
 
 async function readGhAuthToken(): Promise<string | undefined> {
+  // AUDIT-IFleet-k3ghFall: warn so operators notice credential fallback
+  // during secret rotation instead of discovering it via a permission error.
+  console.warn('[github-queue] GITHUB_TOKEN not set — falling back to gh CLI credentials');
   try {
     const { stdout } = await execFileAsync('gh', ['auth', 'token']);
     const trimmed = stdout.trim();

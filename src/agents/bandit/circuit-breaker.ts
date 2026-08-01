@@ -184,7 +184,10 @@ export function recordOutcome(
       state.consecutiveFailures += 1;
     } else {
       state.consecutiveFailures += 1;
-      if (state.consecutiveFailures >= threshold && state.status !== 'disabled') {
+      if (state.consecutiveFailures >= threshold) {
+        // AUDIT-IFleet-i4cbReset: always refresh cooldown when threshold is hit,
+        // even when arm is already disabled. Symmetric with probe-failure path above
+        // which unconditionally resets assignmentsRemaining.
         state.status = 'disabled';
         state.assignmentsRemaining = cooldown;
       }
