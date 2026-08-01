@@ -24,6 +24,7 @@ import {
   parsePhaseOutput,
   parseSemgrepJsonOutput,
 } from './failure-parser.js';
+import { verifyChildEnv } from '@wahq/orchestrator-core/verify/spawn-util';
 import type {
   VerifierFailure,
   VerifierFailureKind,
@@ -433,6 +434,10 @@ export class DockerSandboxRunner implements SandboxRunner {
       const spawnOpts: SpawnOptions = {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
+        // Apply env allowlist so ANTHROPIC_API_KEY, IFLEET_HMAC_SECRET, etc.
+        // are not forwarded to git and docker subprocesses. Matches the
+        // verifyChildEnv() pattern in spawn-util.ts and InvariantRunner.
+        env: verifyChildEnv(),
       };
       if (opts.cwd) spawnOpts.cwd = opts.cwd;
       const child = this.spawnFn(cmd, args, spawnOpts);

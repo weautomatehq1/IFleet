@@ -7,7 +7,11 @@ import type { McpOctokit } from '../octokit.js';
 const SPRINT_MODE_VALUES = SPRINT_MODES as readonly [SprintMode, ...SprintMode[]];
 
 export const submitSprintShape = {
-  brief: z.string().min(1).describe('Sprint brief / task description (markdown).'),
+  brief: z
+    .string()
+    .min(1)
+    .max(65000, 'brief must not exceed 65,000 characters (GitHub issue body limit)')
+    .describe('Sprint brief / task description (markdown).'),
   repo: z
     .string()
     .regex(/^[^/]+\/[^/]+$/)
