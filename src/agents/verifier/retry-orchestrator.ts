@@ -189,24 +189,5 @@ export function wireRetryLoop(
   };
 }
 
-/**
- * Build the ControlPlane payload that the Discord [Retry] button dispatches.
- * Used by interaction-create.ts in the Discord client when the operator clicks
- * the structured-failure thread reply.
- */
-export function buildRetryControlCommand(taskId: TaskId): {
-  type: 'sprint_goal';
-  goal: string;
-  forceVerifierRetry: true;
-  parentTaskId: string;
-} {
-  return {
-    type: 'sprint_goal',
-    goal: `Re-run verifier for task ${taskId}`,
-    forceVerifierRetry: true,
-    parentTaskId: taskId,
-  };
-}
-
 /** ControlPlaneClient marker type — re-export to keep the contracts surface tight. */
 export type { ControlPlaneClient };

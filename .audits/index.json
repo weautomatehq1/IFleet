@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-07-31T04:55:00Z",
+  "last_updated": "2026-08-02T06:00:00Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -237,9 +237,9 @@
       ],
       "fix_sketch": "Expose required functions as a proper package dependency replacing relative path escapes with package imports.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-07-22T04:17:28Z",
-      "closed_at": null,
+      "closed_at": "2026-08-02T06:00:00Z",
       "closing_pr": null
     },
     {
@@ -612,13 +612,253 @@
       "opened_at": "2026-07-31T04:15:00Z",
       "closed_at": "2026-07-31T04:15:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-824d213b",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Task brief passed as argv to claude subprocess \u2014 visible on process list",
+      "detail": "defaultHaikuCall in auto-router.ts passes the full router prompt (which includes the user-supplied task brief) as a positional CLI argument after --print. On Linux this is visible to all local users via /proc/<pid>/cmdline and ps aux. The inline comment acknowledges this but dismisses it as acceptable; task briefs routinely contain proprietary business context and repo details that should not be world-readable on a shared VPS.",
+      "file_globs": [
+        "src/classifier/auto-router.ts"
+      ],
+      "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use stdio: ['pipe','pipe','pipe'] and child.stdin.write(prompt) to avoid the process-list exposure. The comment claiming stdin was unreliable refers to a race without explicit flush; writing synchronously and then closing stdin resolves it.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b53232b7",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "detectExplicitMode multiline flag matches mode: directive on any body line, not just the header",
+      "detail": "The regex /^\\s*mode\\s*:\\s*([a-z]+)\\s*$/im uses the m (multiline) flag, making ^ and $ match at any line boundary. The intent documented in the JSDoc is to match only a 'Brief body header line', but the regex silently matches 'mode: deslop' embedded anywhere in the task body \u2014 including deep in quoted examples or a GitHub issue description. Any user who knows the pattern can override routing by including a bare mode: <value> line anywhere in their issue body.",
+      "file_globs": [
+        "src/classifier/modes.ts"
+      ],
+      "fix_sketch": "Remove the m flag and scan only the first non-empty line: extract firstLine = body.split('\\n').find(l => l.trim()), then apply /^\\s*mode\\s*:\\s*([a-z]+)\\s*$/i to that line only.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f3d8e24a",
+      "severity": "IMPORTANT",
+      "category": "dead-code",
+      "title": "buildRetryControlCommand dead export \u2014 forceVerifierRetry flag never consumed by control plane",
+      "detail": "buildRetryControlCommand in retry-orchestrator.ts returns { type: 'sprint_goal', forceVerifierRetry: true, parentTaskId }. A codebase-wide search confirms the function is never called anywhere; the Discord verify_retry button correctly uses { type: 'verify', taskId } instead. The forceVerifierRetry and parentTaskId fields are not handled in parseCommand so if the function were ever called, they would be silently dropped and the result would be a new plain sprint \u2014 not a verifier-only retry.",
+      "file_globs": [
+        "src/agents/verifier/retry-orchestrator.ts"
+      ],
+      "fix_sketch": "Remove buildRetryControlCommand entirely \u2014 it is dead code that misrepresents how verifier retries work.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c86959e9",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "WorkerRegistry.loadFromDisk zeros worker pool on MaxPlan policy violation with only console.warn",
+      "detail": "validateMaxPlanConcurrency is called inside the try-catch of loadFromDisk, so when the function throws (e.g. an operator adds a second Max-plan worker to workers.json), the catch block sets this.workers = [] and emits only a console.warn. The daemon continues running with zero workers \u2014 no tasks will be dispatched \u2014 but the process stays up and appears healthy to PM2. A hot-reload via the FS watcher triggers the same zero-workers outcome silently.",
+      "file_globs": [
+        "src/orchestrator/workers.ts"
+      ],
+      "fix_sketch": "On a reload (where this.workers already exists), preserve the previous workers value and log the error rather than zeroing. On initial load, throw explicitly for policy violations so the daemon fails fast instead of silently starting with an empty pool.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d16b51f8",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Daemon GitHubQueue constructed with bare unthrottled Octokit, bypassing ThrottledOctokit factory",
+      "detail": "daemon.ts at line 102 constructs new GitHubQueue(new Octokit({ auth: githubToken }), opts) directly. The factory function createGitHubQueue in src/queue/github.ts wraps Octokit with a throttling+retry plugin (ThrottledOctokit). The direct construction bypasses the plugin: under sustained GitHub Issues polling (the default task source) the daemon's unthrottled client will hit 429s that are not automatically retried, causing pickNext() failures and stalled task ingestion.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Replace the direct new Octokit(...) + new GitHubQueue(...) with a call to createGitHubQueue(githubToken, opts) or wrap the Octokit instance with the ThrottledOctokit factory before passing it.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f838f719",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "verify_cancel Discord button kills entire sprint instead of only the verifier step",
+      "detail": "In interaction-create.ts, the verify_cancel button verb maps to { type: 'cancel', taskId, reason: 'verifier cancelled via discord' } which routes to onCancel and calls orchestrator.cancelSprint(sprintId). This aborts the entire pipeline. An operator clicking the 'Cancel Verify' button after a verifier failure \u2014 intending to skip the flaky verification and open the PR anyway \u2014 instead cancels the sprint entirely and loses all editor work.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/handlers/interaction-create.ts"
+      ],
+      "fix_sketch": "Map verify_cancel to { type: 'force_pr', taskId } (which already exists as onForcePr) so the operator can skip the verifier and open the PR. Rename the button label to 'Force PR' or add a separate 'Cancel' button alongside so the operator can still fully cancel if desired.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-888ebcb9",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "extractJsonObject uses lastIndexOf('}') \u2014 malformed extraction when reviewer output has trailing braces",
+      "detail": "extractJsonObject in diff-reviewer.ts finds the first '{' and the LAST '}' to slice the candidate JSON. If the LLM reviewer appends explanatory prose after the JSON object that contains a '}' (e.g. a code snippet or curly-brace commentary), the slice spans from the opening '{' of the JSON through the trailing '}' in the prose, producing an unparseable string. The catch block returns { verdict: 'request_changes', concerns: ['Reviewer JSON malformed...'] }, triggering a spurious fix-review pass on an otherwise-approved diff.",
+      "file_globs": [
+        "src/pipeline/diff-reviewer.ts"
+      ],
+      "fix_sketch": "Use a balanced-brace counter starting from the first '{' to find the matching '}' rather than anchoring to the last '}' in the string. Alternatively, try JSON.parse on progressively narrower end positions until one succeeds.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e27db9cc",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "onCancel bare catch swallows all store.updateState errors, not just missing-row misses",
+      "detail": "In src/orchestrator/handlers/control-plane.ts, the catch block around store.updateState is empty (catch { /* row may not exist yet */ }). This silently absorbs every error including disk full, SQLite corruption, and constraint violations \u2014 not just the intended 'row not found' case. When the cancel succeeds in aborting the pipeline but the state transition silently fails, the task remains in_flight in the store and will be recovered as pending on the next daemon restart, potentially re-dispatching a deliberately cancelled task.",
+      "file_globs": [
+        "src/orchestrator/handlers/control-plane.ts"
+      ],
+      "fix_sketch": "Replace bare catch {} with catch (err) { if (!/no such row|SQLITE_NOTFOUND/i.test(String(err))) console.error('[daemon] updateState failed on cancel:', err); } so unexpected errors are surfaced while the known-safe 'row not found' case is still swallowed.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c8d40f35",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "sprint_goal repo field has no length cap in parseCommand unlike all other string fields",
+      "detail": "In packages/orchestrator-core/src/queue/control-plane.ts, the sprint_goal parse branch applies MAX_ID_FIELD_LEN, MAX_LABEL_LEN, MAX_KEY_LEN, and MAX_GOAL_LEN guards to every string field except repo. An attacker with a valid HMAC secret can supply an arbitrarily long repo string that propagates into store writes, git clone arguments, and RepoResolver allow-list checks \u2014 all of which receive the raw unsanitized value.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "Add if (typeof parsed.repo === 'string' && parsed.repo.length > 256) throw new Error('sprint_goal: repo exceeds maximum length') immediately after the repo field is assigned in the sprint_goal parse block.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d3b7e10c",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "computePressure returns zero pressure for tokensLimit <= 0 API error state",
+      "detail": "In src/orchestrator/pressure.ts, computePressure returns 0 when headers.tokensLimit <= 0. A pressure of 0 is below PRESSURE_BLOCK_THRESHOLD (0.85), so shouldDispatch() returns true. When the Anthropic API enters a degraded state and reports tokensLimit=0 in rate-limit headers, the daemon treats the worker as fully available and continually dispatches tasks into a failing worker rather than backing off.",
+      "file_globs": [
+        "src/orchestrator/pressure.ts"
+      ],
+      "fix_sketch": "Return 1 (fully pressured / blocked) when tokensLimit <= 0: treat a zero or negative limit as an API error state that should block dispatch until a valid non-zero limit is reported.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-10fab7b5",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "repoSlugFromUrl extracts only the short repo name, risking collision for repos with identical names",
+      "detail": "repoSlugFromUrl in verifier/controller.ts takes only the last URL path segment (e.g. 'IFleet' from 'https://github.com/weautomatehq1/IFleet') rather than the full 'owner/name' form. This slug is used to locate invariants directories (.ifleet/invariants/<repoSlug>/). If two repositories managed by the fleet share the same short name (e.g. client-a/api and client-b/api), they would resolve to the same invariants directory, causing cross-contamination of verification rules.",
+      "file_globs": [
+        "src/agents/verifier/controller.ts"
+      ],
+      "fix_sketch": "Capture the last two non-empty path segments: u.pathname.replace(/\\.git$/, '').split('/').filter(Boolean).slice(-2).join('-') to get a unique 'owner-name' slug for use in filesystem paths. This is safe for current single-repo usage and correct for multi-repo.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c2408db6",
+      "severity": "COSMETIC",
+      "category": "dead-code",
+      "title": "buildPrOpener accepts unused _repoRoot parameter that callers pass but is silently discarded",
+      "detail": "The function signature buildPrOpener(repoId, worktreePath, _repoRoot) includes _repoRoot (prefixed with _ to signal disuse) which is never referenced inside the function body. Callers pass a meaningful value that is silently discarded, creating confusion about whether future path computations should use it.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Remove the _repoRoot parameter from the signature and update all call sites.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-82d8d589",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "ANTHROPIC_VERSION pinned to 2023-06-01 in candidate-gen.ts without a versioning note",
+      "detail": "The ANTHROPIC_VERSION header is hardcoded to '2023-06-01' in src/agents/proposer/candidate-gen.ts. While Anthropic maintains backward compatibility, the constant has no comment linking to the versioning docs or noting when it was last reviewed. Future maintainers may miss a required update.",
+      "file_globs": [
+        "src/agents/proposer/candidate-gen.ts"
+      ],
+      "fix_sketch": "Add a comment: // Anthropic API version \u2014 see https://docs.anthropic.com/api/versioning; update when new features are gated behind a newer version.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-49b56847",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "deferringDiscordOut postTaskCreated returns threadId as empty string \u2014 falsy sentinel",
+      "detail": "In src/server.ts, deferringDiscordOut().postTaskCreated returns { threadId: '' }. An empty string is falsy in JavaScript, so callers checking if (result.threadId) treat the deferred case the same as a genuine 'no thread assigned', which could suppress follow-up Discord linking logic silently.",
+      "file_globs": [
+        "src/server.ts"
+      ],
+      "fix_sketch": "Return { threadId: undefined } so the deferred case is unambiguously 'not yet assigned'. Alternatively use a sentinel string 'DEFERRED' and document its meaning.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b13a5b36",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "resolveTaskIdFromMessage hardcoded to return null with no explanation",
+      "detail": "In src/orchestrator/daemon.ts, createDiscordClient receives resolveTaskIdFromMessage: async () => null. There is no comment explaining whether this is intentionally unimplemented, permanently unsupported, or a placeholder. Discord message-threading features (replying to a status update to approve/cancel) silently fail to resolve a task ID.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Add an inline comment: // message-to-task lookup not yet implemented \u2014 tasks are found via button customId or slash command taskId option.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
     }
   ],
   "by_severity": {
     "CRITICAL": 8,
-    "IMPORTANT": 24,
-    "COSMETIC": 6
+    "IMPORTANT": 35,
+    "COSMETIC": 10
   },
   "open_count": 1,
-  "fixed_count": 37
+  "fixed_count": 52
 }

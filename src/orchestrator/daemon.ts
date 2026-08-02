@@ -11,12 +11,15 @@ import { Octokit } from '@octokit/rest';
 import { VerifierController } from '../agents/verifier/controller.js';
 import { loadReposConfig } from '../config/repos.js';
 import { registerProposerDiscordClient } from '../agents/proposer/approval-gate.js';
+import { dbReadIndex, dbUpdateFindingStatus, normaliseAuditRepo } from '../audit/audit-store.js';
+import { recordProposalDecision } from './approval-gate.js';
+import { getProposalForShip, setResultingTaskId } from './goal-proposals-store.js';
 import { createDiscordClient } from '@wahq/orchestrator-core/discord/client';
 import { HmacControlPlaneClient } from '@wahq/orchestrator-core/discord/hmac-client';
 import { DiscordOutAdapter } from '@wahq/orchestrator-core/observability/discord-output';
 import { makeProductionFactory } from '../pipeline/factory.js';
 import { createControlPlane } from '@wahq/orchestrator-core/queue/control-plane';
-import { GitHubQueue } from '../queue/github.js';
+import { GitHubQueue, createGitHubQueue } from '../queue/github.js';
 import { GitHubIssuesSource } from '../queue/sources/github.js';
 import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
@@ -83,7 +86,19 @@ async function main(): Promise<void> {
   const client: Client = createDiscordClient({
     router,
     controlPlane: controlPlaneClient,
+    // Message-to-task lookup is not yet implemented — tasks are found via
+    // button customId or slash command taskId option. (AUDIT-IFleet-b13a5b36)
     resolveTaskIdFromMessage: async () => null,
+    proposals: {
+      recordDecision: recordProposalDecision,
+      getForShip: getProposalForShip,
+      setResultingTaskId,
+    },
+    auditDb: {
+      readIndex: dbReadIndex,
+      updateFindingStatus: async (id, status) => { await dbUpdateFindingStatus(id, status); },
+      normaliseRepo: normaliseAuditRepo,
+    },
   });
 
   // -------- DiscordOut adapter (output) --------
@@ -99,7 +114,12 @@ async function main(): Promise<void> {
   const orchestratorStore = new StateStore();
 
   // -------- Sources + unified adapter --------
-  const githubQueue = new GitHubQueue(new Octokit({ auth: githubToken }), {
+  // Use createGitHubQueue so the Octokit instance is wrapped with the
+  // throttling+retry plugin (ThrottledOctokit). The direct Octokit constructor
+  // bypassed rate-limit retries, causing pickNext() failures under load.
+  // (AUDIT-IFleet-d16b51f8)
+  const githubQueue = await createGitHubQueue({
+    token: githubToken,
     repos: Object.values(reposMap),
   });
   const githubSource = new GitHubIssuesSource(githubQueue);

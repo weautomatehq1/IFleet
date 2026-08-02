@@ -26,22 +26,43 @@ import {
   type AuditIndex,
   type AuditStatus,
 } from '../audit-runner.js';
-import {
-  dbReadIndex,
-  dbUpdateFindingStatus,
-  normaliseAuditRepo,
-} from '../../../../../src/audit/audit-store.js';
-import { recordProposalDecision } from '../../../../../src/orchestrator/approval-gate.js';
-import {
-  getProposalForShip,
-  setResultingTaskId,
-} from '../../../../../src/orchestrator/goal-proposals-store.js';
-import type { ProposalDecision } from '../../../../../src/agents/proposer/types.js';
+export type ProposalDecision = 'approved' | 'rejected' | 'deferred' | 'expired';
+
+interface ProposalRow {
+  id: string;
+  repo_id: string;
+  title: string;
+  rationale?: string;
+}
+
+interface ProposalDecisionResult {
+  updated: boolean;
+  existing_decision?: string | null;
+}
+
+export interface ProposalDeps {
+  recordDecision(args: {
+    kind: 'proposal';
+    proposalId: string;
+    decision: ProposalDecision;
+    decidedBy: string;
+  }): Promise<ProposalDecisionResult>;
+  getForShip(proposalId: string): Promise<ProposalRow | null | undefined>;
+  setResultingTaskId(proposalId: string, taskId: string): Promise<{ updated: boolean }>;
+}
+
+export interface AuditDbDeps {
+  readIndex(repo: string): Promise<AuditIndex | null>;
+  updateFindingStatus(id: string, status: AuditStatus): Promise<void>;
+  normaliseRepo(repo: string): string;
+}
 
 export interface InteractionDeps {
   router: ChannelRouter;
   controlPlane: ControlPlaneClient;
   log?: (msg: string) => void;
+  proposals?: ProposalDeps;
+  auditDb?: AuditDbDeps;
 }
 
 export async function handleInteractionCreate(
@@ -123,7 +144,7 @@ async function handleSlashCommand(
     return;
   }
   if (interaction.commandName === 'audit-status') {
-    await handleAuditStatus(interaction, route);
+    await handleAuditStatus(interaction, route, deps);
     return;
   }
   if (interaction.commandName === 'audit') {
@@ -159,8 +180,9 @@ async function handleSlashCommand(
 async function handleAuditStatus(
   interaction: ChatInputCommandInteraction,
   route: ChannelRoute,
+  deps: InteractionDeps,
 ): Promise<void> {
-  const index = await loadAuditIndex(route.repo, route.workDir);
+  const index = await loadAuditIndex(route.repo, route.workDir, deps.auditDb);
   if (!index) {
     await interaction.editReply('No audit findings yet — run `/audit-scan` from the CLI.');
     return;
@@ -187,14 +209,20 @@ async function handleAuditStatus(
  * Both forms are normalised inside `dbReadIndex` via `normaliseAuditRepo`,
  * so callers don't have to think about which they're holding.
  */
-async function loadAuditIndex(fullRepo: string, repoRoot?: string): Promise<AuditIndex | null> {
-  try {
-    const dbIndex = await dbReadIndex(normaliseAuditRepo(fullRepo));
-    if (dbIndex && dbIndex.findings.length > 0) return dbIndex;
-  } catch (err) {
-    console.warn(
-      `[audit] dbReadIndex failed for ${fullRepo}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+async function loadAuditIndex(
+  fullRepo: string,
+  repoRoot?: string,
+  auditDb?: AuditDbDeps,
+): Promise<AuditIndex | null> {
+  if (auditDb) {
+    try {
+      const dbIndex = await auditDb.readIndex(auditDb.normaliseRepo(fullRepo));
+      if (dbIndex && dbIndex.findings.length > 0) return dbIndex;
+    } catch (err) {
+      console.warn(
+        `[audit] dbReadIndex failed for ${fullRepo}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
   // Use the per-channel route's workDir so e.g. an /audit-fix from the
   // #factory channel reads factory's .audits/index.json, not IFleet's.
@@ -227,7 +255,7 @@ async function handleAuditFix(
   // Read prefers Supabase (synced from Mac via `pnpm audit:sync`) so the VPS
   // sees the current findings even when its local index.json is stale.
   const indexPath = resolveAuditIndexPath(route.workDir);
-  const index = await loadAuditIndex(route.repo, route.workDir);
+  const index = await loadAuditIndex(route.repo, route.workDir, deps.auditDb);
   if (!index) {
     await interaction.editReply('No audit findings yet. Run /audit-scan first.');
     return;
@@ -283,15 +311,17 @@ async function handleAuditFix(
     indexPath,
     targets.map((f) => f.id),
   );
-  for (const finding of targets) {
-    try {
-      await dbUpdateFindingStatus(finding.id, 'fixing');
-    } catch (err) {
-      console.error(
-        `[audit-sync] dbUpdateFindingStatus(fixing) failed for ${finding.id}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+  if (deps.auditDb) {
+    for (const finding of targets) {
+      try {
+        await deps.auditDb.updateFindingStatus(finding.id, 'fixing');
+      } catch (err) {
+        console.error(
+          `[audit-sync] dbUpdateFindingStatus(fixing) failed for ${finding.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
   }
 
@@ -337,16 +367,18 @@ async function handleAuditFix(
     for (const [status, ids] of revertGroups) {
       setFindingsStatus(indexPath, ids, status);
     }
-    for (const id of failed) {
-      const orig = (originalStatus.get(id) ?? 'open') as AuditStatus;
-      try {
-        await dbUpdateFindingStatus(id, orig);
-      } catch (err) {
-        console.error(
-          `[audit-sync] dbUpdateFindingStatus(${orig}) failed for ${id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+    if (deps.auditDb) {
+      for (const id of failed) {
+        const orig = (originalStatus.get(id) ?? 'open') as AuditStatus;
+        try {
+          await deps.auditDb.updateFindingStatus(id, orig);
+        } catch (err) {
+          console.error(
+            `[audit-sync] dbUpdateFindingStatus(${orig}) failed for ${id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
       }
     }
   }
@@ -451,6 +483,10 @@ async function handleButton(
     parsed.verb === 'proposal_reject' ||
     parsed.verb === 'proposal_defer'
   ) {
+    if (!deps.proposals) {
+      await interaction.editReply('❌ Proposal actions are not configured on this instance.');
+      return;
+    }
     const decision: ProposalDecision =
       parsed.verb === 'proposal_approve'
         ? 'approved'
@@ -458,7 +494,7 @@ async function handleButton(
           ? 'rejected'
           : 'deferred';
     try {
-      const result = await recordProposalDecision({
+      const result = await deps.proposals.recordDecision({
         kind: 'proposal',
         proposalId: parsed.taskId,
         decision,
@@ -532,13 +568,15 @@ export function buildCommandFromButton(
       `buildCommandFromButton called with proposal verb '${verb}' — these are handled inline in handleButton via recordProposalDecision.`,
     );
   }
-  // Remaining verbs (reject, cancel, verify_cancel) all map to cancel.
-  const reason =
-    verb === 'reject'
-      ? 'rejected via discord'
-      : verb === 'verify_cancel'
-        ? 'verifier cancelled via discord'
-        : 'cancelled via discord';
+  // verify_cancel maps to force_pr so the operator skips the failing verifier
+  // and opens the PR anyway — killing the entire sprint was unintended.
+  // Operators who want a full cancel should use the /cancel command.
+  // (AUDIT-IFleet-f838f719)
+  if (verb === 'verify_cancel') {
+    return { type: 'force_pr', taskId, reason: 'verifier skipped via discord', source };
+  }
+  // Remaining verbs (reject, cancel) map to cancel.
+  const reason = verb === 'reject' ? 'rejected via discord' : 'cancelled via discord';
   return { type: 'cancel', taskId, reason, source };
 }
 
@@ -611,9 +649,12 @@ async function enqueueApprovedProposal(
   interaction: ButtonInteraction,
   deps: InteractionDeps,
 ): Promise<string> {
-  let proposal: Awaited<ReturnType<typeof getProposalForShip>>;
+  if (!deps.proposals) {
+    return `but proposal actions are not configured on this instance.`;
+  }
+  let proposal: ProposalRow | null | undefined;
   try {
-    proposal = await getProposalForShip(proposalId);
+    proposal = await deps.proposals.getForShip(proposalId);
   } catch (err) {
     return `but could not load proposal for /ship enqueue (${err instanceof Error ? err.message : String(err)}). Re-fire with /ship manually.`;
   }
@@ -644,7 +685,7 @@ async function enqueueApprovedProposal(
     return `but control plane did not accept the /ship enqueue${msg}. Re-fire with /ship manually.`;
   }
   try {
-    await setResultingTaskId(proposalId, ack.taskId);
+    await deps.proposals.setResultingTaskId(proposalId, ack.taskId);
   } catch (err) {
     return `enqueued as \`${ack.taskId}\` but failed to link the task id back onto the proposal row (${err instanceof Error ? err.message : String(err)}).`;
   }

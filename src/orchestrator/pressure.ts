@@ -57,7 +57,10 @@ export class PressureTracker {
 }
 
 export function computePressure(headers: RateLimitHeaders): number {
-  if (headers.tokensLimit <= 0) return 0;
+  // Treat tokensLimit <= 0 as an API error state (not a real zero-token budget).
+  // Returning 1 blocks dispatch until a valid positive limit is observed.
+  // (AUDIT-IFleet-d3b7e10c)
+  if (headers.tokensLimit <= 0) return 1;
   const used = headers.tokensLimit - headers.tokensRemaining;
   const raw = used / headers.tokensLimit;
   if (Number.isNaN(raw)) return 0;

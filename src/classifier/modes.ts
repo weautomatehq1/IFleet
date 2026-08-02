@@ -89,7 +89,11 @@ export function detectExplicitMode(input: {
     if (isSprintMode(value)) return value;
   }
 
-  const headerMatch = input.body.match(/^\s*mode\s*:\s*([a-z]+)\s*$/im);
+  // Only match the first non-empty line so a 'mode: <value>' directive
+  // buried inside the body cannot override routing. The 'm' (multiline)
+  // flag is intentionally absent. (AUDIT-IFleet-b53232b7)
+  const firstLine = input.body.split('\n').find((l) => l.trim().length > 0) ?? '';
+  const headerMatch = firstLine.match(/^\s*mode\s*:\s*([a-z]+)\s*$/i);
   if (headerMatch && headerMatch[1]) {
     const value = headerMatch[1].toLowerCase();
     if (isSprintMode(value)) return value;

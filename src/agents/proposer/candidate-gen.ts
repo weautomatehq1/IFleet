@@ -18,6 +18,10 @@ import type {
 
 const HAIKU_MODEL_DEFAULT = 'claude-haiku-4-5-20251001';
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+// Anthropic API version — see https://docs.anthropic.com/en/api/versioning
+// The 2023-06-01 version remains the only required value per Anthropic docs
+// (2026-08-02). Update if a feature needed here is gated on a newer version.
+// (AUDIT-IFleet-82d8d589)
 const ANTHROPIC_VERSION = '2023-06-01';
 
 const VALID_SOURCES: ReadonlySet<ProposalSource> = new Set([

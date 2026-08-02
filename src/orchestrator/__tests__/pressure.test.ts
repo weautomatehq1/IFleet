@@ -6,10 +6,10 @@ import {
   computePressure,
 } from '../pressure';
 
-test('computePressure: zero when limit is 0', () => {
+test('computePressure: fully blocked when limit is 0 (zero limit = no capacity)', () => {
   assert.equal(
     computePressure({ tokensRemaining: 0, tokensLimit: 0, resetAt: 0 }),
-    0,
+    1,
   );
 });
 

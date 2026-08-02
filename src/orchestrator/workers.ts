@@ -71,6 +71,7 @@ export class WorkerRegistry {
   }
 
   private loadFromDisk(): void {
+    const previous = this.workers;
     try {
       const raw = readFileSync(this.configPath, 'utf8');
       const parsed = JSON.parse(raw) as WorkersFile;
@@ -81,8 +82,17 @@ export class WorkerRegistry {
       validateMaxPlanConcurrency(enabled);
       this.workers = enabled;
     } catch (err) {
-      console.warn(`[WorkerRegistry] failed to load config from ${this.configPath}: ${String(err)} — booting with zero workers`);
-      this.workers = [];
+      const isInitial = previous.length === 0 && this.workers === previous;
+      if (isInitial) {
+        // First load failure: start with empty pool rather than crashing. The
+        // watcher will retry on file change. (AUDIT-IFleet-c86959e9)
+        console.warn(`[WorkerRegistry] initial load failed — no workers: ${String(err)}`);
+      } else {
+        // Hot-reload failure: preserve the previous valid config so the daemon
+        // keeps processing tasks rather than silently zeroing the pool.
+        console.error(`[WorkerRegistry] reload failed — keeping ${previous.length} previous worker(s): ${String(err)}`);
+        this.workers = previous;
+      }
     }
   }
 

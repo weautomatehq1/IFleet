@@ -315,7 +315,7 @@ export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFa
     const abortController = new AbortController();
 
     const issues: IssueCommenter = createIssueCommenter(opts.octokit, resolved.owner, resolved.name);
-    const pr: PrOpener = buildPrOpener(resolved.repoId, worktreePath, resolved.repoRoot);
+    const pr: PrOpener = buildPrOpener(resolved.repoId, worktreePath);
     const git: GitOps = buildGitOps();
 
     const input: PipelineInput = {
@@ -595,7 +595,7 @@ export function normalizeReviewers(reviewers: string[]): string[] {
   return reviewers.map((r) => r.replace(/^@+/, '').trim()).filter((r) => r.length > 0);
 }
 
-function buildPrOpener(repoId: string, worktreePath: string, _repoRoot: string): PrOpener {
+function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
   return {
     async open(input) {
       await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath });

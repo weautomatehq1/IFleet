@@ -267,8 +267,12 @@ function asMessage(err: unknown): string {
 function repoSlugFromUrl(repoUrl: string): string | null {
   try {
     const u = new URL(repoUrl);
-    const last = u.pathname.replace(/\.git$/, '').split('/').filter(Boolean).at(-1);
-    return last ?? null;
+    // Use owner-name (last two segments) so repos with identical short names
+    // don't collide on invariant directory paths. The slash is replaced with
+    // '-' to keep the slug filesystem-safe. (AUDIT-IFleet-10fab7b5)
+    const parts = u.pathname.replace(/\.git$/, '').split('/').filter(Boolean);
+    const slug = parts.slice(-2).join('-');
+    return slug.length > 0 ? slug : null;
   } catch {
     return null;
   }
