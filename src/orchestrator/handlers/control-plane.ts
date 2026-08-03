@@ -168,8 +168,13 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
           reason: reason ?? 'cancelled via control plane',
           cancelled: true,
         });
-      } catch {
-        /* row may not exist yet */
+      } catch (err) {
+        // The task row may not exist when cancel races with a very early
+        // sprint_goal. Re-surface unexpected errors (disk full, corruption)
+        // so they don't silently leave the task in_flight. (AUDIT-IFleet-e27db9cc)
+        if (!/no such row|SQLITE_NOTFOUND|no row/i.test(String(err))) {
+          console.error('[daemon] updateState failed on cancel:', err);
+        }
       }
       approvalGate.resolve(resolvedId, 'cancel');
       // Actually abort the running pipeline worker (AUDIT-IFleet-7dd1062f).

@@ -393,7 +393,13 @@ export function parseCommand(body: string): ControlCommand {
         return typeof v === 'string' ? v : undefined;
       };
       const cmd: ControlCommand = { type: 'sprint_goal', goal: parsed.goal };
-      if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
+      if (typeof parsed.repo === 'string') {
+        // owner/name is at most ~200 chars; cap at 256 to match other field
+        // guards and prevent unbounded strings from reaching git clone / store
+        // writes. (AUDIT-IFleet-c8d40f35)
+        if (parsed.repo.length > 256) throw new Error('sprint_goal: repo exceeds maximum length');
+        cmd.repo = parsed.repo;
+      }
       const channelId = pickStr('channelId');
       if (channelId) {
         if (channelId.length > MAX_ID_FIELD_LEN) throw new Error('sprint_goal: channelId exceeds maximum length');

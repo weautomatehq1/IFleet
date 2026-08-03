@@ -12,7 +12,7 @@ import {
 } from 'discord.js';
 import type { ChannelRouter } from '../contracts/channel-router.js';
 import type { ControlPlaneClient } from '../../../../src/contracts/control-plane-client.js';
-import { handleInteractionCreate } from './handlers/interaction-create.js';
+import { handleInteractionCreate, type ProposalDeps, type AuditDbDeps } from './handlers/interaction-create.js';
 import { handleMessageCreate } from './handlers/message-create.js';
 import { handleReactionAdd, type ReactionDeps } from './handlers/reaction-add.js';
 
@@ -22,6 +22,8 @@ export interface DiscordClientDeps {
   /** Provided by T5's DiscordOut adapter; nullable so tests/dev can stub. */
   resolveTaskIdFromMessage?: ReactionDeps['resolveTaskIdFromMessage'];
   log?: (msg: string) => void;
+  proposals?: ProposalDeps;
+  auditDb?: AuditDbDeps;
 }
 
 export function createDiscordClient(deps: DiscordClientDeps): Client {
@@ -59,6 +61,8 @@ export function createDiscordClient(deps: DiscordClientDeps): Client {
       router: deps.router,
       controlPlane: deps.controlPlane,
       log,
+      proposals: deps.proposals,
+      auditDb: deps.auditDb,
     }).catch((err) => log(`[discord] interactionCreate error: ${stringify(err)}`));
   });
 

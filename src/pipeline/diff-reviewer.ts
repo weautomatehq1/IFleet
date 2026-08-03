@@ -250,9 +250,21 @@ export function parseVerdict(raw: string): ReviewerVerdict {
 
 function extractJsonObject(text: string): string | null {
   const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return null;
-  return text.slice(start, end + 1);
+  if (start === -1) return null;
+  // Use a balanced-brace counter so trailing prose containing '}' does not
+  // push the extraction past the end of the first complete JSON object.
+  // lastIndexOf('}') was the previous approach; it failed when the LLM
+  // appended explanatory text with curly braces after the verdict JSON,
+  // producing an unparseable slice. (AUDIT-IFleet-888ebcb9)
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

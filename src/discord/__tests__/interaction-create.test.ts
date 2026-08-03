@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscordAPIError } from 'discord.js';
-import { recordProposalDecision } from '../../orchestrator/approval-gate.js';
 import {
   buildCommandFromButton,
   buildCommandFromSlash,
   handleInteractionCreate,
+  type ProposalDeps,
 } from '@wahq/orchestrator-core/discord/handlers/interaction-create';
 import {
   DISCORD_CUSTOM_ID_MAX,
@@ -463,24 +463,23 @@ describe('AUDIT-IFleet-f1164e07: /status reply carries real task fields', () => 
   });
 });
 
-vi.mock('../../orchestrator/approval-gate.js', () => ({
-  recordProposalDecision: vi.fn(async () => ({ updated: true })),
-}));
-
 const proposalStoreState: {
+  recordDecision: ReturnType<typeof vi.fn>;
   getProposalForShip: ReturnType<typeof vi.fn>;
   setResultingTaskId: ReturnType<typeof vi.fn>;
 } = {
+  recordDecision: vi.fn(async () => ({ updated: true })),
   getProposalForShip: vi.fn(),
   setResultingTaskId: vi.fn(async () => ({ updated: true })),
 };
 
-vi.mock('../../orchestrator/goal-proposals-store.js', () => ({
-  getProposalForShip: (...args: unknown[]) =>
-    (proposalStoreState.getProposalForShip as (...a: unknown[]) => unknown)(...args),
-  setResultingTaskId: (...args: unknown[]) =>
-    (proposalStoreState.setResultingTaskId as (...a: unknown[]) => unknown)(...args),
-}));
+function makeProposalDeps(): ProposalDeps {
+  return {
+    recordDecision: proposalStoreState.recordDecision as ProposalDeps['recordDecision'],
+    getForShip: proposalStoreState.getProposalForShip as ProposalDeps['getForShip'],
+    setResultingTaskId: proposalStoreState.setResultingTaskId as ProposalDeps['setResultingTaskId'],
+  };
+}
 
 describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
   const PROPOSALS = '9999000099990000';
@@ -555,6 +554,7 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
   it('accepts proposal button when channel id and approver id match (explicit approver list)', async () => {
     process.env['IFLEET_PROPOSALS_CHANNEL_ID'] = PROPOSALS;
     process.env['IFLEET_PROPOSALS_APPROVER_IDS'] = '111';
+    proposalStoreState.recordDecision = vi.fn(async () => ({ updated: true }));
     proposalStoreState.getProposalForShip = vi.fn(async () => ({
       id: 'p-1',
       repo_id: 'weautomatehq1/IFleet',
@@ -563,7 +563,7 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
     }));
     proposalStoreState.setResultingTaskId = vi.fn(async () => ({ updated: true }));
     const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
-    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
+    await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp(), proposals: makeProposalDeps() });
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/✔ Approved/));
     restoreEnv();
   });
@@ -663,7 +663,7 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
   it('posts a sprint_goal ControlCommand and links the resulting task id on accept', async () => {
     const controlPlane = cp({ taskId: 'task-7' });
     const interaction = button('proposal_approve:p-99');
-    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+    await handleInteractionCreate(interaction, { router: router(), controlPlane, proposals: makeProposalDeps() });
 
     expect(controlPlane.posted).toHaveLength(1);
     const sent = controlPlane.posted[0]!;
@@ -682,7 +682,7 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
   it('keeps the decision but reports a warning when the control plane refuses', async () => {
     const controlPlane = cp({ accepted: false, message: 'queue full' });
     const interaction = button('proposal_approve:p-99');
-    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+    await handleInteractionCreate(interaction, { router: router(), controlPlane, proposals: makeProposalDeps() });
 
     expect(controlPlane.posted).toHaveLength(1);
     expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
@@ -694,7 +694,7 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
   it('keeps the decision but reports a warning when the control plane throws', async () => {
     const controlPlane = cp({ throws: true });
     const interaction = button('proposal_approve:p-99');
-    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+    await handleInteractionCreate(interaction, { router: router(), controlPlane, proposals: makeProposalDeps() });
 
     expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
@@ -705,7 +705,7 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
   it('does NOT post a sprint_goal on Reject or Defer', async () => {
     const controlPlane = cp();
     const interaction = button('proposal_reject:p-99');
-    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+    await handleInteractionCreate(interaction, { router: router(), controlPlane, proposals: makeProposalDeps() });
 
     expect(controlPlane.posted).toHaveLength(0);
     expect(proposalStoreState.setResultingTaskId).not.toHaveBeenCalled();
@@ -715,7 +715,7 @@ describe('M5.2-T1: Approve → /ship enqueue', () => {
     proposalStoreState.getProposalForShip = vi.fn(async () => null);
     const controlPlane = cp();
     const interaction = button('proposal_approve:p-99');
-    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+    await handleInteractionCreate(interaction, { router: router(), controlPlane, proposals: makeProposalDeps() });
 
     expect(controlPlane.posted).toHaveLength(0);
     expect(interaction.editReply).toHaveBeenCalledWith(
@@ -779,17 +779,17 @@ describe('AUDIT-IFleet-50b49e86: first-write-wins guard — handler side', () =>
   afterEach(() => {
     delete process.env['IFLEET_PROPOSALS_CHANNEL_ID'];
     delete process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
-    vi.mocked(recordProposalDecision).mockRestore();
+    proposalStoreState.recordDecision = vi.fn(async () => ({ updated: true }));
   });
 
   it('proposal_approve on already-decided row replies "already decided" and does NOT call enqueueApprovedProposal', async () => {
-    vi.mocked(recordProposalDecision).mockResolvedValueOnce({
+    proposalStoreState.recordDecision = vi.fn(async () => ({
       updated: false,
       existing_decision: 'approved',
-    });
+    }));
     const controlPlane = cp();
     const interaction = button('proposal_approve:p-dupe');
-    await handleInteractionCreate(interaction, { router: router(), controlPlane });
+    await handleInteractionCreate(interaction, { router: router(), controlPlane, proposals: makeProposalDeps() });
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringMatching(/already decided/i),
