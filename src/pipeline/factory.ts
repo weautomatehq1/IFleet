@@ -143,8 +143,19 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(find *)',
     // AUDIT-IFleet-bfa22380: pnpm install through the node_modules symlink
     // affects shared host node_modules, poisoning all concurrent tasks.
+    // AUDIT-IFleet-ee7d36ce: extend the block to pnpm add/update/remove/link —
+    // all four can mutate shared node_modules through the worktree symlink
+    // and were absent from the original fix.
     'Bash(pnpm install)',
     'Bash(pnpm install *)',
+    'Bash(pnpm add)',
+    'Bash(pnpm add *)',
+    'Bash(pnpm update)',
+    'Bash(pnpm update *)',
+    'Bash(pnpm remove)',
+    'Bash(pnpm remove *)',
+    'Bash(pnpm link)',
+    'Bash(pnpm link *)',
     'Bash(sudo *)',
     'Bash(chmod *)',
     'Bash(chown *)',

@@ -1,0 +1,40 @@
+{
+  "repo": "IFleet",
+  "run_at": "2026-08-03T04:12:48Z",
+  "branch": "audit/nightly-2026-08-03",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-33f56468",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Package imports cross package boundary via deep relative path traversals",
+      "status": "open",
+      "note": "Still open — architectural refactor required to expose audit-store and approval-gate as proper package exports from @wahq/orchestrator-core. Not fixed in this run."
+    },
+    {
+      "id": "AUDIT-IFleet-ee7d36ce",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "pnpm add/update/remove/link not in deny list — shared node_modules poisonable via worktree symlink",
+      "detail": "WORKER_CLAUDE_PERMISSIONS.deny in src/pipeline/factory.ts blocked 'pnpm install' and 'pnpm install *' (AUDIT-IFleet-bfa22380) but left pnpm add, pnpm update, pnpm remove, and pnpm link unblocked. All four commands mutate node_modules in the same way pnpm install does and resolve through the worktree symlink to the shared host node_modules, allowing a jailbroken worker to install arbitrary packages visible to all concurrent tasks. The allow list contains 'Bash(pnpm *)' which supersedes the install deny for any unlisted subcommand, so the gap is immediately exploitable.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Add bare and wildcard deny entries for pnpm add, pnpm update, pnpm remove, and pnpm link alongside the existing pnpm install entries.",
+      "status": "fixed",
+      "opened_at": "2026-08-03T04:12:48Z",
+      "closed_at": "2026-08-03T04:12:48Z",
+      "closing_pr": null
+    }
+  ],
+  "summary": {
+    "new_findings": 1,
+    "fixed_this_run": 1,
+    "still_open": 1,
+    "breakdown": {
+      "CRITICAL": 0,
+      "IMPORTANT": 1,
+      "COSMETIC": 0
+    }
+  }
+}
