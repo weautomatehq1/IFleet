@@ -1,0 +1,33 @@
+{
+  "run_at": "2026-08-04T04:18:58Z",
+  "branch": "audit/nightly-2026-08-04",
+  "auditor": "claude-sonnet-4-6 (nightly audit agent)",
+  "scope": "full — all source files in src/ and packages/orchestrator-core/src/",
+  "prior_open_findings_reviewed": ["AUDIT-IFleet-824d213b"],
+  "new_findings": [
+    {
+      "id": "AUDIT-IFleet-824d213b",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Task brief passed as argv to claude subprocess — visible on process list",
+      "detail": "defaultHaikuCall in auto-router.ts passes the full router prompt (which includes the user-supplied task brief) as a positional CLI argument after --print. On Linux this is visible to all local users via /proc/<pid>/cmdline and ps aux. The inline comment acknowledged this but dismissed it as acceptable; task briefs routinely contain proprietary business context and repo details that should not be world-readable on a shared VPS.",
+      "file_globs": ["src/classifier/auto-router.ts"],
+      "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use spawn with stdio: ['pipe','pipe','pipe'] and write the prompt synchronously then call stdin.end() before the 3-second CLI stdin-wait window fires. The AbortSignal already handles timeout; the separate timeout: option on execFile is redundant.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-04T04:18:58Z",
+      "closing_pr": null
+    }
+  ],
+  "summary": {
+    "files_reviewed": 55,
+    "new_findings_this_run": 1,
+    "new_critical": 0,
+    "new_important": 0,
+    "new_cosmetic": 0,
+    "carry_over_fixed": 1,
+    "net_open_after_run": 0
+  },
+  "notes": "Codebase is in excellent shape. All 52 prior findings remain closed. The single carry-over open finding (AUDIT-IFleet-824d213b — argv prompt exposure in auto-router defaultHaikuCall) was fixed in this run by switching from execFile+argv to spawn+stdin. No new findings identified. All prior fixes verified in-place: balanced-brace JSON extraction in diff-reviewer.ts, GIT_CONFIG_* env auth in repos/manager.ts, Docker --user 1000:1000, wrapBriefAsData both-marker scrub, nonce-store destroy ordering, computePressure tokensLimit<=0 guard, verify_cancel→force_pr remapping, and all other AUDIT-IFleet-* fixes confirmed present."
+}
