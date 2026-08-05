@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { existsSync, readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import {
   fallbackFailure,
   parsePhaseOutput,
@@ -629,6 +629,9 @@ export function discardRawLog(rawLogUrl: string | undefined): void {
   const path = rawLogUrl.slice('file://'.length);
   try {
     rmSync(path, { force: true });
+    // Also remove the mkdtempSync parent directory created by uploadLog;
+    // only removing the file leaks the directory on every verifier run.
+    rmSync(dirname(path), { recursive: true, force: true });
   } catch {
     /* best-effort */
   }

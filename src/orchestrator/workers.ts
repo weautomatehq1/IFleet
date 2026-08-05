@@ -1,5 +1,5 @@
 import { readFileSync, watch, type FSWatcher } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { WorkerConfig, WorkerId } from './types';
 
 export const DEFAULT_WORKERS_CONFIG = join(process.cwd(), 'config', 'workers.json');
@@ -98,7 +98,12 @@ export class WorkerRegistry {
 
   private attachWatcher(): void {
     try {
-      this.watcher = watch(this.configPath, () => {
+      // Watch the parent directory rather than the file so atomic-rename
+      // writes (tmp file + rename) trigger the watcher on Linux inotify.
+      // File watches stay on the original inode and miss rename replacements.
+      const targetFile = basename(this.configPath);
+      this.watcher = watch(dirname(this.configPath), (_event, filename) => {
+        if (filename !== targetFile) return;
         if (this.reloadTimer) clearTimeout(this.reloadTimer);
         this.reloadTimer = setTimeout(() => {
           this.loadFromDisk();

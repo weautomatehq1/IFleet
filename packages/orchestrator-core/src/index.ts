@@ -58,7 +58,7 @@ export { createCodexAdapter, type CodexAdapterOptions } from './workers/codex.js
 export * from './workers/types.js';
 export { FileChannelRouter } from './repos/router.js';
 export type { FileChannelRouterOptions } from './repos/router.js';
-export { GitRepoManager } from './repos/manager.js';
+export { GitRepoManager, minimalGitEnv } from './repos/manager.js';
 export type { RepoManager, GitRepoManagerOptions } from './repos/manager.js';
 export { RepoHealthChecker } from './repos/health.js';
 export type { RepoHealthResult } from './repos/health.js';

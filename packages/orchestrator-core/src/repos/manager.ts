@@ -9,7 +9,7 @@ import { isGitDir, pathExists } from './fs-utils.js';
 // reach git hooks or credential helpers. (AUDIT-IFleet-87d18205)
 const GIT_ENV_ALLOWLIST = ['PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TZ', 'TERM'] as const;
 
-function minimalGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function minimalGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
   for (const key of GIT_ENV_ALLOWLIST) {
     const val = source[key];
@@ -179,7 +179,7 @@ export class GitRepoManager implements RepoManager {
 
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.perRepoLock.get(key) ?? Promise.resolve();
-    const next = prev.then(fn, fn);
+    const next = prev.then(fn);
     const settled = next.catch(() => undefined);
     this.perRepoLock.set(key, settled);
     // After this lock settles, drop the entry from the map IF nothing newer

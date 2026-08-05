@@ -23,6 +23,7 @@ import { titleToBranchName } from '../utils/branch-name.js';
 import { createVerifyRunner } from '../verify/runner.js';
 import { createAccountPool, type AccountPool } from '@wahq/orchestrator-core/workers/account-pool';
 import { getActivePipelineAdapter } from '@wahq/orchestrator-core/workers/adapters';
+import { minimalGitEnv } from '@wahq/orchestrator-core/repos/manager';
 import { createDefaultRoutingStrategy } from './default-routing-strategy.js';
 import { DefaultPipelineRunner } from './runner.js';
 import type {
@@ -569,9 +570,10 @@ function buildGitOps(): GitOps {
       // Include both committed changes (HEAD vs base) and any uncommitted
       // working-tree changes. The editor is instructed to commit, so the
       // committed diff (baseRef..HEAD) is the primary signal.
+      const localEnv = minimalGitEnv();
       const [{ stdout: committed }, { stdout: unstaged }] = await Promise.all([
-        execFileAsync('git', ['diff', `${baseRef}..HEAD`], { cwd: worktreePath }).catch(() => ({ stdout: '' })),
-        execFileAsync('git', ['diff'], { cwd: worktreePath }).catch(() => ({ stdout: '' })),
+        execFileAsync('git', ['diff', `${baseRef}..HEAD`], { cwd: worktreePath, env: localEnv }).catch(() => ({ stdout: '' })),
+        execFileAsync('git', ['diff'], { cwd: worktreePath, env: localEnv }).catch(() => ({ stdout: '' })),
       ]);
       // Concatenate so the reviewer / PR opener sees both halves. The editor
       // is instructed to commit, so `unstaged` is usually empty — but if
@@ -580,7 +582,7 @@ function buildGitOps(): GitOps {
       return [committed, unstaged].filter((s) => s.length > 0).join('\n');
     },
     async currentBranch(worktreePath: string): Promise<string> {
-      const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: worktreePath });
+      const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: worktreePath, env: minimalGitEnv() });
       return stdout.trim();
     },
   };
@@ -598,7 +600,22 @@ export function normalizeReviewers(reviewers: string[]): string[] {
 function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
   return {
     async open(input) {
-      await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath });
+      // Use an allowlisted env for git and gh subprocesses so secrets like
+      // ANTHROPIC_API_KEY and DISCORD_TOKEN are not inherited by repo hooks.
+      // GITHUB_TOKEN is forwarded explicitly for push auth and gh CLI access.
+      const githubToken = process.env.GITHUB_TOKEN;
+      const pushEnv = githubToken
+        ? {
+            ...minimalGitEnv(),
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+            GIT_CONFIG_VALUE_0: `AUTHORIZATION: bearer ${githubToken}`,
+          }
+        : minimalGitEnv();
+      const ghEnv = githubToken
+        ? { ...minimalGitEnv(), GITHUB_TOKEN: githubToken }
+        : minimalGitEnv();
+      await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath, env: pushEnv });
       // Create the PR WITHOUT --reviewer. Reviewer assignment can fail for
       // reasons unrelated to the PR itself (invalid login, reviewer == PR
       // author, reviewer not a collaborator). Bundling it into `gh pr create`
@@ -611,7 +628,7 @@ function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
         '--base', input.baseBranch,
         '--title', input.title,
         '--body', input.body,
-      ]);
+      ], { env: ghEnv });
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
       const number = match?.[1] ? parseInt(match[1], 10) : 0;
@@ -623,7 +640,7 @@ function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
           'pr', 'edit', String(number),
           '--repo', repoId,
           ...reviewers.flatMap((r) => ['--add-reviewer', r]),
-        ]).catch((err: unknown) => {
+        ], { env: ghEnv }).catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(`[pr] reviewer request failed (non-fatal) for PR #${number}: ${msg}`);
         });
@@ -647,13 +664,14 @@ async function setupWorktree(
   const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
   mkdirSync(worktreesDir, { recursive: true });
 
+  const localGitEnv = minimalGitEnv();
   if (existsSync(worktreePath)) {
-    await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot }).catch(() => undefined);
-    await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
+    await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot, env: localGitEnv }).catch(() => undefined);
+    await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot, env: localGitEnv }).catch(() => undefined);
   }
 
-  await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
-  await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, defaultBranch], { cwd: repoRoot });
+  await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot, env: localGitEnv }).catch(() => undefined);
+  await execFileAsync('git', ['worktree', 'add', '-b', branchName, worktreePath, defaultBranch], { cwd: repoRoot, env: localGitEnv });
 
   // Symlink the worktree's node_modules to the host repo's tree. Two
   // assumptions ride on this:
@@ -686,7 +704,8 @@ async function teardownWorktree(
   repoRoot: string,
 ): Promise<void> {
   const worktreePath = join(worktreesDir, `task-${worktreeKey}`);
-  await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot }).catch(() => undefined);
-  await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
-  await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot }).catch(() => undefined);
+  const localEnv = minimalGitEnv();
+  await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: repoRoot, env: localEnv }).catch(() => undefined);
+  await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot, env: localEnv }).catch(() => undefined);
+  await execFileAsync('git', ['branch', '-D', branchName], { cwd: repoRoot, env: localEnv }).catch(() => undefined);
 }

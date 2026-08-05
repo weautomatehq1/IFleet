@@ -104,7 +104,9 @@ export function createAccountPool(
       const wait = Math.max(0, until - t);
       if (wait < soonest) soonest = wait;
     }
-    return soonest === Number.POSITIVE_INFINITY ? Number.POSITIVE_INFINITY : soonest;
+    // Cap at 5 minutes so callers using setTimeout(retry, err.nextAvailableMs)
+    // don't hang forever when every account is permanently auth-banned.
+    return Math.min(soonest, 5 * 60_000);
   };
 
   return {
