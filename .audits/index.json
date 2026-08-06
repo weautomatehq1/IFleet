@@ -852,13 +852,104 @@
       "opened_at": "2026-08-02T04:18:48Z",
       "closed_at": "2026-08-02T06:00:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8257571a",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "run command repo field has no length cap in parseCommand",
+      "detail": "The sprint_goal case received a repo length cap (AUDIT-IFleet-c8d40f35, fixed 2026-08-02) but the sibling case 'run': block was missed. It assigns parsed.repo directly with no length check. An attacker with valid HMAC credentials can supply an arbitrarily long repo string.",
+      "file_globs": ["packages/orchestrator-core/src/queue/control-plane.ts"],
+      "fix_sketch": "Add length > 256 guard matching the sprint_goal pattern.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "closing_pr": null,
+      "fix_summary": "Added length guard matching sprint_goal pattern."
+    },
+    {
+      "id": "AUDIT-IFleet-a49f68b7",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "postDiscordAlert URL parsing inside Promise executor creates unhandled rejection on malformed URL",
+      "detail": "new URL(webhookUrl) is called inside new Promise((resolve) => {...}) with no reject handler. A malformed webhook URL throws synchronously inside the executor, producing an unhandled rejection that crashes the daemon in Node.js 15+.",
+      "file_globs": ["src/orchestrator/index.ts"],
+      "fix_sketch": "Parse URL before the Promise constructor with try/catch; return Promise.resolve() on parse failure.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "closing_pr": null,
+      "fix_summary": "Moved URL parsing before the Promise constructor with try/catch guard."
+    },
+    {
+      "id": "AUDIT-IFleet-3a7f88df",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "AnthropicCompleter complete has no timeout or AbortSignal — can hang indefinitely",
+      "detail": "AnthropicCompleter.complete() calls fetch() with no AbortController. If the Anthropic API is slow or unresponsive, the nightly Proposer run hangs permanently.",
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
+      "fix_sketch": "Add 60s AbortController timeout to the fetch call.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "closing_pr": null,
+      "fix_summary": "Added 60s AbortController timeout to the fetch call."
+    },
+    {
+      "id": "AUDIT-IFleet-76689f26",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "spawnCapture has no timeout — git operations can hang indefinitely",
+      "detail": "spawnCapture() in repos/manager.ts spawns git subprocesses with no kill timeout. A git clone or fetch to a slow remote holds the Promise forever, stalling all task dispatch for that repo.",
+      "file_globs": ["packages/orchestrator-core/src/repos/manager.ts"],
+      "fix_sketch": "Add SIGTERM+SIGKILL timeout (default 120s) to spawnCapture.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "closing_pr": null,
+      "fix_summary": "Added 120s SIGTERM+SIGKILL timeout to spawnCapture."
+    },
+    {
+      "id": "AUDIT-IFleet-e0e5a450",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "reviewer worker role gets acceptEdits permission mode instead of viewOnly — violates least privilege",
+      "detail": "buildClaudeArgs() hardcodes --permission-mode acceptEdits for all roles including the reviewer. The reviewer only needs to read the diff; with acceptEdits it can use Edit/Write tools to modify worktree files before the PR is opened.",
+      "file_globs": ["packages/orchestrator-core/src/workers/claude.ts"],
+      "fix_sketch": "Add permissionMode field to SpawnOpts; factory passes viewOnly for the reviewer spawn.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null,
+      "fix_summary": null
+    },
+    {
+      "id": "AUDIT-IFleet-246fd925",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "withLock passes fn as both resolve and reject handler — misleading but functionally equivalent",
+      "detail": "prev.then(fn, fn) passes the same zero-argument function as both onFulfilled and onRejected. Functionally equivalent since fn ignores its argument, but misleading to readers.",
+      "file_globs": ["packages/orchestrator-core/src/repos/manager.ts"],
+      "fix_sketch": "Change to prev.then(fn, () => fn()) to make intent explicit.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "closing_pr": null,
+      "fix_summary": "Changed prev.then(fn, fn) to prev.then(fn, () => fn()) for clarity."
     }
   ],
   "by_severity": {
     "CRITICAL": 8,
-    "IMPORTANT": 35,
-    "COSMETIC": 10
+    "IMPORTANT": 40,
+    "COSMETIC": 11
   },
-  "open_count": 1,
-  "fixed_count": 52
+  "open_count": 2,
+  "fixed_count": 57,
+  "last_updated": "2026-08-06T04:00:00Z"
 }

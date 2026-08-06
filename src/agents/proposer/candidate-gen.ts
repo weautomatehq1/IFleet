@@ -60,6 +60,7 @@ export interface LlmCompleter {
     userPrompt: string;
     model: string;
     maxTokens: number;
+    timeoutMs?: number;
   }): Promise<string>;
 }
 
@@ -91,21 +92,35 @@ export class AnthropicCompleter implements LlmCompleter {
     userPrompt: string;
     model: string;
     maxTokens: number;
+    timeoutMs?: number;
   }): Promise<string> {
-    const resp = await this.fetchImpl(ANTHROPIC_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: opts.model,
-        max_tokens: opts.maxTokens,
-        system: opts.systemPrompt,
-        messages: [{ role: 'user', content: opts.userPrompt }],
-      }),
-    });
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), opts.timeoutMs ?? 60_000);
+    let resp: Response;
+    try {
+      resp = await this.fetchImpl(ANTHROPIC_ENDPOINT, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: opts.model,
+          max_tokens: opts.maxTokens,
+          system: opts.systemPrompt,
+          messages: [{ role: 'user', content: opts.userPrompt }],
+        }),
+      });
+    } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') {
+        throw new Error(`Anthropic request timed out after ${opts.timeoutMs ?? 60_000}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       throw new Error(`Anthropic ${resp.status}: ${text.slice(0, 400)}`);

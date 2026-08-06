@@ -512,9 +512,15 @@ function msUntilHour(hour: number): number {
 }
 
 function postDiscordAlert(webhookUrl: string, content: string): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL(webhookUrl);
+  } catch {
+    console.warn('[orchestrator] discord alert skipped — invalid webhook URL');
+    return Promise.resolve();
+  }
   return new Promise((resolve) => {
     const body = JSON.stringify({ content });
-    const url = new URL(webhookUrl);
     const req = request(
       { hostname: url.hostname, path: url.pathname + url.search, method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },

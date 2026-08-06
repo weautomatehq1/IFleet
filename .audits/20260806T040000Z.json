@@ -1,0 +1,93 @@
+{
+  "audit_id": "AUDIT-IFleet-nightly-20260806",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-06T04:00:00Z",
+  "scanner": "claude-sonnet-4-6",
+  "rubric_version": "1.0.0",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-8257571a",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "run command repo field has no length cap in parseCommand",
+      "detail": "The sprint_goal case received a repo length cap (AUDIT-IFleet-c8d40f35, fixed 2026-08-02) but the sibling `case 'run':` block at line 431 was missed. It assigns parsed.repo directly with no length check: `if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;`. An attacker with a valid HMAC secret can supply an arbitrarily long repo string that propagates into store writes and RepoResolver allow-list checks.",
+      "file_globs": ["packages/orchestrator-core/src/queue/control-plane.ts"],
+      "fix_sketch": "Add `if (parsed.repo.length > 256) throw new Error('run: repo exceeds maximum length');` immediately after the typeof check in the run case, mirroring the sprint_goal fix.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "fix_summary": "Added length guard matching sprint_goal pattern."
+    },
+    {
+      "id": "AUDIT-IFleet-a49f68b7",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "postDiscordAlert URL parsing inside Promise executor creates unhandled rejection on malformed URL",
+      "detail": "In src/orchestrator/index.ts, postDiscordAlert() constructs `new Promise((resolve) => { const url = new URL(webhookUrl); ... })`. The executor only has a resolve parameter — no reject. If webhookUrl is malformed, `new URL()` throws synchronously inside the executor, and in Node.js 15+ a throw inside a Promise constructor with no reject handler produces an unhandled rejection that crashes the daemon process.",
+      "file_globs": ["src/orchestrator/index.ts"],
+      "fix_sketch": "Parse the URL outside the Promise constructor with a try/catch. On parse failure, return Promise.resolve() after logging a warning. This prevents the unhandled rejection while still surfacing the bad config.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "fix_summary": "Moved URL parsing before the Promise constructor with try/catch guard."
+    },
+    {
+      "id": "AUDIT-IFleet-3a7f88df",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "AnthropicCompleter complete has no timeout or AbortSignal — can hang indefinitely",
+      "detail": "In src/agents/proposer/candidate-gen.ts, AnthropicCompleter.complete() calls `this.fetchImpl(ANTHROPIC_ENDPOINT, { ... })` with no AbortController or signal. If the Anthropic API is slow, degraded, or unresponsive, the nightly Proposer run hangs permanently with no timeout. The daemon does not have a per-run timeout for the Proposer either, so a single hung fetch blocks all nightly proposal generation forever.",
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
+      "fix_sketch": "Create an AbortController with a reasonable timeout (e.g. 60 s), pass its signal to fetch, and throw a TimeoutError if it fires. Wire the timeout through the completer interface so callers can override it.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "fix_summary": "Added 60s AbortController timeout to the fetch call."
+    },
+    {
+      "id": "AUDIT-IFleet-76689f26",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "spawnCapture has no timeout — git operations can hang indefinitely",
+      "detail": "packages/orchestrator-core/src/repos/manager.ts spawnCapture() spawns a git subprocess with no kill timeout. A git clone or fetch to a slow or unresponsive remote will hold the Promise forever. Since git operations (ensureClone, allocateWorktree) run in the tick-loop critical path, a single hung clone stalls all subsequent task dispatch for that repo.",
+      "file_globs": ["packages/orchestrator-core/src/repos/manager.ts"],
+      "fix_sketch": "Add a `timeoutMs` parameter to spawnCapture (default: 120_000). Use `child.kill('SIGTERM')` in a setTimeout, then SIGKILL after a short grace period if still alive. Reject the promise with a descriptive TimeoutError.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "fix_summary": "Added 120s SIGTERM+SIGKILL timeout to spawnCapture."
+    },
+    {
+      "id": "AUDIT-IFleet-e0e5a450",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "reviewer worker role gets acceptEdits permission mode instead of viewOnly — violates least privilege",
+      "detail": "In packages/orchestrator-core/src/workers/claude.ts, buildClaudeArgs() hardcodes `--permission-mode acceptEdits` for all worker roles including the reviewer. The reviewer only needs to read the diff and output a JSON verdict; it has no legitimate reason to write files. With acceptEdits, a jailbroken reviewer can use Edit/Write tools to modify worktree files, potentially injecting code before the PR is opened.",
+      "file_globs": ["packages/orchestrator-core/src/workers/claude.ts"],
+      "fix_sketch": "Add a permissionMode field to SpawnOpts (default: 'acceptEdits') and pass it through buildClaudeArgs. The factory's spawn call for the reviewer role should pass permissionMode: 'viewOnly'.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": null,
+      "fix_summary": null
+    },
+    {
+      "id": "AUDIT-IFleet-246fd925",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "withLock passes fn as both resolve and reject handler — misleading but functionally equivalent",
+      "detail": "In packages/orchestrator-core/src/repos/manager.ts line 182, `prev.then(fn, fn)` passes the same zero-argument function as both onFulfilled and onRejected. When the previous lock rejects, JavaScript passes the rejection reason as an argument to fn() — but since fn() ignores all arguments, the behavior is identical to `prev.then(fn, () => fn())`. The expression is misleading because it implies fn() is called with the rejection reason, but it actually runs the lock function unconditionally regardless of rejection type.",
+      "file_globs": ["packages/orchestrator-core/src/repos/manager.ts"],
+      "fix_sketch": "Change `prev.then(fn, fn)` to `prev.then(fn, () => fn())` to make the intent explicit: run fn regardless of whether the previous lock succeeded or failed.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-06T04:00:00Z",
+      "closed_at": "2026-08-06T04:00:00Z",
+      "fix_summary": "Changed prev.then(fn, fn) to prev.then(fn, () => fn()) for clarity."
+    }
+  ]
+}

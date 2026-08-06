@@ -179,7 +179,7 @@ export class GitRepoManager implements RepoManager {
 
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.perRepoLock.get(key) ?? Promise.resolve();
-    const next = prev.then(fn, fn);
+    const next = prev.then(fn, () => fn());
     const settled = next.catch(() => undefined);
     this.perRepoLock.set(key, settled);
     // After this lock settles, drop the entry from the map IF nothing newer
@@ -235,13 +235,32 @@ const OUTPUT_CAP_BYTES = 2 * 1024 * 1024; // 2 MB — mirrors spawn-util.ts cap
 
 // env is always the caller-supplied minimal env; fallback to minimalGitEnv()
 // so even unauthenticated calls never forward secrets. (AUDIT-IFleet-87d18205)
-async function spawnCapture(bin: string, args: string[], env?: NodeJS.ProcessEnv): Promise<RunResult> {
+// timeoutMs defaults to 120 s — git clone/fetch to a slow remote must not hang
+// the tick loop forever. (AUDIT-IFleet-76689f26)
+const GIT_DEFAULT_TIMEOUT_MS = 120_000;
+
+async function spawnCapture(
+  bin: string,
+  args: string[],
+  env?: NodeJS.ProcessEnv,
+  timeoutMs = GIT_DEFAULT_TIMEOUT_MS,
+): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: env ?? minimalGitEnv() });
     let stdout = '';
     let stderr = '';
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGTERM');
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already dead */ } }, 5_000);
+      reject(new Error(`git ${args[0] ?? ''} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
     child.stdout.on('data', (chunk: Buffer) => {
       if (stdoutBytes < OUTPUT_CAP_BYTES) {
         const remaining = OUTPUT_CAP_BYTES - stdoutBytes;
@@ -258,8 +277,18 @@ async function spawnCapture(bin: string, args: string[], env?: NodeJS.ProcessEnv
         if (stderrBytes >= OUTPUT_CAP_BYTES) stderr += '\n[stderr truncated]';
       }
     });
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: code ?? 0, stdout, stderr });
+    });
   });
 }
 
