@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-08-02T06:00:00Z",
+  "last_updated": "2026-08-05T04:30:15Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -851,6 +851,263 @@
       "status": "fixed",
       "opened_at": "2026-08-02T04:18:48Z",
       "closed_at": "2026-08-02T06:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d1a2b3c4",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "discardRawLog leaks parent mkdtemp directory on every verifier run",
+      "detail": "uploadLog creates a temp directory with mkdtempSync and writes verifier.log inside it. discardRawLog only removed the log file, not the parent directory. Under a continuous fleet this is a slow disk-space denial-of-service.",
+      "file_globs": [
+        "src/agents/verifier/sandbox.ts"
+      ],
+      "fix_sketch": "Added rmSync(dirname(path), { recursive: true, force: true }) after removing the file.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e5f6a7b8",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "extractJsonObject brace-counter ignores string context, corrupts slice on braces in string values",
+      "detail": "extractJsonObject counted '{' and '}' without tracking whether the current character was inside a JSON string literal. Any verdict payload whose string values contain '{' or '}' could cause premature slice, JSON.parse failure, and a silent misclassification of a passing review as request_changes.",
+      "file_globs": [
+        "src/pipeline/diff-reviewer.ts"
+      ],
+      "fix_sketch": "Added inString/escaped tracking to skip brace counting while inside a quoted JSON string.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f7g8h9i0",
+      "severity": "CRITICAL",
+      "category": "assumption",
+      "title": "deferringDiscordOut returns undefined cast to string for threadId, defeating type safety",
+      "detail": "deferringDiscordOut() returned { threadId: undefined as unknown as string }, a compile-time type lie. The DiscordOut interface required threadId: string, but callers already guarded with if (!result.threadId). The double cast prevented TypeScript from catching unsafe callsites.",
+      "file_globs": [
+        "src/server.ts",
+        "packages/orchestrator-core/src/contracts/discord-out.ts"
+      ],
+      "fix_sketch": "Changed DiscordOut.postTaskCreated return type to Promise<{ threadId: string | undefined }> and removed the cast in deferringDiscordOut().",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a1b2c3d4",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "editor.ts forwards full process.env to git subprocesses, exposing secrets to repo hooks",
+      "detail": "git add, git diff --cached, and git commit in commitEditorChanges inherited process.env containing ANTHROPIC_API_KEY, GITHUB_TOKEN, and DISCORD_TOKEN. A malicious repo hook could exfiltrate these.",
+      "file_globs": [
+        "src/pipeline/editor.ts"
+      ],
+      "fix_sketch": "Added minimalGitEnv() to all execFileAsync git calls. Exported minimalGitEnv from orchestrator-core.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b2c3d4e5",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "factory.ts forwards full process.env to git push and gh subprocess, exposing secrets",
+      "detail": "buildPrOpener's git push and gh pr create inherited process.env. A compromised repo's pre-push hook would receive all daemon secrets. The push runs after attacker-controlled code is written to the worktree.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Used minimalGitEnv() with GIT_CONFIG_KEY_0 auth for git push; minimalGitEnv() + GITHUB_TOKEN for gh commands. Applied minimalGitEnv() to all worktree management git calls.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c3d4e5f6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "AllAccountsPausedError can carry nextAvailableMs = Infinity when all accounts are permanently banned",
+      "detail": "soonestRecoveryMs() returned Infinity when all accounts had been auth-banned. A caller using setTimeout(retry, err.nextAvailableMs) would set a timer that never fires, silently stalling the dispatch loop.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/account-pool.ts"
+      ],
+      "fix_sketch": "Capped soonestRecoveryMs at Math.min(soonest, 5 * 60_000) so the maximum wait is 5 minutes.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d4e5f6g7",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "withLock uses prev.then(fn, fn) causing fn to run even after predecessor failure",
+      "detail": "RepoManager.withLock registered fn as both the resolve AND reject handler. If a preceding git operation (clone, fetch) failed, the next queued operation would still run on a potentially corrupted repo state.",
+      "file_globs": [
+        "packages/orchestrator-core/src/repos/manager.ts"
+      ],
+      "fix_sketch": "Changed prev.then(fn, fn) to prev.then(fn) so errors propagate and downstream operations are skipped.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e5f6g7h8",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "onVerify handler is fire-and-forget; verification errors are invisible to the HTTP caller",
+      "detail": "void verifierController.verifyManual(...).catch(console.warn) returned immediately. Operators had no way to distinguish 'verification started' from 'verification silently failed to start'.",
+      "file_globs": [
+        "src/orchestrator/handlers/control-plane.ts"
+      ],
+      "fix_sketch": "Added broadcastIFleet call in the catch handler so verification failures are surfaced to Discord.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f6g7h8i9",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "IFLEET_PROPOSALS_APPROVER_IDS unset gives generic 'not authorised' error with no actionable hint",
+      "detail": "When IFLEET_PROPOSALS_APPROVER_IDS was not set, the user received a generic 'You are not authorised' message with no indication the issue was a missing env var.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/handlers/interaction-create.ts"
+      ],
+      "fix_sketch": "Changed error message to explicitly name the missing env var: 'IFLEET_PROPOSALS_APPROVER_IDS is not configured'.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-g7h8i9j0",
+      "severity": "IMPORTANT",
+      "category": "dead code",
+      "title": "sweepCooldowns has dead label guard \u2014 paginate already filters by LABEL_IFLEET_COOLDOWN",
+      "detail": "The guard if (!labelNames.includes(LABEL_IFLEET_COOLDOWN)) continue was unreachable because the paginate call already filtered by that label at the API level.",
+      "file_globs": [
+        "src/queue/github.ts"
+      ],
+      "fix_sketch": "Removed the dead guard.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-h8i9j0k1",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "verifyManual uses Math.max(...spread) which risks RangeError on large attempt arrays",
+      "detail": "Math.max(...prior.map(r => r.attempt)) spreads all elements as arguments. On a pathologically large array (>65k entries from a loop bug), this throws a RangeError and verifyManual surfaces an error to operators.",
+      "file_globs": [
+        "src/agents/verifier/controller.ts"
+      ],
+      "fix_sketch": "Replaced with prior.reduce((max, r) => Math.max(max, r.attempt), 0).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-i9j0k1l2",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "WorkerRegistry watches file inode, misses atomic-rename writes on Linux inotify",
+      "detail": "fs.watch(configPath) tracks the inode. Editors and deployment tools that atomically rename a temp file into place create a new inode; the watcher stays on the old one and never fires, silently freezing hot-reload.",
+      "file_globs": [
+        "src/orchestrator/workers.ts"
+      ],
+      "fix_sketch": "Changed to watch(dirname(configPath), (_event, filename) => { if (filename !== basename(configPath)) return; ... }) so rename events trigger correctly.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-j0k1l2m3",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "modes.ts import uses .ts extension, inconsistent with project ESM convention",
+      "detail": "import type { SprintMode } from '../orchestrator/types.ts' used a .ts extension. The rest of the codebase uses .js extensions for ESM imports.",
+      "file_globs": [
+        "src/classifier/modes.ts"
+      ],
+      "fix_sketch": "Changed to '../orchestrator/types.js'.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-k1l2m3n4",
+      "severity": "COSMETIC",
+      "category": "dead code",
+      "title": "legacyQueueShim lacks TODO comment explaining when it can be removed",
+      "detail": "_legacy parameter is intentionally unused but without a comment future readers cannot tell whether the shim is temporary (migration in progress) or permanent.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Added TODO comment explaining the shim is temporary during GitHubQueue retirement.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": "2026-08-05T04:45:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-l2m3n4o5",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Empty-string cast '' as SprintId silently misidentifies tasks lacking a sprintId",
+      "detail": "Using '' as SprintId causes downstream lookups to silently fail on unmatched sprint IDs. Proper fix requires changing SprintId usage to string | undefined in OrchestratorEvent.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Requires type change to SprintId | undefined in OrchestratorEvent \u2014 skipped due to broad impact; filed for follow-up.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-m3n4o5p6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "legacyToUnified seeds ULID with issue creation timestamp, potentially mis-ordering unified store insertions",
+      "detail": "ulid(legacy.createdAt) encodes GitHub issue creation time in the ULID prefix. During backfill, issues processed in bulk get ULIDs sorted by GitHub creation time rather than insertion order, which can confuse FIFO semantics.",
+      "file_globs": [
+        "src/queue/sources/github.ts"
+      ],
+      "fix_sketch": "Change to ulid() (current time) and store createdAt separately \u2014 skipped to preserve existing idempotency semantics; filed for follow-up.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": null,
       "closing_pr": null
     }
   ],

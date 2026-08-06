@@ -13,7 +13,7 @@ import type { QueuedTask } from './task.js';
  * or log + drop. Never throw in a way that breaks the orchestrator loop.
  */
 export interface DiscordOut {
-  postTaskCreated(task: QueuedTask): Promise<{ threadId: string }>;
+  postTaskCreated(task: QueuedTask): Promise<{ threadId: string | undefined }>;
   postProgress(threadId: string, message: string): Promise<void>;
   postPlanForApproval(threadId: string, plan: string): Promise<{ messageId: string }>;
   postCompleted(threadId: string, prUrl: string): Promise<void>;

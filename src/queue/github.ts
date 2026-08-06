@@ -282,7 +282,6 @@ export class GitHubQueue implements QueueAdapter {
         const labelNames = (issue.labels as ReadonlyArray<string | { name?: string | null }>)
           .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
           .filter((n) => n.length > 0);
-        if (!labelNames.includes(LABEL_IFLEET_COOLDOWN)) continue;
         if (labelNames.includes(LABEL_IFLEET_CHRONIC_FAIL)) {
           skippedChronic++;
           continue;

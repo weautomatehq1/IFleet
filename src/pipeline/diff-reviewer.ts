@@ -256,10 +256,18 @@ function extractJsonObject(text: string): string | null {
   // lastIndexOf('}') was the previous approach; it failed when the LLM
   // appended explanatory text with curly braces after the verdict JSON,
   // producing an unparseable slice. (AUDIT-IFleet-888ebcb9)
+  // String-context tracking ensures braces inside quoted values do not affect depth.
   let depth = 0;
+  let inString = false;
+  let escaped = false;
   for (let i = start; i < text.length; i++) {
-    if (text[i] === '{') depth++;
-    else if (text[i] === '}') {
+    const ch = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\' && inString) { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
       depth--;
       if (depth === 0) return text.slice(start, i + 1);
     }

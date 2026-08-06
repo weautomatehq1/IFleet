@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { quoteAsUserData } from '@wahq/orchestrator-core/workers/claude-env';
+import { minimalGitEnv } from '@wahq/orchestrator-core/repos/manager';
 import type {
   AttemptRecord,
   GitOps,
@@ -76,7 +77,7 @@ export async function runEditor(input: RunEditorInput): Promise<EditorOutput> {
 
 async function commitEditorChanges(worktreePath: string, taskTitle?: string): Promise<void> {
   try {
-    await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
+    await execFileAsync('git', ['add', '-A'], { cwd: worktreePath, env: minimalGitEnv() });
   } catch (err) {
     // Propagate so the pipeline's error boundary handles it: a silent return
     // here causes the caller to see an empty diff and log a misleading
@@ -86,14 +87,14 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   }
   // `git diff --cached --quiet` exits 1 when there are staged changes; treat
   // that as the signal to commit rather than as an error.
-  const hasChanges = await execFileAsync('git', ['diff', '--cached', '--quiet'], { cwd: worktreePath })
+  const hasChanges = await execFileAsync('git', ['diff', '--cached', '--quiet'], { cwd: worktreePath, env: minimalGitEnv() })
     .then(() => false)
     .catch(() => true);
   if (!hasChanges) return;
   const safeTitle = taskTitle ? taskTitle.replace(/[\r\n]+/g, ' ').trim() : '';
   const subject = safeTitle ? `feat: ${safeTitle.slice(0, 72)}` : 'chore: editor changes';
   try {
-    await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath });
+    await execFileAsync('git', ['commit', '-m', subject], { cwd: worktreePath, env: minimalGitEnv() });
   } catch (err) {
     // Re-throw so the pipeline's error boundary handles it: a silent return here
     // causes the caller to see an empty diff and log a misleading "no diff —

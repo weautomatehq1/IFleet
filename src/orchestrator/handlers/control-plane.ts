@@ -105,9 +105,11 @@ export function buildControlPlaneOptions(deps: ControlPlaneDeps): ControlPlaneCa
     },
 
     onVerify: async (taskId) => {
-      void verifierController.verifyManual(taskId as TaskId).catch((err) =>
-        console.warn('[daemon] verifyManual failed:', err),
-      );
+      void verifierController.verifyManual(taskId as TaskId).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[daemon] verifyManual failed:', err);
+        void broadcastIFleet(`⚠ /verify failed for task \`${taskId}\`: ${msg}`);
+      });
     },
 
     onForcePr: async (taskId, reason) => {

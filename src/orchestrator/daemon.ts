@@ -336,6 +336,9 @@ async function main(): Promise<void> {
  * `cancel`/`status` paths. The daemon's onCancel callback handles state
  * transitions via the unified store, so the legacy methods only need to
  * exist; their bodies are intentionally no-ops here.
+ *
+ * TODO: Remove once GitHubQueue (github.ts) is fully retired. _legacy is kept
+ * in the signature to preserve call-site compatibility during migration.
  */
 function legacyQueueShim(_legacy: GitHubQueue): QueueAdapter {
   return {

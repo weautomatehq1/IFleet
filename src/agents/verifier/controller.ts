@@ -103,7 +103,7 @@ export class VerifierController {
     const ctx = await this.resolveTaskContext(taskId);
     if (!ctx) return { error: `task ${taskId} not found` };
     const prior = this.bridge.listRunsByTask(taskId);
-    const attempt = prior.length === 0 ? 1 : Math.max(...prior.map((r) => r.attempt)) + 1;
+    const attempt = prior.length === 0 ? 1 : prior.reduce((max, r) => Math.max(max, r.attempt), 0) + 1;
     return this.runVerification({ ...ctx, attempt });
   }
 

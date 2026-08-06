@@ -6,7 +6,7 @@
 // its confidence threshold. Pipeline consumers (architect.ts) read the prompt
 // via `getModePrompt` so the mapping lives in one place.
 
-import type { SprintMode } from '../orchestrator/types.ts';
+import type { SprintMode } from '../orchestrator/types.js';
 
 export type { SprintMode };
 

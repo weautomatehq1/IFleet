@@ -452,7 +452,9 @@ async function handleButton(
       console.warn(
         '[interaction-create] IFLEET_PROPOSALS_APPROVER_IDS is unset — denying proposal action (set this env var to allow approvers)',
       );
-      await interaction.editReply(`You are not authorised for this action.`);
+      await interaction.editReply(
+        `⚠ Proposal approvals are disabled: \`IFLEET_PROPOSALS_APPROVER_IDS\` is not configured. Ask an operator to set this env var.`,
+      );
       return;
     }
     const allow = rawAllow.split(',').map((s) => s.trim()).filter(Boolean);

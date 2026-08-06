@@ -210,10 +210,9 @@ function deferringDiscordOut(): DiscordOut {
   return {
     postTaskCreated: async (task) => {
       console.warn(`[control-plane] task ${task.id} queued (thread deferred to daemon)`);
-      // Return undefined rather than '' so callers checking `if (result.threadId)`
-      // treat this as 'not yet assigned' rather than an empty falsy string.
-      // (AUDIT-IFleet-49b56847)
-      return { threadId: undefined as unknown as string };
+      // Return undefined — postTaskCreated.threadId is string | undefined;
+      // callers guard with `if (!result.threadId)` before use.
+      return { threadId: undefined };
     },
     postProgress: async () => undefined,
     postPlanForApproval: async () => ({ messageId: '' }),
