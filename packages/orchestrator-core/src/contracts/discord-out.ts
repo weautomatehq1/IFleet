@@ -16,7 +16,7 @@ export interface DiscordOut {
   postTaskCreated(task: QueuedTask): Promise<{ threadId: string | undefined }>;
   postProgress(threadId: string, message: string): Promise<void>;
   postPlanForApproval(threadId: string, plan: string): Promise<{ messageId: string }>;
-  postCompleted(threadId: string, prUrl: string): Promise<void>;
+  postCompleted(threadId: string, prUrl?: string): Promise<void>;
   postFailed(threadId: string, reason: string): Promise<void>;
   /**
    * Post a plain-text message directly to a channel (not a thread).

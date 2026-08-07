@@ -144,9 +144,7 @@ export async function autoRouteMode(
   } catch (err) {
     clearTimeout(timer);
     const reason = `haiku call failed: ${err instanceof Error ? err.message : String(err)}`;
-    const decision: AutoRouterDecision = { ...STANDARD_FALLBACK, reason };
-    cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
-    return decision;
+    return { ...STANDARD_FALLBACK, reason };
   }
   clearTimeout(timer);
 

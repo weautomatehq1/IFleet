@@ -51,12 +51,14 @@ export class UnifiedQueueAdapter {
     return task;
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl?: string, totalTokens?: number): Promise<void> {
     // Pass fromState so the UPDATE is conditional — if a concurrent process
     // already moved the row to a terminal state, changes===0 and we skip the
     // source notification, preventing duplicate GitHub/Discord messages
     // (AUDIT-IFleet-918842f6).
-    const updated = this.store.updateState(task.id, 'done', { prUrl, completedAt: Date.now() }, 'in_flight');
+    const meta: Record<string, unknown> = { completedAt: Date.now() };
+    if (prUrl) meta['prUrl'] = prUrl;
+    const updated = this.store.updateState(task.id, 'done', meta, 'in_flight');
     if (!updated) {
       console.warn(`[unified-queue] markCompleted skipped for ${task.id} — task no longer in_flight (concurrent state change)`);
       return;
@@ -112,7 +114,11 @@ export class UnifiedQueueAdapter {
       console.warn(`[unified-queue] markCancelled skipped for ${task.id} — already terminal (${current.state})`);
       return;
     }
-    this.store.updateState(task.id, 'blocked', { reason, cancelled: true, completedAt: Date.now() });
+    const updated = this.store.updateState(task.id, 'blocked', { reason, cancelled: true, completedAt: Date.now() }, current.state);
+    if (!updated) {
+      console.warn(`[unified-queue] markCancelled skipped for ${task.id} — state changed concurrently`);
+      return;
+    }
     try {
       await this.sourceFor(task).markCancelled(task, reason);
     } catch (err) {

@@ -453,7 +453,7 @@ async function handleButton(
         '[interaction-create] IFLEET_PROPOSALS_APPROVER_IDS is unset — denying proposal action (set this env var to allow approvers)',
       );
       await interaction.editReply(
-        `⚠ Proposal approvals are disabled: \`IFLEET_PROPOSALS_APPROVER_IDS\` is not configured. Ask an operator to set this env var.`,
+        `⚠ Proposal approvals are not yet configured. Please ask an operator to enable them.`,
       );
       return;
     }

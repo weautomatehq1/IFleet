@@ -320,7 +320,7 @@ export class Orchestrator {
         case 'task.completed': {
           const pr = event.payload['pr'] as string | undefined;
           const totalTokens = event.payload['totalTokens'] as number | undefined;
-          await out.postCompleted(threadId, pr ?? '(no PR url)');
+          await out.postCompleted(threadId, pr ?? undefined);
           this.taskThreadIds.delete(taskId);
 
           // Channel-level ping for discord-source tasks with a PR.
@@ -402,7 +402,13 @@ export class Orchestrator {
     try {
       const result = await this.outbox.drainOnce({
         send: async (_channel, payload) => {
-          const parsed = JSON.parse(payload) as { content?: string; url?: string };
+          let parsed: { content?: string; url?: string } = {};
+          try {
+            parsed = JSON.parse(payload) as { content?: string; url?: string };
+          } catch {
+            // Non-JSON payload — treat the raw string as the message content.
+            parsed = { content: payload };
+          }
           // Only allow discord.com webhook URLs from the outbox payload to
           // prevent SSRF: an attacker with local DB write access could otherwise
           // redirect webhook POSTs to an arbitrary host (AUDIT-IFleet-6951f1bf).

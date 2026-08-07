@@ -402,11 +402,11 @@ export function markFindingsClosed(
     changed++;
   }
   if (changed === 0) return 0;
-  writeAuditIndex(indexPath, index);
 
   const closedDir = dirname(indexPath);
   const closedPath = join(closedDir, 'closed.json');
   withClosedJsonLock(closedDir, () => {
+    writeAuditIndex(indexPath, index);
     let cdata: ClosedIndex = { closures: [] };
     if (existsSync(closedPath)) {
       try {

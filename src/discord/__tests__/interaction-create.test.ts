@@ -573,7 +573,7 @@ describe('M5 proposal buttons — IFLEET_PROPOSALS_CHANNEL_ID gating', () => {
     delete process.env['IFLEET_PROPOSALS_APPROVER_IDS'];
     const interaction = makeButton(PROPOSALS, 'proposal_approve:p-1');
     await handleInteractionCreate(interaction, { router: makeProposalRouter(), controlPlane: makeCp() });
-    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/IFLEET_PROPOSALS_APPROVER_IDS/));
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/not yet configured/i));
     restoreEnv();
   });
 

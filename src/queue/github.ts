@@ -110,22 +110,24 @@ export interface GitHubQueueOptions {
   now?: () => number;
 }
 
+export function createThrottledOctokit(token: string): Octokit {
+  return new ThrottledOctokit({
+    auth: token,
+    throttle: {
+      onRateLimit: (retryAfter, options) =>
+        shouldRetryRateLimit(retryAfter, options as ThrottleRequestOptions, 'primary'),
+      onSecondaryRateLimit: (retryAfter, options) =>
+        shouldRetryRateLimit(retryAfter, options as ThrottleRequestOptions, 'secondary'),
+    },
+  }) as unknown as Octokit;
+}
+
 export async function createGitHubQueue(opts: GitHubQueueOptions): Promise<GitHubQueue> {
   const token = opts.token ?? process.env.GITHUB_TOKEN ?? (await readGhAuthToken());
   if (!token && !opts.octokit) {
     throw new Error('No GitHub token available. Set GITHUB_TOKEN or login via `gh auth login`.');
   }
-  const octokit =
-    opts.octokit ??
-    new ThrottledOctokit({
-      auth: token,
-      throttle: {
-        onRateLimit: (retryAfter, options) =>
-          shouldRetryRateLimit(retryAfter, options as ThrottleRequestOptions, 'primary'),
-        onSecondaryRateLimit: (retryAfter, options) =>
-          shouldRetryRateLimit(retryAfter, options as ThrottleRequestOptions, 'secondary'),
-      },
-    });
+  const octokit = opts.octokit ?? createThrottledOctokit(token!);
   return new GitHubQueue(octokit, opts);
 }
 
@@ -217,11 +219,11 @@ export class GitHubQueue implements QueueAdapter {
     await this.comment(task, `🤖 Picked up by \`${workerId}\` at \`${stamp}\``);
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl?: string): Promise<void> {
     await this.removeLabel(task, LABEL_IN_FLIGHT);
     await this.removeLabel(task, LABEL_IFLEET_IN_PROGRESS);
     await this.addLabels(task, [LABEL_SHIPPED, LABEL_IFLEET_DONE]);
-    await this.comment(task, `✅ Completed — PR: ${prUrl}`);
+    await this.comment(task, prUrl ? `✅ Completed — PR: ${prUrl}` : '✅ Completed (no PR — already resolved or no changes needed)');
   }
 
   async markFailed(task: QueuedTask, reason: string): Promise<void> {

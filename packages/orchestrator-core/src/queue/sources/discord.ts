@@ -136,7 +136,7 @@ export class DiscordSource implements TaskSource {
     await this.opts.out.postProgress(tid, '🤖 Picked up — worker starting.');
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl?: string, totalTokens?: number): Promise<void> {
     const tid = await this.resolveThread(task);
     if (!tid) {
       this.opts.onPostFailed?.(task.id, 'markCompleted', 'no threadId');

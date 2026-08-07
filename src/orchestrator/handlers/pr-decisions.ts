@@ -144,21 +144,19 @@ export function wrapFactoryWithVerifierContext(
       } catch { /* missing worktree → resolver returns null, verifier skips */ }
       if (headSha) {
         try {
-          // baseRef='main' is safe: production worktrees are always created from main
-          // by buildWorkerPool (factory.ts:324 `git worktree add ... main`). AUDIT-IFleet-0c47bae9.
           const fp = await computeStructuralFingerprint({
             repoRoot: bootstrap.input.worktreePath,
-            baseRef: 'main',
+            baseRef: bootstrap.input.baseBranch ?? 'main',
             headRef: headSha,
           });
           registry.setFingerprint(taskId, fp.sha256);
         } catch (err) {
           console.warn('[daemon] teardown-time computeStructuralFingerprint failed:', err);
-          console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=main, headSha=' + headSha + ')');
+          console.warn(`[daemon] teardown-time fingerprint=null for task ${taskId} (baseRef=${bootstrap.input.baseBranch ?? 'main'}, headSha=${headSha})`);
           registry.setFingerprint(taskId, null);
         }
       } else {
-        console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=main, headSha=unknown)');
+        console.warn(`[daemon] teardown-time fingerprint=null for task ${taskId} (baseRef=${bootstrap.input.baseBranch ?? 'main'}, headSha=unknown)`);
         registry.setFingerprint(taskId, null);
       }
       if (origTeardown) await origTeardown(result);

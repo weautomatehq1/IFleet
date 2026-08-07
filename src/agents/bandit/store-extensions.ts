@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { StoreExtension } from '@wahq/orchestrator-core/queue/store';
 import type { RoutingDecision } from '@wahq/orchestrator-core/contracts/routing';
+import { ensureCircuitBreakerSchema } from './circuit-breaker.js';
 
 // IFleet-owned TaskStore schema extensions. @wahq/orchestrator-core owns exactly
 // the 4 core tables (tasks, pr_decisions, nonce_ledger, discord_outbox); these
@@ -53,15 +54,7 @@ const routingShadowLog: StoreExtension = (db: Database.Database) => {
  * in src/agents/bandit/circuit-breaker.ts.
  */
 const banditArmState: StoreExtension = (db: Database.Database) => {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS bandit_arm_state (
-      arm TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'active',
-      consecutive_failures INTEGER NOT NULL DEFAULT 0,
-      assignments_remaining INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL DEFAULT 0
-    );
-  `);
+  ensureCircuitBreakerSchema(db);
 };
 
 /**

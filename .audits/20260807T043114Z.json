@@ -1,0 +1,235 @@
+{
+  "run_id": "20260807T043114Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-07T04:31:14Z",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-9a2b3c4d",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "markFindingsClosed (batch) writes index.json outside withClosedJsonLock — TOCTOU window",
+      "detail": "markFindingsClosed() in audit-runner.ts called writeAuditIndex(indexPath, index) BEFORE entering withClosedJsonLock. A crash between the writeAuditIndex call and the withClosedJsonLock block leaves index.json showing findings as closed while closed.json is missing the closure records. The singular markFindingClosed was already fixed (AUDIT-IFleet-d651330f), but the batch variant had the same bug.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/audit-runner.ts"
+      ],
+      "fix_sketch": "Moved writeAuditIndex inside the withClosedJsonLock callback so both index.json and closed.json updates are atomic. Fixed in this run.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8b3c4d5e",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "Second bare unthrottled Octokit in daemon.ts for makeProductionFactory — bypasses retry plugin",
+      "detail": "daemon.ts line 157 constructed new Octokit({ auth: githubToken }) to pass to makeProductionFactory. AUDIT-IFleet-d16b51f8 fixed the GitHubQueue Octokit, but this second construction site was missed. Under rate-limit pressure, the production factory's Octokit client (used for PR creation and repo operations) will receive 429s that are never retried, causing PR creation failures.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts",
+        "src/queue/github.ts"
+      ],
+      "fix_sketch": "Exported createThrottledOctokit from src/queue/github.ts and used it instead of bare new Octokit in daemon.ts. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7c4d5e6f",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "standup.ts uses stale event kind 'task.done' — completedCount always reports 0",
+      "detail": "src/agents/rituals/standup.ts checked e.kind === 'task.done' but the orchestrator emits 'task.completed'. The mismatch caused the daily standup to always report 0 completed tasks, misleading the team about fleet throughput.",
+      "file_globs": [
+        "src/agents/rituals/standup.ts"
+      ],
+      "fix_sketch": "Changed 'task.done' to 'task.completed' on line 78. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-6d5e6f7a",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "drainDiscordOutbox JSON.parse can dead-letter valid non-JSON messages",
+      "detail": "In Orchestrator.drainDiscordOutbox(), JSON.parse(payload) was not wrapped in try/catch. Outbox messages that are plain-text strings (not JSON objects) would throw a SyntaxError, causing them to be dead-lettered on every drain attempt instead of delivered. Any message written to the outbox as a raw string would be permanently lost.",
+      "file_globs": [
+        "src/orchestrator/index.ts"
+      ],
+      "fix_sketch": "Wrapped JSON.parse in try/catch; on parse failure, treats the raw payload as the message content. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5e6f7a8b",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "auto-router.ts caches Haiku error fallback for 10 min, degrading routing quality",
+      "detail": "On a Haiku LLM call failure, the error fallback decision was written to the LRU cache with the full CACHE_TTL_MS (10 min). Subsequent tasks with the same routing key within the next 10 minutes received the stale error-fallback instead of a fresh routing attempt, even after the transient error resolved.",
+      "file_globs": [
+        "src/classifier/auto-router.ts"
+      ],
+      "fix_sketch": "Removed cache.set() from the error catch block so failed calls are never cached. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-4f7a8b9c",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listSprintsByStateKind N+1 SQLite query pattern — one query per sprint row",
+      "detail": "StateStore.listSprintsByStateKind() issued a separate 'SELECT id FROM tasks WHERE sprint_id = ?' for each sprint row returned by the initial filter. With N active sprints this is N+1 queries. Under load with many sprints this becomes a significant bottleneck on the tick loop.",
+      "file_globs": [
+        "src/orchestrator/store.ts"
+      ],
+      "fix_sketch": "Replaced N individual task queries with a single batch query using IN (?, ?, ...) and grouped results by sprint_id in memory. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-3a8b9c0d",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "markCompleted passes empty string prUrl when no PR — corrupts GitHub comment and Discord message",
+      "detail": "In sprint-bridge.ts, adapter.markCompleted(task, lastPrUrl ?? '', totalTokens) passed '' when no PR was opened (no-changes-needed, already-resolved completions). GitHubQueue.markCompleted() posted '✅ Completed — PR: ' to the issue comment. The QueueAdapter interface typed prUrl as string, enforcing the empty string workaround.",
+      "file_globs": [
+        "src/orchestrator/handlers/sprint-bridge.ts",
+        "packages/orchestrator-core/src/queue/unified-adapter.ts",
+        "packages/orchestrator-core/src/queue/types.ts",
+        "packages/orchestrator-core/src/queue/sources/base.ts",
+        "packages/orchestrator-core/src/queue/sources/discord.ts",
+        "packages/orchestrator-core/src/contracts/discord-out.ts",
+        "packages/orchestrator-core/src/observability/discord-output.ts",
+        "src/queue/github.ts",
+        "src/queue/sources/github.ts"
+      ],
+      "fix_sketch": "Changed prUrl to optional (prUrl?: string) across QueueAdapter, TaskSource, DiscordOut, and all implementations. GitHub comment now reads '✅ Completed (no PR — already resolved or no changes needed)' when prUrl is absent. Fixed in this run.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-2b9c0d1e",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "computeStructuralFingerprint uses hardcoded baseRef='main' ignoring per-repo default branch",
+      "detail": "pr-decisions.ts:149 passed baseRef: 'main' to computeStructuralFingerprint. Repositories whose default branch is not 'main' (e.g. 'master', 'trunk') would produce incorrect structural fingerprints, corrupting the PR-rejection learning signal used by the bandit.",
+      "file_globs": [
+        "src/orchestrator/handlers/pr-decisions.ts"
+      ],
+      "fix_sketch": "Changed to baseRef: bootstrap.input.baseBranch ?? 'main' so the configured default branch is used when available. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1c0d1e2f",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "markCancelled TOCTOU — fromState guard absent on store.updateState call",
+      "detail": "UnifiedQueueAdapter.markCancelled() checked current.state before calling store.updateState() but did not pass fromState to updateState, leaving a race window: if the task transitioned to done/failed between getById and updateState, the completed state would be overwritten with blocked+cancelled. The existing non-atomic check at lines 111-114 was a best-effort guard, not a database-level atomic guarantee.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/unified-adapter.ts"
+      ],
+      "fix_sketch": "Added fromState: current.state as fourth argument to store.updateState() and checked the returned boolean to bail out when the state changed concurrently. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-0d1e2f3a",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "standup.ts has duplicate node:fs import split across two import statements",
+      "detail": "src/agents/rituals/standup.ts imported existsSync and readdirSync from 'node:fs' on one line and readFileSync on a separate 'node:fs' import. Duplicate module imports are redundant and can confuse tree-shaking analysis.",
+      "file_globs": [
+        "src/agents/rituals/standup.ts"
+      ],
+      "fix_sketch": "Merged into a single import { existsSync, readdirSync, readFileSync } from 'node:fs'. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-e1f2a3b4",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "candidate-gen.ts trailing blank line inside defaultWarn function body",
+      "detail": "src/agents/proposer/candidate-gen.ts had a spurious blank line between the function opening brace and console.warn, causing inconsistent formatting.",
+      "file_globs": [
+        "src/agents/proposer/candidate-gen.ts"
+      ],
+      "fix_sketch": "Removed trailing whitespace. Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-f2a3b4c5",
+      "severity": "COSMETIC",
+      "category": "dead-code",
+      "title": "store-extensions.ts duplicates bandit_arm_state DDL already defined in circuit-breaker.ts",
+      "detail": "The banditArmState StoreExtension in src/agents/bandit/store-extensions.ts contained an inline CREATE TABLE IF NOT EXISTS bandit_arm_state DDL that was identical to the one in ensureCircuitBreakerSchema() in circuit-breaker.ts. Schema drift between the two copies could silently corrupt the bandit state table on future schema updates.",
+      "file_globs": [
+        "src/agents/bandit/store-extensions.ts",
+        "src/agents/bandit/circuit-breaker.ts"
+      ],
+      "fix_sketch": "Replaced the inline DDL in store-extensions.ts with a call to ensureCircuitBreakerSchema(db). Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a3b4c5d6",
+      "severity": "COSMETIC",
+      "category": "risk",
+      "title": "interaction-create.ts leaks IFLEET_PROPOSALS_APPROVER_IDS env var name in Discord user-visible message",
+      "detail": "When IFLEET_PROPOSALS_APPROVER_IDS was unset, the error message sent to Discord users contained the literal string 'IFLEET_PROPOSALS_APPROVER_IDS is not configured'. Internal environment variable names are implementation details that should not be exposed to end users in a Discord channel.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/handlers/interaction-create.ts"
+      ],
+      "fix_sketch": "Changed user-facing message to 'Proposal approvals are not yet configured. Please ask an operator to enable them.' Fixed in this run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-07T04:31:14Z",
+      "closed_at": "2026-08-07T04:31:14Z",
+      "closing_pr": null
+    }
+  ],
+  "summary": {
+    "total": 13,
+    "by_severity": {
+      "CRITICAL": 2,
+      "IMPORTANT": 7,
+      "COSMETIC": 4
+    },
+    "fixed_this_run": 13,
+    "open_after_run": 3
+  }
+}

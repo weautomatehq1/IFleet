@@ -7,7 +7,6 @@
 
 import { resolve as resolvePath } from 'node:path';
 import type { Client } from 'discord.js';
-import { Octokit } from '@octokit/rest';
 import { VerifierController } from '../agents/verifier/controller.js';
 import { loadReposConfig } from '../config/repos.js';
 import { registerProposerDiscordClient } from '../agents/proposer/approval-gate.js';
@@ -19,7 +18,7 @@ import { HmacControlPlaneClient } from '@wahq/orchestrator-core/discord/hmac-cli
 import { DiscordOutAdapter } from '@wahq/orchestrator-core/observability/discord-output';
 import { makeProductionFactory } from '../pipeline/factory.js';
 import { createControlPlane } from '@wahq/orchestrator-core/queue/control-plane';
-import { GitHubQueue, createGitHubQueue } from '../queue/github.js';
+import { createGitHubQueue, createThrottledOctokit } from '../queue/github.js';
 import { GitHubIssuesSource } from '../queue/sources/github.js';
 import { DiscordSource } from '@wahq/orchestrator-core/queue/sources/discord';
 import { TaskStore, defaultTasksDbPath } from '@wahq/orchestrator-core/queue/store';
@@ -154,7 +153,7 @@ async function main(): Promise<void> {
 
   // -------- Production pipeline factory + emit wiring --------
   const initialWorkers = loadInitialWorkers(resolvePath(repoRoot, 'config', 'workers.json'));
-  const octokit = new Octokit({ auth: githubToken });
+  const octokit = createThrottledOctokit(githubToken);
   // Compose a RepoResolver from channels.json (workDir + defaultBranch +
   // codeowners) and repos.json (allowed repos). The factory uses this to
   // refuse any task whose `task.repo` is not whitelisted, before a worktree
@@ -238,7 +237,7 @@ async function main(): Promise<void> {
     (CP_MAX_SKEW_SEC + CP_NONCE_TTL_PADDING_SEC) * 1000,
   );
   const cp = createControlPlane({
-    queue: legacyQueueShim(githubQueue),
+    queue: legacyQueueShim(),
     hmacSecret,
     port,
     nonceLedger,
@@ -336,11 +335,8 @@ async function main(): Promise<void> {
  * `cancel`/`status` paths. The daemon's onCancel callback handles state
  * transitions via the unified store, so the legacy methods only need to
  * exist; their bodies are intentionally no-ops here.
- *
- * TODO: Remove once GitHubQueue (github.ts) is fully retired. _legacy is kept
- * in the signature to preserve call-site compatibility during migration.
  */
-function legacyQueueShim(_legacy: GitHubQueue): QueueAdapter {
+function legacyQueueShim(): QueueAdapter {
   return {
     pickNext: async () => null,
     markPicked: async () => undefined,

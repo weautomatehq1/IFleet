@@ -348,7 +348,9 @@ export class StateStore {
     const rows = this.db
       .prepare(`SELECT * FROM sprints WHERE json_extract(state_json, '$.kind') = ?`)
       .all(kind) as ReadonlyArray<SprintRow>;
-    const out: SprintRecord[] = [];
+    if (rows.length === 0) return [];
+
+    const validRows: Array<{ row: SprintRow; state: SprintRecord['state'] }> = [];
     for (const row of rows) {
       let state: SprintRecord['state'];
       try {
@@ -360,14 +362,29 @@ export class StateStore {
         continue;
       }
       if (state.kind !== kind) continue;
-      const taskRows = this.db
-        .prepare('SELECT id FROM tasks WHERE sprint_id = ? ORDER BY created_at ASC')
-        .all(row.id) as ReadonlyArray<{ id: string }>;
+      validRows.push({ row, state });
+    }
+    if (validRows.length === 0) return [];
+
+    const sprintIds = validRows.map((r) => r.row.id);
+    const placeholders = sprintIds.map(() => '?').join(',');
+    const allTaskRows = this.db
+      .prepare(`SELECT id, sprint_id FROM tasks WHERE sprint_id IN (${placeholders}) ORDER BY created_at ASC`)
+      .all(...sprintIds) as ReadonlyArray<{ id: string; sprint_id: string }>;
+    const tasksBySprintId = new Map<string, TaskId[]>();
+    for (const t of allTaskRows) {
+      let arr = tasksBySprintId.get(t.sprint_id);
+      if (!arr) { arr = []; tasksBySprintId.set(t.sprint_id, arr); }
+      arr.push(t.id as TaskId);
+    }
+
+    const out: SprintRecord[] = [];
+    for (const { row, state } of validRows) {
       out.push({
         id: row.id as SprintId,
         mode: row.mode as SprintRecord['mode'],
         goal: row.goal,
-        tasks: taskRows.map((t) => t.id as TaskId),
+        tasks: tasksBySprintId.get(row.id) ?? [],
         state,
         createdAt: row.created_at,
         updatedAt: row.updated_at,

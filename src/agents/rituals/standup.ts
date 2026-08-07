@@ -14,12 +14,11 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { parseEvents } from '@wahq/orchestrator-core/observability/event-log';
 import { countPendingProposals } from '../../orchestrator/goal-proposals-store.js';
-import { readFileSync } from 'node:fs';
 
 const execFileAsync = promisify(execFile);
 
@@ -75,7 +74,7 @@ async function collectData(): Promise<StandupData> {
       const events = parseEvents(raw).filter((e) => e.ts >= fromTs && e.ts <= toTs);
 
       for (const e of events) {
-        if (e.kind === 'task.done') tasksCompleted++;
+        if (e.kind === 'task.completed') tasksCompleted++;
         if (e.kind === 'task.failed') tasksFailed++;
         if (e.kind === 'verifier.passed') {
           verifierPassed++;
