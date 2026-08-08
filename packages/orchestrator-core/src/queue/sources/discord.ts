@@ -123,7 +123,14 @@ export class DiscordSource implements TaskSource {
         error: threadFailure instanceof Error ? threadFailure.message : String(threadFailure),
       };
     }
-    store.insert(draftTask);
+    // Return the authoritative DB row if a concurrent ingest already won the
+    // INSERT OR IGNORE race — prevents returning a stale draftTask whose
+    // orphaned threadId would later be patchSource'd into the wrong row
+    // (AUDIT-IFleet-<new>).
+    const insertResult = store.insert(draftTask);
+    if (!insertResult.inserted && insertResult.existing) {
+      return insertResult.existing;
+    }
     return draftTask;
   }
 

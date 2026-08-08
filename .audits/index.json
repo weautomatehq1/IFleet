@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-08-05T04:30:15Z",
+  "last_updated": "2026-08-08T04:21:55Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -624,9 +624,9 @@
       ],
       "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use stdio: ['pipe','pipe','pipe'] and child.stdin.write(prompt) to avoid the process-list exposure. The comment claiming stdin was unreliable refers to a race without explicit flush; writing synchronously and then closing stdin resolves it.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-08-02T04:18:48Z",
-      "closed_at": null,
+      "closed_at": "2026-08-08T04:21:55Z",
       "closing_pr": null
     },
     {
@@ -1109,13 +1109,174 @@
       "opened_at": "2026-08-05T04:30:15Z",
       "closed_at": null,
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-1fa32e9c",
+      "severity": "CRITICAL",
+      "category": "logic",
+      "title": "markCancelled TOCTOU overwrites terminal task state",
+      "detail": "markCancelled() read current state via getById() then called updateState() without a fromState guard, unlike markCompleted/markFailed. A concurrent markCompleted() could win the race, setting state to 'done'; the subsequent unconditional markCancelled() then overwrote 'done' with 'blocked'+cancelled:true, corrupting the terminal state.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/unified-adapter.ts"
+      ],
+      "fix_sketch": "Replace read+check TOCTOU with two conditional UPDATEs: try fromState='in_flight' first, then fromState='pending'. Skip notification if both miss.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-2246de99",
+      "severity": "CRITICAL",
+      "category": "risk",
+      "title": "pnpm add and npm install variants missing from worker deny list",
+      "detail": "The worker permission deny list blocked pnpm install but not pnpm add, pnpm remove, npm install <pkg>, npm add, npm ci, or npm link. A prompt-injected worker running pnpm add <evil-pkg> installs into shared host node_modules via the worktree symlink and runs postinstall hooks with the daemon's full environment (ANTHROPIC_API_KEY, GITHUB_TOKEN, IFLEET_HMAC_SECRET).",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Add pnpm add/remove/link and npm install/add/ci/link/remove/uninstall (with wildcard variants) to the deny array.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-2f755e54",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "task-done-notify passes summary prompt as argv — process-list exposure of task brief",
+      "detail": "buildSummaryArgs passed the full summary prompt (including user-supplied task brief) as a -p CLI argument, visible to all local users via /proc/<pid>/cmdline and ps aux.",
+      "file_globs": [
+        "packages/orchestrator-core/src/observability/task-done-notify.ts"
+      ],
+      "fix_sketch": "Use spawn with stdio: ['pipe','pipe','pipe'] and write the prompt to stdin, removing it from argv.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-ebb563e2",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "concurrent DiscordSource.ingest creates duplicate Discord threads",
+      "detail": "The idempotency check and INSERT OR IGNORE are not atomic in ingest(). Two concurrent calls with the same key can both pass findByIdempotencyKey, both call postTaskCreated() creating two Discord threads, and the losing insert returns a stale draftTask with an orphaned threadId.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "After store.insert(), check the result: if !inserted && existing, return the authoritative DB row instead of the local draftTask.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a6bcc457",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "hardcoded baseRef 'main' in fingerprint computation ignores repo defaultBranch",
+      "detail": "computeStructuralFingerprint was called with baseRef hardcoded to 'main', but the factory creates worktrees from resolved.defaultBranch. For repos where defaultBranch differs from 'main', git diff --numstat produces a wrong sha256.",
+      "file_globs": [
+        "src/orchestrator/handlers/pr-decisions.ts"
+      ],
+      "fix_sketch": "Use bootstrap.input.baseBranch ?? 'main' as baseRef.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c08e5c5d",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "GitHubIssuesSource.drain() makes O(N²) GitHub API calls",
+      "detail": "drain() called pickNext({ excludeIds: [...] }) in a loop up to 200 times. Each pickNext() called listOpenAutoShip() for each configured repo, fetching all open issues from GitHub per call. O(N) full list fetches per drain cycle exhausted the 60 req/min rate limit on non-trivial queues.",
+      "file_globs": [
+        "src/queue/sources/github.ts",
+        "src/queue/github.ts"
+      ],
+      "fix_sketch": "Add GitHubQueue.listAllCandidates() that fetches each repo once. drain() calls it once and iterates in memory.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5b7b092e",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "trustedBrief JSON-parse guard is dead code — architect output is always Markdown",
+      "detail": "JSON.parse always threw on Markdown architect output, so trustedBrief was always false. The dead branch could mislead a future developer into removing the actual wrapBriefAsData sandbox.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Remove the dead architectOutputIsJson branch; set trustedBrief = false unconditionally with a comment pointing to wrapBriefAsData.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-822c4792",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "REF_RE in fingerprint.ts allows '..' in git refs — weaker than isSafeGitRef",
+      "detail": "REF_RE = /^[A-Za-z0-9._/-]+$/ permitted '..', leading/trailing '/', and .lock suffixes that git check-ref-format rejects. Refs were passed directly into 'git diff --numstat baseRef..headRef' via execFileAsync.",
+      "file_globs": [
+        "src/agents/verifier/fingerprint.ts"
+      ],
+      "fix_sketch": "Replace REF_RE with a positive allowlist plus separate checks for '..', '.lock', leading/trailing '/', '@{', and leading '-'.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-ef23a2c6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "markBlocked() has no fromState guard — can overwrite terminal states",
+      "detail": "markBlocked() called store.updateState(task.id, 'blocked', { capability }) unconditionally. A concurrent markCompleted() that set state to 'done' could be overwritten when a capability-blocked exit raced with a graceful completion.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/unified-adapter.ts"
+      ],
+      "fix_sketch": "Add fromState: 'in_flight' guard to updateState call, consistent with markCompleted and markFailed.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-da8ce22e",
+      "severity": "COSMETIC",
+      "category": "risk",
+      "title": "channelId format validation missing from parseCommand cancel branch",
+      "detail": "The cancel command's channelId was only validated for length in parseCommand but the daemon handler expected a Discord snowflake (/^\\d{17,20}$/). A non-snowflake value passes the parse layer and is rejected later.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/control-plane.ts"
+      ],
+      "fix_sketch": "Add /^\\d{17,20}$/ format validation in parseCommand's 'cancel' branch.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-08T04:21:55Z",
+      "closed_at": "2026-08-08T04:21:55Z",
+      "closing_pr": null
     }
   ],
   "by_severity": {
-    "CRITICAL": 8,
-    "IMPORTANT": 35,
-    "COSMETIC": 10
+    "CRITICAL": 13,
+    "IMPORTANT": 53,
+    "COSMETIC": 13
   },
-  "open_count": 1,
-  "fixed_count": 52
+  "open_count": 2,
+  "fixed_count": 77
 }

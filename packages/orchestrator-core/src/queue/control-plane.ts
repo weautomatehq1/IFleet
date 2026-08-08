@@ -452,6 +452,10 @@ export function parseCommand(body: string): ControlCommand {
       const channelId = pickStr('channelId');
       if (channelId) {
         if (channelId.length > MAX_ID_FIELD_LEN) throw new Error('cancel: channelId exceeds maximum length');
+        // Validate Discord snowflake format — consistent with daemon handler's
+        // expectation and guards against non-snowflake sentinel injection
+        // (AUDIT-IFleet-<new>).
+        if (!/^\d{17,20}$/.test(channelId)) throw new Error('cancel: channelId must be a Discord snowflake (17-20 digits)');
         cmd.channelId = channelId;
       }
       const userLabel = pickStr('userLabel');

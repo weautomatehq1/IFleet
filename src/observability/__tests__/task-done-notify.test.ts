@@ -21,10 +21,16 @@ function makeHttpsMock(_statusCode = 200) {
 }
 
 function makeSpawnMock(stdout: string, exitCode = 0) {
+  const stdinWrites: string[] = [];
   const proc = {
     stdout: { on: vi.fn((ev, cb) => { if (ev === 'data') cb(stdout); }) },
     stderr: { on: vi.fn() },
+    stdin: {
+      write: vi.fn((data: string, cb?: () => void) => { stdinWrites.push(data); cb?.(); }),
+      end: vi.fn(),
+    },
     on: vi.fn((ev, cb) => { if (ev === 'close') cb(exitCode); }),
+    _stdinWrites: stdinWrites,
   };
   vi.mocked(cp.spawn).mockReturnValue(proc as unknown as ReturnType<typeof cp.spawn>);
   return proc;
@@ -52,10 +58,10 @@ describe('postTaskDoneNotification', () => {
       claudePath: 'claude',
     });
 
-    // claude was called with -p flag
+    // claude was called with --print (prompt via stdin, not argv)
     expect(cp.spawn).toHaveBeenCalledWith(
       'claude',
-      expect.arrayContaining(['-p']),
+      expect.arrayContaining(['--print']),
       expect.any(Object),
     );
     // webhook was called
@@ -68,7 +74,7 @@ describe('postTaskDoneNotification', () => {
 
   it('CRIT-1: a malicious brief is wrapped inside a DATA block, not a free-floating instruction', async () => {
     makeHttpsMock();
-    makeSpawnMock('summary');
+    const proc = makeSpawnMock('summary');
 
     await postTaskDoneNotification({
       taskId: '42',
@@ -85,13 +91,11 @@ describe('postTaskDoneNotification', () => {
 
     // No --dangerously-skip-permissions anywhere in the argv.
     expect(args).not.toContain('--dangerously-skip-permissions');
+    // Prompt is not in argv — it travels via stdin only.
+    expect(args).not.toContain('-p');
 
-    const pIdx = args.indexOf('-p');
-    expect(pIdx).toBeGreaterThanOrEqual(0);
-    const prompt = args[pIdx + 1] as string;
-
-    // The brief sits inside delimited markers; the dangerous string never
-    // appears as a free-floating instruction outside of them.
+    // Verify the prompt was written to stdin with the DATA block wrapping.
+    const prompt = proc._stdinWrites.join('');
     expect(prompt).toContain('USER_BRIEF_BEGIN');
     expect(prompt).toContain('USER_BRIEF_END');
     const beforeBlock = prompt.split('USER_BRIEF_BEGIN')[0] ?? '';
@@ -180,6 +184,7 @@ describe('postTaskDoneNotification', () => {
     const proc = {
       stdout: { on: vi.fn() },
       stderr: { on: vi.fn() },
+      stdin: { write: vi.fn((_d: string, cb?: () => void) => cb?.()), end: vi.fn() },
       on: vi.fn((ev, cb) => { if (ev === 'error') cb(new Error('spawn fail')); }),
     };
     vi.mocked(cp.spawn).mockReturnValue(proc as unknown as ReturnType<typeof cp.spawn>);

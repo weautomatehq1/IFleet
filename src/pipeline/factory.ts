@@ -144,8 +144,28 @@ export const WORKER_CLAUDE_PERMISSIONS = {
     'Bash(find *)',
     // AUDIT-IFleet-bfa22380: pnpm install through the node_modules symlink
     // affects shared host node_modules, poisoning all concurrent tasks.
+    // AUDIT-IFleet-<new>: pnpm add/remove and npm install variants follow the
+    // same symlink and can run postinstall hooks with the daemon's full env.
     'Bash(pnpm install)',
     'Bash(pnpm install *)',
+    'Bash(pnpm add)',
+    'Bash(pnpm add *)',
+    'Bash(pnpm remove)',
+    'Bash(pnpm remove *)',
+    'Bash(pnpm link)',
+    'Bash(pnpm link *)',
+    'Bash(npm install)',
+    'Bash(npm install *)',
+    'Bash(npm add)',
+    'Bash(npm add *)',
+    'Bash(npm ci)',
+    'Bash(npm ci *)',
+    'Bash(npm link)',
+    'Bash(npm link *)',
+    'Bash(npm remove)',
+    'Bash(npm remove *)',
+    'Bash(npm uninstall)',
+    'Bash(npm uninstall *)',
     'Bash(sudo *)',
     'Bash(chmod *)',
     'Bash(chown *)',
@@ -481,16 +501,13 @@ export function buildWorkerPool(
       const model = mapModel(spec.model);
       let rateLimitHits = 0;
 
-      // AUDIT-IFleet-6b8a5e95: architect output is only trusted if it parses as
-      // valid JSON. A jailbroken architect that returns free-text injection
-      // payload will fail the JSON parse and have its output sandboxed as user
-      // data instead of treated as direct system instructions.
-      const isArchitectRole = opts.role === 'architect';
-      let architectOutputIsJson = false;
-      if (!isArchitectRole) {
-        try { JSON.parse(brief); architectOutputIsJson = true; } catch { /* not valid JSON */ }
-      }
-      const trustedBrief = !isArchitectRole && architectOutputIsJson;
+      // Briefs are always wrapped as user-data (USER_BRIEF_BEGIN/END) by
+      // wrapBriefAsData in claude.ts. The earlier JSON-parse guard here was
+      // dead code — architect output is Markdown, never JSON, so
+      // architectOutputIsJson was always false (AUDIT-IFleet-<new>).
+      // The actual sandbox is buildBrief/wrapBriefAsData; trustedBrief is
+      // always false so that path is explicitly never taken.
+      const trustedBrief = false;
       const workerHandle = adapter.spawn({
         taskId: `${opts.role}-${Date.now()}`,
         brief,

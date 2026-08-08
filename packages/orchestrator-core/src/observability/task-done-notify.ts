@@ -20,15 +20,13 @@ export function buildSummaryPrompt(brief: string, prUrl: string): string {
   return wrapBriefAsData(SUMMARY_INSTRUCTION(prUrl), brief);
 }
 
-export function buildSummaryArgs(prompt: string): string[] {
-  // The summariser does not write files and only needs to read the prompt
-  // it received. We deliberately omit `--dangerously-skip-permissions` and
-  // restrict tools to nothing — the summary is produced by the model
-  // itself, not by tool calls. If the prompt-injected brief later tries to
-  // invoke a tool, Claude has no permitted tool to run.
+export function buildSummaryArgs(): string[] {
+  // Prompt is sent via stdin (not as a CLI arg) to avoid process-list exposure
+  // of task brief content. We deliberately omit `--dangerously-skip-permissions`
+  // and restrict tools to nothing — the summary is produced by the model
+  // itself, not by tool calls.
   return [
-    '-p',
-    prompt,
+    '--print',
     '--permission-mode',
     'default',
     '--allowedTools',
@@ -39,13 +37,15 @@ export function buildSummaryArgs(prompt: string): string[] {
 function runClaude(claudePath: string, prompt: string): Promise<string> {
   return new Promise((resolve) => {
     let out = '';
-    const proc = spawn(claudePath, buildSummaryArgs(prompt), {
+    const proc = spawn(claudePath, buildSummaryArgs(), {
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: claudeChildEnv(),
     });
     proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
     proc.stderr.on('data', () => {});
     proc.on('close', () => resolve(out.trim()));
     proc.on('error', () => resolve(''));
+    proc.stdin.write(prompt, () => proc.stdin.end());
   });
 }
 

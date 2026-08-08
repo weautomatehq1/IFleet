@@ -46,15 +46,26 @@ interface FileDiff {
   deletedLines: number;
 }
 
-const REF_RE = /^[A-Za-z0-9._/-]+$/;
+// Positive allowlist: alphanumeric, dots, hyphens, underscores, forward-slash.
+// This rejects shell metacharacters (space, $, ;, (, ), etc.) as well as the
+// characters git itself rejects (~^:?*[\). Applied first, then additional git
+// ref-format checks for patterns the allowlist alone can't exclude (AUDIT-IFleet-<new>).
+const REF_ALLOWLIST = /^[A-Za-z0-9._\-/]+$/;
 
 function assertRef(label: string, ref: string): void {
-  if (typeof ref !== 'string' || ref.length === 0 || ref.length > 256) {
-    throw new Error(`fingerprint: ${label} must be a non-empty string ≤256 chars`);
+  if (typeof ref !== 'string' || ref.length === 0 || ref.length > 255) {
+    throw new Error(`fingerprint: ${label} must be a non-empty string ≤255 chars`);
   }
-  if (!REF_RE.test(ref)) {
+  if (!REF_ALLOWLIST.test(ref)) {
     throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
   }
+  // Additional git ref-format rules that the allowlist alone can't cover:
+  if (ref.startsWith('-')) throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
+  if (ref.includes('..')) throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
+  if (ref.endsWith('.lock') || ref.includes('.lock/')) throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
+  if (ref.endsWith('.') || ref.startsWith('.') || ref.includes('/.')) throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
+  if (ref.startsWith('/') || ref.endsWith('/') || ref.includes('//')) throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
+  if (ref.includes('@{') || ref === '@') throw new Error(`fingerprint: ${label} contains disallowed characters: ${ref}`);
 }
 
 /**

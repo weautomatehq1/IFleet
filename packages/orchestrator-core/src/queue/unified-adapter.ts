@@ -100,19 +100,18 @@ export class UnifiedQueueAdapter {
    * GitHub/Discord show "Cancelled" rather than "failed".)
    */
   async markCancelled(task: QueuedTask, reason: string): Promise<void> {
-    // Guard against overwriting terminal states (done/failed/blocked) without
-    // restricting to in_flight only — operators may cancel a pending task before
-    // dispatch (AUDIT-IFleet-b504d26d).
-    const current = this.store.getById(task.id);
-    if (!current) {
-      console.warn(`[unified-queue] markCancelled skipped for ${task.id} — task not found`);
+    // Use two conditional UPDATEs to avoid the TOCTOU race that the old
+    // read+check pattern had (AUDIT-IFleet-<new>). Try 'in_flight' first
+    // (most common path), then 'pending' (operator cancels before dispatch,
+    // AUDIT-IFleet-b504d26d). If both miss, the task is already terminal.
+    const meta = { reason, cancelled: true, completedAt: Date.now() };
+    const updated =
+      this.store.updateState(task.id, 'blocked', meta, 'in_flight') ||
+      this.store.updateState(task.id, 'blocked', meta, 'pending');
+    if (!updated) {
+      console.warn(`[unified-queue] markCancelled skipped for ${task.id} — already terminal`);
       return;
     }
-    if (current.state === 'done' || current.state === 'failed' || current.state === 'blocked') {
-      console.warn(`[unified-queue] markCancelled skipped for ${task.id} — already terminal (${current.state})`);
-      return;
-    }
-    this.store.updateState(task.id, 'blocked', { reason, cancelled: true, completedAt: Date.now() });
     try {
       await this.sourceFor(task).markCancelled(task, reason);
     } catch (err) {
@@ -125,7 +124,13 @@ export class UnifiedQueueAdapter {
   }
 
   async markBlocked(task: QueuedTask, capability: string): Promise<void> {
-    this.store.updateState(task.id, 'blocked', { capability });
+    // Conditional update prevents overwriting a terminal state set by a
+    // concurrent markCompleted/markFailed (AUDIT-IFleet-<new>).
+    const updated = this.store.updateState(task.id, 'blocked', { capability }, 'in_flight');
+    if (!updated) {
+      console.warn(`[unified-queue] markBlocked skipped for ${task.id} — task no longer in_flight`);
+      return;
+    }
     try {
       await this.sourceFor(task).markBlocked(task, capability);
     } catch (err) {

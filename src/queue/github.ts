@@ -485,6 +485,25 @@ export class GitHubQueue implements QueueAdapter {
     return this.repos.filter((r) => allow.has(`${r.owner}/${r.name}`));
   }
 
+  /**
+   * Fetch all open `auto:ship` candidates across all configured repos in a
+   * single pass (one API call per repo). Used by GitHubIssuesSource.drain()
+   * to avoid the O(N²) pickNext loop (AUDIT-IFleet-<new>).
+   */
+  async listAllCandidates(): Promise<QueuedTask[]> {
+    const all: QueuedTask[] = [];
+    for (const repo of this.repos) {
+      const issues = await this.listOpenAutoShip(repo);
+      for (const task of issues) {
+        if (task.labels.includes(LABEL_IN_FLIGHT)) continue;
+        if (task.labels.includes(LABEL_FAILED)) continue;
+        if (!isAuthorAllowed(repo, task.author)) continue;
+        all.push(task);
+      }
+    }
+    return all;
+  }
+
   private async listOpenAutoShip(repo: RepoRef): Promise<QueuedTask[]> {
     const issues = await this.octokit.paginate(this.octokit.issues.listForRepo, {
       owner: repo.owner,

@@ -144,21 +144,25 @@ export function wrapFactoryWithVerifierContext(
       } catch { /* missing worktree → resolver returns null, verifier skips */ }
       if (headSha) {
         try {
-          // baseRef='main' is safe: production worktrees are always created from main
-          // by buildWorkerPool (factory.ts:324 `git worktree add ... main`). AUDIT-IFleet-0c47bae9.
+          // Use the repo's configured defaultBranch (baseBranch) — worktrees
+          // may be created from non-main branches for repos where defaultBranch
+          // differs (AUDIT-IFleet-<new>). Falls back to 'main' for backward compat.
+          const baseRef = bootstrap.input.baseBranch ?? 'main';
           const fp = await computeStructuralFingerprint({
             repoRoot: bootstrap.input.worktreePath,
-            baseRef: 'main',
+            baseRef,
             headRef: headSha,
           });
           registry.setFingerprint(taskId, fp.sha256);
         } catch (err) {
+          const baseRef = bootstrap.input.baseBranch ?? 'main';
           console.warn('[daemon] teardown-time computeStructuralFingerprint failed:', err);
-          console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=main, headSha=' + headSha + ')');
+          console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=' + baseRef + ', headSha=' + headSha + ')');
           registry.setFingerprint(taskId, null);
         }
       } else {
-        console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=main, headSha=unknown)');
+        const baseRef = bootstrap.input.baseBranch ?? 'main';
+        console.warn('[daemon] teardown-time fingerprint=null for task ' + taskId + ' (baseRef=' + baseRef + ', headSha=unknown)');
         registry.setFingerprint(taskId, null);
       }
       if (origTeardown) await origTeardown(result);

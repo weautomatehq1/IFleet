@@ -16,20 +16,12 @@ export class GitHubIssuesSource implements TaskSource {
   constructor(private readonly queue: GitHubQueue) {}
 
   async drain(store: TaskStore): Promise<number> {
+    // Fetch all open candidates in one pass (one API call per repo) rather than
+    // calling pickNext in a loop, which made O(N) GitHub API calls per drain
+    // cycle and exhausted the rate limit on non-trivial queues (AUDIT-IFleet-<new>).
+    const candidates = await this.queue.listAllCandidates();
     let inserted = 0;
-    // GitHubQueue#pickNext returns the top candidate; we want *all* open
-    // candidates, but listOpenAutoShip is private. We reach in via the public
-    // pickNext + excludeIds loop until exhausted. Cheap because pickNext only
-    // does N issues worth of work and the unified store already de-dupes.
-    const exclude = new Set<string>();
-    const MAX_DRAIN = 200;
-    let drainCount = 0;
-    for (;;) {
-      if (drainCount++ >= MAX_DRAIN) break;
-      const next = await this.queue.pickNext({ excludeIds: Array.from(exclude) });
-      if (!next) break;
-      if (exclude.has(next.id)) continue;
-      exclude.add(next.id);
+    for (const next of candidates) {
       const unified = legacyToUnified(next);
       const res = store.insert(unified);
       if (res.inserted) inserted++;

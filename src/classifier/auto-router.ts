@@ -12,7 +12,7 @@
 //    decisions for human review without re-throwing.
 
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
@@ -304,35 +304,41 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
-const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
+// Prompt is written to the child's stdin to avoid process-list exposure.
+// Earlier attempts with execFile + stdin failed because the write wasn't
+// flushed before claude's stdin-wait window closed; using spawn + explicit
+// stdin.end() resolves the race. The AbortSignal wired to the caller's
+// AbortController handles the timeout budget.
+const defaultHaikuCall: HaikuCall = (prompt, { model, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
+    const child = spawn(
       'claude',
-      ['--print', prompt, '--model', model],
+      ['--print', '--model', model],
       {
         signal,
-        timeout: timeoutMs,
-        maxBuffer: HAIKU_MAX_OUTPUT_CHARS * 2,
+        stdio: ['pipe', 'pipe', 'pipe'],
         // Allowlist env passed to the child — keeps GITHUB_TOKEN /
         // DISCORD_BOT_TOKEN / IFLEET_HMAC_SECRET out of a prompt-injected
-        // child's reach. Matches src/observability/task-done-notify.ts.
+        // child's reach.
         env: claudeChildEnv(),
       },
-      (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout.toString());
-      },
     );
+
+    let stdout = '';
+    child.stdout.on('data', (d: Buffer) => {
+      stdout += d.toString();
+      if (stdout.length > HAIKU_MAX_OUTPUT_CHARS * 2) child.kill();
+    });
+    child.on('error', reject);
+    child.on('close', (code, sig) => {
+      if (sig) return reject(new Error(`claude killed by signal ${sig}`));
+      if (code !== 0) return reject(new Error(`claude exited with code ${code}`));
+      resolve(stdout);
+    });
+    child.stdin.write(prompt, (err) => {
+      if (err) return reject(err);
+      child.stdin.end();
+    });
   });
 
 export const _internal = {
