@@ -402,11 +402,14 @@ export function markFindingsClosed(
     changed++;
   }
   if (changed === 0) return 0;
-  writeAuditIndex(indexPath, index);
 
   const closedDir = dirname(indexPath);
   const closedPath = join(closedDir, 'closed.json');
+  // AUDIT-IFleet-n4o5p6q7: hold the lock across both writes to eliminate the
+  // crash window between writeAuditIndex and the closed.json update. Mirrors
+  // the atomic pattern in markFindingClosed (singular).
   withClosedJsonLock(closedDir, () => {
+    writeAuditIndex(indexPath, index);
     let cdata: ClosedIndex = { closures: [] };
     if (existsSync(closedPath)) {
       try {
