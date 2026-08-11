@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-08-05T04:30:15Z",
+  "last_updated": "2026-08-11T04:00:00Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -1109,13 +1109,29 @@
       "opened_at": "2026-08-05T04:30:15Z",
       "closed_at": null,
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-n4o5p6q7",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "markFindingsClosed writes index.json outside withClosedJsonLock — crash window leaves index/closed.json inconsistent",
+      "detail": "markFindingsClosed (batch) calls writeAuditIndex before acquiring withClosedJsonLock, creating a crash window between the two writes. If the process dies after writeAuditIndex but before the withClosedJsonLock block, index.json shows findings as closed/fixed while closed.json has no corresponding records. The singular markFindingClosed correctly holds the lock across both writes (AUDIT-IFleet-d651330f). Batch PR reconciliation during audit-ritual can corrupt the audit trail: findings appear closed in the index but regression detection based on closed.json will not find them.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/audit-runner.ts"
+      ],
+      "fix_sketch": "Move writeAuditIndex(indexPath, index) inside the withClosedJsonLock callback to be the first statement, eliminating the crash window between the two writes.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-11T04:00:00Z",
+      "closed_at": "2026-08-11T04:00:00Z",
+      "closing_pr": null
     }
   ],
   "by_severity": {
     "CRITICAL": 8,
-    "IMPORTANT": 35,
+    "IMPORTANT": 36,
     "COSMETIC": 10
   },
-  "open_count": 1,
-  "fixed_count": 52
+  "open_count": 3,
+  "fixed_count": 53
 }
