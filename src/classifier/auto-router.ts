@@ -12,7 +12,7 @@
 //    decisions for human review without re-throwing.
 
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
@@ -304,35 +304,42 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
+// Prompt is piped to the child's stdin rather than passed as an argv token
+// (AUDIT-IFleet-824d213b). Earlier argv delivery exposed the full router
+// prompt — including the user-supplied task brief — to any local user via
+// /proc/<pid>/cmdline and ps(1). The previous stdin attempt raced claude's
+// stdin-wait window; writing and immediately closing stdin before the OS
+// schedules the child's wait-loop removes that race.
 const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
+    const child = spawn(
       'claude',
-      ['--print', prompt, '--model', model],
+      ['--print', '--model', model],
       {
         signal,
         timeout: timeoutMs,
-        maxBuffer: HAIKU_MAX_OUTPUT_CHARS * 2,
         // Allowlist env passed to the child — keeps GITHUB_TOKEN /
         // DISCORD_BOT_TOKEN / IFLEET_HMAC_SECRET out of a prompt-injected
         // child's reach. Matches src/observability/task-done-notify.ts.
         env: claudeChildEnv(),
-      },
-      (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout.toString());
+        stdio: ['pipe', 'pipe', 'pipe'],
       },
     );
+    const chunks: Buffer[] = [];
+    child.stdout.on('data', (data: Buffer) => { chunks.push(data); });
+    child.on('error', reject);
+    child.on('close', (code: number | null) => {
+      if (code !== 0) return reject(new Error(`claude exited with code ${code}`));
+      resolve(
+        Buffer.concat(chunks).toString('utf8').slice(0, HAIKU_MAX_OUTPUT_CHARS * 2),
+      );
+    });
+    // Write the prompt to stdin then close the pipe to signal EOF immediately.
+    // The synchronous scheduling of write + end means the data is in the OS
+    // pipe buffer before claude's stdin-wait window can expire.
+    child.stdin.write(prompt, 'utf8', () => {
+      child.stdin.end();
+    });
   });
 
 export const _internal = {
