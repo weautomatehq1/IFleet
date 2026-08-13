@@ -1,0 +1,40 @@
+{
+  "audit_id": "audit-20260813T040000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-13T04:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-7a8b384c",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Empty fingerprint acts as dedup key in appendToClosedJson, silently dropping multi-zero-fingerprint closures",
+      "detail": "In audit-runner.ts, appendToClosedJson and appendClosedRecordUnlocked deduplicate closed.json entries by fingerprint equality. When multiple findings have fingerprint='' (the default when no fingerprint is computed), only the first one is appended — all subsequent ones are silently dropped. The same issue exists in markFindingsClosed's in-memory dedup and closed.json write. Findings without fingerprints can never be tracked for regression detection anyway, but the data loss means closed.json does not reflect all closures.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/audit-runner.ts"
+      ],
+      "fix_sketch": "Guard the fingerprint dedup check with a non-empty fingerprint condition: only skip appending if `record.fingerprint !== '' && alreadyRecorded`. Same fix needed in markFindingsClosed for both the in-memory alreadyQueued check and the existingFingerprints Set check.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-4017e2c6",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "listActiveSprints in dashboard/server.ts fetches all sprint rows without a LIMIT",
+      "detail": "The SQL query in listActiveSprints uses ORDER BY updated_at DESC with no LIMIT clause, loading every sprint row from the state DB into memory at once. On a long-running deployment with thousands of completed sprints, this could load megabytes of data per request. The dashboard's /api/sprints/active endpoint then filters in JS, which means the unbounded DB read happens on every poll cycle regardless of how many active sprints exist.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Add LIMIT 500 (or a configurable cap) to the SQL query. Since the endpoint only shows active sprints (post-filter), 500 rows is a generous cap that covers any realistic active sprint count while bounding the query cost.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}
