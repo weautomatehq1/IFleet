@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-08-11T04:00:00Z",
+  "last_updated": "2026-08-12T05:33:00Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -624,9 +624,9 @@
       ],
       "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use stdio: ['pipe','pipe','pipe'] and child.stdin.write(prompt) to avoid the process-list exposure. The comment claiming stdin was unreliable refers to a race without explicit flush; writing synchronously and then closing stdin resolves it.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-08-02T04:18:48Z",
-      "closed_at": null,
+      "closed_at": "2026-08-12T05:33:00Z",
       "closing_pr": null
     },
     {
@@ -1132,6 +1132,6 @@
     "IMPORTANT": 36,
     "COSMETIC": 10
   },
-  "open_count": 3,
-  "fixed_count": 53
+  "open_count": 2,
+  "fixed_count": 54
 }
