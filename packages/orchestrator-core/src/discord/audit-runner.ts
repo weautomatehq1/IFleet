@@ -269,7 +269,9 @@ export function appendToClosedJson(indexPath: string, finding: AuditFinding): vo
     // Idempotent: skip if this fingerprint is already recorded.
     // Cap: if closures grows beyond 10 000 entries, consider archiving older records.
     // For now we rely on fingerprint dedup to keep growth bounded.
-    const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+    // Guard: empty string is the fallback for findings with no fingerprint field —
+    // do not dedup across '' entries or distinct findings all collide on the same key.
+    const alreadyRecorded = record.fingerprint !== '' && data.closures.some((c) => c.fingerprint === record.fingerprint);
     if (!alreadyRecorded) {
       data.closures.push(record);
     }
@@ -302,7 +304,7 @@ function appendClosedRecordUnlocked(closedDir: string, finding: AuditFinding): v
     closing_pr: finding.closing_pr ?? null,
     status: finding.status,
   };
-  const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+  const alreadyRecorded = record.fingerprint !== '' && data.closures.some((c) => c.fingerprint === record.fingerprint);
   if (!alreadyRecorded) {
     data.closures.push(record);
   }
@@ -389,7 +391,7 @@ export function markFindingsClosed(
     finding.status = status;
     finding.closing_pr = prUrl;
     finding.closed_at = closedAt ?? now;
-    const alreadyQueued = records.some((r) => r.fingerprint === finding.fingerprint);
+    const alreadyQueued = finding.fingerprint !== '' && records.some((r) => r.fingerprint === finding.fingerprint);
     if (!alreadyQueued) {
       records.push({
         fingerprint: finding.fingerprint,
@@ -421,7 +423,7 @@ export function markFindingsClosed(
     }
     const existingFingerprints = new Set(cdata.closures.map((c) => c.fingerprint));
     for (const r of records) {
-      if (!existingFingerprints.has(r.fingerprint)) {
+      if (r.fingerprint === '' || !existingFingerprints.has(r.fingerprint)) {
         cdata.closures.push(r);
         existingFingerprints.add(r.fingerprint);
       }

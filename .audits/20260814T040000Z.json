@@ -1,0 +1,31 @@
+{
+  "repo": "IFleet",
+  "scanned_at": "2026-08-14T04:00:00Z",
+  "audit_model": "claude-sonnet-4-6",
+  "rubric_version": "1",
+  "trigger": "nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-31e0dbfe",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Empty fingerprint collides all fingerprint-less findings into one closed.json slot",
+      "detail": "coerceFinding() falls back to fingerprint: '' when the field is missing or non-string. appendToClosedJson, appendClosedRecordUnlocked, and the batch path in markFindingsClosed all use fingerprint equality for deduplication without guarding against the empty-string sentinel. Multiple distinct findings with fingerprint '' each collide: only the first is written to closed.json, so subsequent closures of fingerprint-less findings are silently lost — regression detection based on closed.json will never see them.",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/audit-runner.ts"
+      ],
+      "fix_sketch": "Guard each dedup check with `record.fingerprint !== ''` (or `finding.fingerprint !== ''` / `r.fingerprint === ''`) so empty-fingerprint findings always append rather than colliding under the shared '' key.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-14T04:00:00Z",
+      "closed_at": "2026-08-14T04:00:00Z",
+      "closing_pr": null
+    }
+  ],
+  "summary": {
+    "new": 1,
+    "carried_over_open": 3,
+    "fixed_this_run": 1,
+    "total_open_after": 3
+  }
+}
