@@ -81,14 +81,15 @@ interface BudgetRow {
   updated_at: number;
 }
 
-export function listActiveSprints(stateDb: Database.Database) {
+export function listActiveSprints(stateDb: Database.Database, limit = 500) {
   const rows = stateDb
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
-        ORDER BY updated_at DESC`,
+        ORDER BY updated_at DESC
+        LIMIT @limit`,
     )
-    .all() as SprintRow[];
+    .all({ limit }) as SprintRow[];
   return rows
     .map((r) => {
       let kind = 'unknown';

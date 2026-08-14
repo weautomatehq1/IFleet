@@ -267,9 +267,15 @@ export function appendToClosedJson(indexPath: string, finding: AuditFinding): vo
       status: finding.status,
     };
     // Idempotent: skip if this fingerprint is already recorded.
+    // Guard: only use fingerprint as a dedup key when it is non-empty — an empty
+    // fingerprint is the default for findings without content hashes and must not
+    // act as a shared dedup key that silently drops all subsequent zero-fingerprint
+    // closures (AUDIT-IFleet-7a8b384c).
     // Cap: if closures grows beyond 10 000 entries, consider archiving older records.
     // For now we rely on fingerprint dedup to keep growth bounded.
-    const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+    const alreadyRecorded =
+      record.fingerprint !== '' &&
+      data.closures.some((c) => c.fingerprint === record.fingerprint);
     if (!alreadyRecorded) {
       data.closures.push(record);
     }
@@ -302,7 +308,9 @@ function appendClosedRecordUnlocked(closedDir: string, finding: AuditFinding): v
     closing_pr: finding.closing_pr ?? null,
     status: finding.status,
   };
-  const alreadyRecorded = data.closures.some((c) => c.fingerprint === record.fingerprint);
+  const alreadyRecorded =
+    record.fingerprint !== '' &&
+    data.closures.some((c) => c.fingerprint === record.fingerprint);
   if (!alreadyRecorded) {
     data.closures.push(record);
   }
@@ -389,7 +397,9 @@ export function markFindingsClosed(
     finding.status = status;
     finding.closing_pr = prUrl;
     finding.closed_at = closedAt ?? now;
-    const alreadyQueued = records.some((r) => r.fingerprint === finding.fingerprint);
+    const alreadyQueued =
+      finding.fingerprint !== '' &&
+      records.some((r) => r.fingerprint === finding.fingerprint);
     if (!alreadyQueued) {
       records.push({
         fingerprint: finding.fingerprint,
@@ -419,11 +429,13 @@ export function markFindingsClosed(
         cdata = { closures: [] };
       }
     }
-    const existingFingerprints = new Set(cdata.closures.map((c) => c.fingerprint));
+    const existingFingerprints = new Set(
+      cdata.closures.filter((c) => c.fingerprint !== '').map((c) => c.fingerprint),
+    );
     for (const r of records) {
-      if (!existingFingerprints.has(r.fingerprint)) {
+      if (r.fingerprint === '' || !existingFingerprints.has(r.fingerprint)) {
         cdata.closures.push(r);
-        existingFingerprints.add(r.fingerprint);
+        if (r.fingerprint !== '') existingFingerprints.add(r.fingerprint);
       }
     }
     const tmp = join(closedDir, `.closed.json.tmp-${process.pid}-${Date.now()}`);
