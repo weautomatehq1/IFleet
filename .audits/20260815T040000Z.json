@@ -1,0 +1,7 @@
+{
+  "audit_id": "audit-20260815T040000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-15T04:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": []
+}
