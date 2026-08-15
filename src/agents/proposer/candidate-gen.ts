@@ -92,20 +92,30 @@ export class AnthropicCompleter implements LlmCompleter {
     model: string;
     maxTokens: number;
   }): Promise<string> {
-    const resp = await this.fetchImpl(ANTHROPIC_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: opts.model,
-        max_tokens: opts.maxTokens,
-        system: opts.systemPrompt,
-        messages: [{ role: 'user', content: opts.userPrompt }],
-      }),
-    });
+    // AUDIT-IFleet-9e1c5a3f: without a signal the fetch can hang forever if the
+    // Anthropic endpoint stalls — proposer cron would block until PM2 restarts it.
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(() => controller.abort(), 90_000);
+    let resp: Response;
+    try {
+      resp = await this.fetchImpl(ANTHROPIC_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: opts.model,
+          max_tokens: opts.maxTokens,
+          system: opts.systemPrompt,
+          messages: [{ role: 'user', content: opts.userPrompt }],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(fetchTimeout);
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       throw new Error(`Anthropic ${resp.status}: ${text.slice(0, 400)}`);

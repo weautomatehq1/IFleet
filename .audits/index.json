@@ -1157,14 +1157,110 @@
       "opened_at": "2026-08-13T04:00:00Z",
       "closed_at": "2026-08-13T04:15:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-3b8d4f6a",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "markFindingsClosed reads index.json before acquiring withClosedJsonLock — TOCTOU on concurrent nightly runs",
+      "detail": "The batch variant markFindingsClosed() called readAuditIndex(indexPath) at line 386 before entering the withClosedJsonLock critical section at line 421. A concurrent nightly audit run could write to index.json after the read and before the lock-guarded write, causing the batch closure to overwrite the concurrent write with stale data. The singular markFindingClosed() has the same pattern (read outside lock) but was noted as accepted in AUDIT-IFleet-d651330f. This finding covers the missed batch case where the TOCTOU window is wider (loop over N findings + closed.json read before write).",
+      "file_globs": [
+        "packages/orchestrator-core/src/discord/audit-runner.ts"
+      ],
+      "fix_sketch": "Move readAuditIndex(indexPath) inside the withClosedJsonLock callback as its first statement. Restructure so all mutation and both writes happen under the same lock. FIXED in this audit run.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": "2026-08-15T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-9e1c5a3f",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "AnthropicCompleter.complete() has no timeout — proposer cron can hang indefinitely on Anthropic stall",
+      "detail": "AnthropicCompleter.complete() in src/agents/proposer/candidate-gen.ts:95 calls this.fetchImpl(ANTHROPIC_ENDPOINT, ...) with no AbortSignal. If the Anthropic endpoint stalls mid-response or fails to send headers, the fetch awaits forever. The proposer runs on a cron tick with no external watchdog, so a single stalled call blocks all subsequent candidate generation until PM2 decides to restart the process.",
+      "file_globs": [
+        "src/agents/proposer/candidate-gen.ts"
+      ],
+      "fix_sketch": "Add AbortController with 90s timeout: const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 90_000); pass signal: controller.signal to fetchImpl; call clearTimeout in a finally block. FIXED in this audit run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": "2026-08-15T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-2d7b4e8c",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "WorkerRegistry.attachWatcher silent catch swallows fd-limit and EPERM errors invisibly",
+      "detail": "The catch block in WorkerRegistry.attachWatcher() at src/orchestrator/workers.ts:113 contains only a comment 'file may not exist yet; skip'. fs.watch can throw for reasons other than missing files — EMFILE (fd limit exhausted under high sprint load) or EPERM (permission denied). These errors are silently swallowed, leaving the worker registry unmonitored with no trace in PM2 logs. Hot-reload silently stops working.",
+      "file_globs": [
+        "src/orchestrator/workers.ts"
+      ],
+      "fix_sketch": "Change catch {} to catch (err) { console.warn('[workers] config watcher failed to start:', err); } so unexpected OS-level failures appear in PM2 logs. FIXED in this audit run.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": "2026-08-15T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7f2a9c1e",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "recordRateLimitHeaders emits ratelimit.observed events with '' as SprintId — second SprintId lie",
+      "detail": "In src/orchestrator/index.ts:225, recordRateLimitHeaders() emits a ratelimit.observed event with sprintId: '' as SprintId. Rate-limit observations are not tied to any sprint — they reflect worker-level headers. The empty-string cast is the same type lie tracked in AUDIT-IFleet-l2m3n4o5 (daemon.ts:137) but affects a different code path. Events with empty sprintId stored in the orchestrator event log will never match any sprint row in downstream queries, silently orphaning all rate-limit telemetry.",
+      "file_globs": [
+        "src/orchestrator/index.ts"
+      ],
+      "fix_sketch": "Requires changing sprintId in OrchestratorEvent to SprintId | undefined (same root fix as AUDIT-IFleet-l2m3n4o5). In the interim, skip storing ratelimit.observed events in the sprint event log — route them to a separate worker-level event store or drop them. Do not fix in isolation from AUDIT-IFleet-l2m3n4o5.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-6f3a1d9b",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "markCompleted receives empty string prUrl when no PR was created — conflates no-PR with missing URL",
+      "detail": "In src/orchestrator/handlers/sprint-bridge.ts:225, void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens) passes an empty string when lastPrUrl is null (i.e. the sprint completed without opening a PR). The empty string is indistinguishable from a PR URL that was not captured due to a bug. Downstream audit-ritual reconciliation and PR decision records cannot distinguish 'task done, no PR' from 'task done, PR URL lost'.",
+      "file_globs": [
+        "src/orchestrator/handlers/sprint-bridge.ts"
+      ],
+      "fix_sketch": "Change the interface to accept string | null and thread null through markCompleted. Use null to mean 'no PR was opened', empty string to mean 'URL unknown/lost'. Update TaskSource implementations to handle null cleanly.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8c5e2a7d",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listActiveSprints LIMIT 500 applied before terminal-kind JS filter — active sprints can be hidden",
+      "detail": "dashboard/server.ts:87–115: the SQL query fetches at most 500 sprint rows ordered by updated_at DESC, then filters out terminal kinds (failed, completed, cancelled) in JavaScript. On a long-running deployment where the 500 most-recently-updated sprints are all terminated, truly active sprints with older update timestamps are silently excluded from the dashboard. This regression was introduced by the AUDIT-IFleet-4017e2c6 fix (2026-08-13) which added LIMIT 500.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Filter terminal kinds in SQL using json_extract(state_json,'$.kind'): SELECT * FROM (SELECT id, mode, goal, state_json, created_at, updated_at, json_extract(state_json,'$.kind') AS kind FROM sprints) WHERE kind NOT IN ('failed','completed','cancelled') ORDER BY updated_at DESC LIMIT @limit.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
     }
   ],
   "by_severity": {
     "CRITICAL": 0,
-    "IMPORTANT": 3,
+    "IMPORTANT": 6,
     "COSMETIC": 0
   },
-  "open_count": 3,
-  "fixed_count": 53,
-  "open_findings": 3
+  "open_count": 6,
+  "fixed_count": 56,
+  "open_findings": 6
 }
