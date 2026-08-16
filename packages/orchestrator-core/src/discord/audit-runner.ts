@@ -383,42 +383,43 @@ export function markFindingsClosed(
     status?: 'fixed' | 'closed';
   }>,
 ): number {
-  const index = readAuditIndex(indexPath);
-  if (!index) {
-    console.warn(`[audit-fix] cannot batch-close: no audit index at ${indexPath}`);
-    return 0;
-  }
-  const now = new Date().toISOString();
-  const records: ClosureRecord[] = [];
   let changed = 0;
-  for (const { findingId, prUrl, closedAt, status = 'closed' } of closures) {
-    const finding = index.findings.find((f) => f.id === findingId);
-    if (!finding || isTerminalAuditStatus(finding.status)) continue;
-    finding.status = status;
-    finding.closing_pr = prUrl;
-    finding.closed_at = closedAt ?? now;
-    const alreadyQueued =
-      finding.fingerprint !== '' &&
-      records.some((r) => r.fingerprint === finding.fingerprint);
-    if (!alreadyQueued) {
-      records.push({
-        fingerprint: finding.fingerprint,
-        finding_id: findingId,
-        closed_at: finding.closed_at,
-        closing_pr: prUrl,
-        status: finding.status,
-      });
-    }
-    changed++;
-  }
-  if (changed === 0) return 0;
-
   const closedDir = dirname(indexPath);
   const closedPath = join(closedDir, 'closed.json');
-  // AUDIT-IFleet-n4o5p6q7: hold the lock across both writes to eliminate the
-  // crash window between writeAuditIndex and the closed.json update. Mirrors
-  // the atomic pattern in markFindingClosed (singular).
+  // AUDIT-IFleet-n4o5p6q7 / AUDIT-IFleet-3b8d4f6a: hold the lock across the
+  // read AND both writes — previously the readAuditIndex call happened outside
+  // the lock, creating a TOCTOU window where a concurrent nightly scan could
+  // mutate index.json between the read and the write. Mirrors the atomic
+  // pattern in markFindingClosed (singular).
   withClosedJsonLock(closedDir, () => {
+    const index = readAuditIndex(indexPath);
+    if (!index) {
+      console.warn(`[audit-fix] cannot batch-close: no audit index at ${indexPath}`);
+      return;
+    }
+    const now = new Date().toISOString();
+    const records: ClosureRecord[] = [];
+    for (const { findingId, prUrl, closedAt, status = 'closed' } of closures) {
+      const finding = index.findings.find((f) => f.id === findingId);
+      if (!finding || isTerminalAuditStatus(finding.status)) continue;
+      finding.status = status;
+      finding.closing_pr = prUrl;
+      finding.closed_at = closedAt ?? now;
+      const alreadyQueued =
+        finding.fingerprint !== '' &&
+        records.some((r) => r.fingerprint === finding.fingerprint);
+      if (!alreadyQueued) {
+        records.push({
+          fingerprint: finding.fingerprint,
+          finding_id: findingId,
+          closed_at: finding.closed_at,
+          closing_pr: prUrl,
+          status: finding.status,
+        });
+      }
+      changed++;
+    }
+    if (changed === 0) return;
     writeAuditIndex(indexPath, index);
     let cdata: ClosedIndex = { closures: [] };
     if (existsSync(closedPath)) {
