@@ -12,7 +12,7 @@
 //    decisions for human review without re-throwing.
 
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
@@ -304,35 +304,62 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
+// Prompt is written to stdin rather than passed as an argv argument, to avoid
+// exposing task brief content (which may contain proprietary business context)
+// on the process list (/proc/<pid>/cmdline, ps aux). The stdin pipe is closed
+// synchronously before the child's read loop starts, which avoids the
+// "no stdin data received in 3s" warning that affected earlier attempts.
 const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
+    const proc = spawn(
       'claude',
-      ['--print', prompt, '--model', model],
+      ['--print', '--model', model],
       {
         signal,
-        timeout: timeoutMs,
-        maxBuffer: HAIKU_MAX_OUTPUT_CHARS * 2,
         // Allowlist env passed to the child — keeps GITHUB_TOKEN /
         // DISCORD_BOT_TOKEN / IFLEET_HMAC_SECRET out of a prompt-injected
-        // child's reach. Matches src/observability/task-done-notify.ts.
+        // child's reach.
         env: claudeChildEnv(),
-      },
-      (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout.toString());
+        stdio: ['pipe', 'pipe', 'pipe'],
       },
     );
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const timer = timeoutMs
+      ? setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            proc.kill();
+            reject(new Error(`claude haiku call timed out after ${timeoutMs}ms`));
+          }
+        }, timeoutMs)
+      : undefined;
+
+    proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+    proc.on('error', (err) => {
+      if (!settled) { settled = true; if (timer) clearTimeout(timer); reject(err); }
+    });
+
+    proc.on('close', (code) => {
+      if (!settled) {
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (code !== 0) {
+          reject(new Error(`claude exited ${code}: ${stderr.slice(0, 200)}`));
+        } else {
+          resolve(stdout);
+        }
+      }
+    });
+
+    // Write prompt synchronously then close stdin so the child can start immediately.
+    proc.stdin.write(prompt, 'utf8');
+    proc.stdin.end();
   });
 
 export const _internal = {

@@ -1,0 +1,26 @@
+{
+  "audit_id": "audit-20260816T040000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-16T04:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-824d213b",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Task brief passed as argv to claude subprocess — visible on process list",
+      "detail": "defaultHaikuCall in auto-router.ts passed the full router prompt (which includes the user-supplied task brief) as a positional CLI argument after --print. On Linux this is visible to all local users via /proc/<pid>/cmdline and ps aux. Task briefs routinely contain proprietary business context and repo details that should not be world-readable on a shared VPS.",
+      "file_globs": [
+        "src/classifier/auto-router.ts"
+      ],
+      "fix_sketch": "Changed from execFile with argv prompt to spawn with stdin piping (stdio: ['pipe','pipe','pipe']). Prompt written to child.stdin and stdin closed synchronously before the child's read loop starts, avoiding the no-stdin-data warning.",
+      "parallel_safe": true,
+      "fingerprint": "824d213b",
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-16T04:00:00Z",
+      "closing_pr": null,
+      "fix_summary": "Replaced execFile argv-based prompt passing with spawn + stdin piping in defaultHaikuCall (src/classifier/auto-router.ts). Import changed from execFile to spawn; prompt now written to proc.stdin and stdin closed synchronously. All 969 tests pass; typecheck and lint clean. (AUDIT-IFleet-824d213b)"
+    }
+  ]
+}
