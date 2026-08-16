@@ -110,8 +110,10 @@ export class WorkerRegistry {
           if (this.onReload) this.onReload(this.workers);
         }, 100);
       });
-    } catch {
-      // file may not exist yet; skip
+    } catch (err) {
+      // AUDIT-IFleet-2d7b4e8c: log unexpected watcher failures (fd-limit, EPERM)
+      // so they're visible in PM2 logs rather than silently swallowed.
+      console.warn('[workers] config watcher failed to start:', err);
     }
   }
 
