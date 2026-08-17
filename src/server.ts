@@ -32,6 +32,7 @@ import { FileChannelRouter } from '@wahq/orchestrator-core/repos/router';
 import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
 import type { ChannelRouter } from '@wahq/orchestrator-core/contracts/channel-router';
 import type { DiscordOut } from '@wahq/orchestrator-core/contracts/discord-out';
+import { parsePort } from './utils/env.js';
 
 export interface ServerDeps {
   /** Optional — defaults to an open TaskStore on IFLEET_STATE_DIR. */
@@ -56,7 +57,9 @@ export async function startServer(deps: ServerDeps = {}): Promise<RunningServer>
   const secret = env['IFLEET_HMAC_SECRET'];
   if (!secret) throw new Error('IFLEET_HMAC_SECRET is required');
 
-  const port = Number(env['CONTROL_PLANE_PORT'] ?? 3001);
+  // parsePort throws on NaN/out-of-range — Number() alone would silently
+  // produce NaN, causing Node to bind on a random ephemeral port. (AUDIT-IFleet-e7a23f9c)
+  const port = parsePort(env['CONTROL_PLANE_PORT'], 3001);
   const store = deps.store ?? new TaskStore(
     env['IFLEET_STATE_DIR'] ? join(env['IFLEET_STATE_DIR'], 'tasks.db') : defaultTasksDbPath(),
     { extensions: IFLEET_STORE_EXTENSIONS },
