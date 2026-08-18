@@ -155,7 +155,10 @@ export async function dbUpdateFindingStatus(
      WHERE id = $1${terminalGuard}`,
     params,
   );
-  if (result.rowCount === 0) {
+  // rowCount is typed as number | null (pg returns null for some statement types);
+  // guard against both null and 0 so a protocol edge case is not silently treated
+  // as success. (AUDIT-IFleet-b4c7d2e1)
+  if (!result.rowCount) {
     console.warn(`[audit-store] dbUpdateFindingStatus: finding ${id} not found — no rows updated`);
     return false;
   }

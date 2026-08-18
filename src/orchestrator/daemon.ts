@@ -27,7 +27,7 @@ import { IFLEET_STORE_EXTENSIONS } from '../agents/bandit/store-extensions.js';
 import type { QueueAdapter } from '@wahq/orchestrator-core/queue/types';
 import { UnifiedQueueAdapter } from '@wahq/orchestrator-core/queue/unified-adapter';
 import { FileChannelRouter } from '@wahq/orchestrator-core/repos/router';
-import { requireEnv } from '../utils/env.js';
+import { parsePort, requireEnv } from '../utils/env.js';
 import type { SprintId, TaskId } from './types.js';
 import { Orchestrator } from './index.js';
 import { ControlPlaneApprovalGate } from './approval-gate.js';
@@ -55,7 +55,10 @@ async function main(): Promise<void> {
   const hmacSecret = requireEnv('IFLEET_HMAC_SECRET');
   const discordToken = requireEnv('DISCORD_BOT_TOKEN');
   const githubToken = requireEnv('GITHUB_TOKEN');
-  const port = Number(process.env['CONTROL_PLANE_PORT'] ?? DEFAULT_DAEMON_PORT);
+  // parsePort throws on NaN/out-of-range — Number() alone would silently
+  // produce NaN, causing Node to bind on a random ephemeral port and making
+  // the controlPlaneUrl 'http://127.0.0.1:NaN/control' unreachable. (AUDIT-IFleet-e7a23f9c)
+  const port = parsePort(process.env['CONTROL_PLANE_PORT'], DEFAULT_DAEMON_PORT);
 
   console.warn('[daemon] booting IFleet daemon');
 

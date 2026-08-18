@@ -11,9 +11,12 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { parsePort } from '../src/utils/env.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env['DASHBOARD_PORT'] ?? 3737);
+// parsePort throws on NaN/out-of-range values — Number() alone silently produces
+// NaN, causing listen() to bind on a random ephemeral port. (AUDIT-IFleet-e7a23f9c)
+const PORT = parsePort(process.env['DASHBOARD_PORT'], 3737);
 const TASKS_DB =
   process.env['DASHBOARD_TASKS_DB'] ??
   join(process.env['IFLEET_STATE_DIR'] ?? join(process.cwd(), 'state'), 'tasks.db');
@@ -82,10 +85,15 @@ interface BudgetRow {
 }
 
 export function listActiveSprints(stateDb: Database.Database, limit = 500) {
+  // Filter terminal kinds in SQL so the LIMIT applies only to active sprints
+  // (AUDIT-IFleet-8c5e2a7d: prior code fetched 500 rows and then JS-filtered,
+  // so active sprints older than position 500 were silently hidden).
+  const terminalList = [...TERMINAL_SPRINT_KINDS].map((k) => `'${k}'`).join(', ');
   const rows = stateDb
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
+        WHERE json_extract(state_json, '$.kind') NOT IN (${terminalList})
         ORDER BY updated_at DESC
         LIMIT @limit`,
     )

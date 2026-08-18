@@ -80,6 +80,7 @@ const HAIKU_MAX_OUTPUT_CHARS = 2_000; // cap at 200 tokens × ~10 chars/token
  * persisting indefinitely across sprint submissions. (AUDIT-IFleet-4de85929)
  */
 const CACHE_TTL_MS = 10 * 60 * 1_000;
+const CACHE_MAX_SIZE = 1_000;
 
 interface CacheEntry {
   decision: AutoRouterDecision;
@@ -90,9 +91,19 @@ interface CacheEntry {
  * In-memory cache keyed by sha256(title|body|labels). Entries expire after
  * {@link CACHE_TTL_MS} so stale routing decisions do not outlive one session.
  * Cleared on process restart (acceptable — the cache exists to dedupe retries
- * inside one run, not across restarts).
+ * inside one run, not across restarts). Capped at CACHE_MAX_SIZE entries to
+ * prevent unbounded heap growth on long-running daemons. (AUDIT-IFleet-c9d0e3f2)
  */
 const cache = new Map<string, CacheEntry>();
+
+function cacheSet(key: string, entry: CacheEntry): void {
+  if (cache.size >= CACHE_MAX_SIZE) {
+    // Map preserves insertion order — evict the oldest entry (first key).
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, entry);
+}
 
 export function clearAutoRouterCache(): void {
   cache.clear();
@@ -145,7 +156,7 @@ export async function autoRouteMode(
     clearTimeout(timer);
     const reason = `haiku call failed: ${err instanceof Error ? err.message : String(err)}`;
     const decision: AutoRouterDecision = { ...STANDARD_FALLBACK, reason };
-    cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
+    cacheSet(key, { decision, expiresAt: now + CACHE_TTL_MS });
     return decision;
   }
   clearTimeout(timer);
