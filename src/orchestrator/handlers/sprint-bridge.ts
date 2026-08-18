@@ -222,7 +222,7 @@ export function wireSprintCompletion(
       }
       verifierCtx?.delete(task.id);
 
-      void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens).catch((err) =>
+      void adapter.markCompleted(task, lastPrUrl ?? null, lastTotalTokens).catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
       return;

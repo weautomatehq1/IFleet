@@ -136,13 +136,13 @@ export class DiscordSource implements TaskSource {
     await this.opts.out.postProgress(tid, '🤖 Picked up — worker starting.');
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl: string | null, totalTokens?: number): Promise<void> {
     const tid = await this.resolveThread(task);
     if (!tid) {
       this.opts.onPostFailed?.(task.id, 'markCompleted', 'no threadId');
       return;
     }
-    await this.opts.out.postCompleted(tid, prUrl);
+    await this.opts.out.postCompleted(tid, prUrl ?? '');
     if (prUrl && prUrl !== 'already-resolved' && task.source.kind === 'discord') {
       const channelId = task.source.channelId;
       const tokenStr = totalTokens ? ` · ${totalTokens.toLocaleString()} tokens` : '';

@@ -1,0 +1,92 @@
+{
+  "audit_id": "audit-20260818T075425Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-18T07:54:25Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-824d213b",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Task brief passed as argv to claude subprocess — visible on process list",
+      "detail": "defaultHaikuCall in auto-router.ts was passing the full router prompt (which includes the user-supplied task brief) as a positional CLI argument after --print. On Linux this is visible to all local users via /proc/<pid>/cmdline and ps aux. Task briefs routinely contain proprietary business context and repo details that should not be world-readable.",
+      "file_globs": ["src/classifier/auto-router.ts"],
+      "fix_sketch": "Switched to spawn() with stdio: ['pipe','pipe','pipe'] and write the prompt to stdin, then close stdin. Removed unused execFile import.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-07-22T04:17:28Z",
+      "closed_at": "2026-08-18T07:54:25Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-6f3a1d9b",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "markCompleted receives empty string prUrl when no PR was created — conflates no-PR with missing URL",
+      "detail": "sprint-bridge.ts was passing lastPrUrl ?? '' to adapter.markCompleted. The empty string is indistinguishable from a PR URL that was not captured due to a bug. Downstream audit-ritual reconciliation and PR decision records cannot distinguish 'task done, no PR' from 'task done, PR URL lost'.",
+      "file_globs": ["src/orchestrator/handlers/sprint-bridge.ts"],
+      "fix_sketch": "Changed interface to accept string | null in types.ts, sources/base.ts, unified-adapter.ts, discord source, github source, and sprint-bridge.ts call site. null now means 'no PR was opened'.",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": "2026-08-18T07:54:25Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8c5e2a7d",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "listActiveSprints LIMIT 500 applied before terminal-kind JS filter — active sprints can be hidden",
+      "detail": "dashboard/server.ts fetched at most 500 sprint rows ordered by updated_at DESC, then filtered out terminal kinds in JavaScript. On a long-running deployment where the 500 most-recently-updated sprints are all terminated, truly active sprints with older update timestamps were silently excluded from the dashboard.",
+      "file_globs": ["dashboard/server.ts"],
+      "fix_sketch": "Moved terminal-kind filter into SQL using json_extract(state_json,'$.kind') NOT IN (...) so LIMIT 500 is applied after the filter. Removed the now-redundant JS .filter() call.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": "2026-08-18T07:54:25Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-l2m3n4o5",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "Empty-string cast '' as SprintId silently misidentifies tasks lacking a sprintId",
+      "detail": "Using '' as SprintId causes downstream lookups to silently fail on unmatched sprint IDs. Proper fix requires changing SprintId usage to string | undefined in OrchestratorEvent.",
+      "file_globs": ["src/orchestrator/daemon.ts"],
+      "fix_sketch": "Requires type change to SprintId | undefined in OrchestratorEvent — skipped due to broad impact; filed for follow-up.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-m3n4o5p6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "legacyToUnified seeds ULID with issue creation timestamp, potentially mis-ordering unified store insertions",
+      "detail": "ulid(legacy.createdAt) encodes GitHub issue creation time in the ULID prefix. During backfill, issues processed in bulk get ULIDs sorted by GitHub creation time rather than insertion order, which can confuse FIFO semantics.",
+      "file_globs": ["src/queue/sources/github.ts"],
+      "fix_sketch": "Change to ulid() (current time) and store createdAt separately — skipped to preserve existing idempotency semantics; filed for follow-up.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7f2a9c1e",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "recordRateLimitHeaders emits ratelimit.observed events with '' as SprintId — second SprintId lie",
+      "detail": "In src/orchestrator/index.ts:225, recordRateLimitHeaders() emits a ratelimit.observed event with sprintId: '' as SprintId. Events with empty sprintId stored in the orchestrator event log will never match any sprint row in downstream queries, silently orphaning all rate-limit telemetry.",
+      "file_globs": ["src/orchestrator/index.ts"],
+      "fix_sketch": "Requires changing sprintId in OrchestratorEvent to SprintId | undefined (same root fix as AUDIT-IFleet-l2m3n4o5). Do not fix in isolation.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-13T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}

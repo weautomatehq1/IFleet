@@ -86,6 +86,7 @@ export function listActiveSprints(stateDb: Database.Database, limit = 500) {
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
+        WHERE json_extract(state_json, '$.kind') NOT IN ('failed', 'completed', 'cancelled')
         ORDER BY updated_at DESC
         LIMIT @limit`,
     )
@@ -111,8 +112,7 @@ export function listActiveSprints(stateDb: Database.Database, limit = 500) {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       };
-    })
-    .filter((s) => !TERMINAL_SPRINT_KINDS.has(s.kind));
+    });
 }
 
 export function listTaskQueue(tasksDb: Database.Database, limit = 50) {
