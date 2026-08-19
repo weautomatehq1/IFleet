@@ -129,7 +129,9 @@ export class InvariantRunner {
     // (verifyChildEnv) so a jailbroken worker cannot exfiltrate daemon secrets
     // via a malicious arch.ts. The dynamic import previously ran arch.ts inside
     // the daemon process under full credentials.
-    const runnerPath = fileURLToPath(new URL('./arch-runner-process.ts', import.meta.url));
+    const runnerTsPath = fileURLToPath(new URL('./arch-runner-process.ts', import.meta.url));
+    const runnerJsPath = fileURLToPath(new URL('./arch-runner-process.js', import.meta.url));
+    const runnerPath = existsSync(runnerTsPath) ? runnerTsPath : runnerJsPath;
     const result = await this.runCommand(
       process.execPath,
       ['--import', 'tsx', runnerPath, targetPath, worktreePath],

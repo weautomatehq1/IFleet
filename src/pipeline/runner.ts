@@ -51,7 +51,7 @@ export class DefaultPipelineRunner implements PipelineRunner {
   private async _run(input: PipelineInput, attempts: AttemptRecord[]): Promise<PipelineResult> {
     const baseBranch = input.baseBranch ?? 'main';
     const reviewerMaxRounds = input.reviewerMaxRounds ?? DEFAULT_REVIEWER_MAX_ROUNDS;
-    const approver = input.approver ?? '@monstersebas1';
+    const approver = input.approver ?? process.env['IFLEET_APPROVER'] ?? '@monstersebas1';
 
     const poolProviders = new Set([
       input.routing.architect.provider,

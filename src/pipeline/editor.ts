@@ -89,7 +89,11 @@ async function commitEditorChanges(worktreePath: string, taskTitle?: string): Pr
   // that as the signal to commit rather than as an error.
   const hasChanges = await execFileAsync('git', ['diff', '--cached', '--quiet'], { cwd: worktreePath, env: minimalGitEnv() })
     .then(() => false)
-    .catch(() => true);
+    .catch((err: unknown) => {
+      const code = (err as { code?: unknown }).code;
+      if (code === 1 || code === '1') return true;
+      throw new Error(`git diff --cached failed unexpectedly: ${err instanceof Error ? err.message : String(err)}`);
+    });
   if (!hasChanges) return;
   const safeTitle = taskTitle ? taskTitle.replace(/[\r\n]+/g, ' ').trim() : '';
   const subject = safeTitle ? `feat: ${safeTitle.slice(0, 72)}` : 'chore: editor changes';

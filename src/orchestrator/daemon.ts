@@ -135,9 +135,8 @@ async function main(): Promise<void> {
       // thread suddenly stopped updating (resolves the silent-no-op gap
       // flagged in the #165 audit). Tolerant — best effort.
       try {
-        const task = store.getById(taskId);
-        const sprintId = (task as { sprintId?: string } | null)?.sprintId
-          ?? ('' as SprintId);
+        const orchTask = orchestratorStore.loadTask(taskId as TaskId);
+        const sprintId = orchTask?.sprintId ?? ('' as SprintId);
         orchestratorStore.appendEvent({
           ts: Date.now(),
           sprintId: sprintId as SprintId,
