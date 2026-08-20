@@ -37,7 +37,7 @@ if (!Array.isArray(findings)) {
 
 const terminal = new Set<string>(TERMINAL_AUDIT_STATUSES);
 const active = findings.filter((f) => !terminal.has(f.status));
-const repoKey = normaliseAuditRepo(repo ?? '');
+const repoKey = normaliseAuditRepo(repo);
 
 if (findings.length === 0) {
   console.error(

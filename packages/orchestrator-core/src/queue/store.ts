@@ -19,6 +19,8 @@ export type StoreExtension = (db: Database.Database) => void;
 export interface TaskStoreOptions {
   /** Ordered schema extensions run once, after core DDL, at construction. */
   extensions?: StoreExtension[];
+  /** Maximum task attempts before marking failed. Defaults to IFLEET_MAX_ATTEMPTS env var, then 5. */
+  maxAttempts?: number;
 }
 
 export function defaultStateDir(): string {
@@ -178,7 +180,7 @@ export class TaskStore {
   constructor(path: string = defaultTasksDbPath(), opts: TaskStoreOptions = {}) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
-    const _maxAttemptsRaw = Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
+    const _maxAttemptsRaw = opts.maxAttempts ?? Number(process.env['IFLEET_MAX_ATTEMPTS'] ?? 5);
     this.maxAttempts = Number.isFinite(_maxAttemptsRaw) && _maxAttemptsRaw >= 1
       ? Math.floor(_maxAttemptsRaw)
       : 5;

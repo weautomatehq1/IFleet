@@ -244,7 +244,7 @@ export interface ProductionFactory {
 export function makeProductionFactory(opts: ProductionFactoryOpts): ProductionFactory {
   const verify = opts.verify ?? buildVerifyAdapter();
   const fallbackCodeowners = opts.codeowners ?? ['@monstersebas1'];
-  const fallbackApprover = opts.approver ?? '@monstersebas1';
+  const fallbackApprover = opts.approver ?? process.env['IFLEET_APPROVER'] ?? '@monstersebas1';
   const routingStrategy: RoutingStrategy = opts.routingStrategy ?? createDefaultRoutingStrategy();
 
   let pool: AccountPool = createAccountPool(opts.initialWorkers);

@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 
 let cachedPool: Pool | undefined;
+let cachedPoolUrl: string | undefined;
 
 export class KgPostgresUnavailableError extends Error {
   constructor(message: string) {
@@ -28,7 +29,12 @@ export class KgPostgresUnavailableError extends Error {
  * process. Pass `overrideUrl` in tests when pointing at a throwaway db.
  */
 export function getKgPool(overrideUrl?: string): Pool {
-  if (cachedPool) return cachedPool;
+  if (cachedPool) {
+    if (overrideUrl && overrideUrl !== cachedPoolUrl) {
+      console.warn('[pg-client] getKgPool: overrideUrl ignored — pool already initialized with a different URL. Call resetKgPool() first if intentional.');
+    }
+    return cachedPool;
+  }
   const url = overrideUrl ?? process.env.IFLEET_KG_DATABASE_URL;
   if (!url) {
     throw new KgPostgresUnavailableError(
@@ -57,6 +63,7 @@ export function getKgPool(overrideUrl?: string): Pool {
       : undefined,
   };
   cachedPool = new Pool(config);
+  cachedPoolUrl = url;
   // Prevent pg idle-client errors from crashing the process (AUDIT-IFleet-de10142f).
   cachedPool.on('error', (err) => {
     console.error('[kg-pool] idle client error:', err);
@@ -69,6 +76,7 @@ export async function resetKgPool(): Promise<void> {
   if (cachedPool) {
     await cachedPool.end();
     cachedPool = undefined;
+    cachedPoolUrl = undefined;
   }
 }
 

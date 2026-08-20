@@ -88,12 +88,11 @@ export function listActiveSprints(stateDb: Database.Database, limit = 500) {
   // Filter terminal kinds in SQL so the LIMIT applies only to active sprints
   // (AUDIT-IFleet-8c5e2a7d: prior code fetched 500 rows and then JS-filtered,
   // so active sprints older than position 500 were silently hidden).
-  const terminalList = [...TERMINAL_SPRINT_KINDS].map((k) => `'${k}'`).join(', ');
   const rows = stateDb
     .prepare(
       `SELECT id, mode, goal, state_json, created_at, updated_at
          FROM sprints
-        WHERE json_extract(state_json, '$.kind') NOT IN (${terminalList})
+        WHERE json_extract(state_json, '$.kind') NOT IN ('failed', 'completed', 'cancelled')
         ORDER BY updated_at DESC
         LIMIT @limit`,
     )
@@ -119,8 +118,7 @@ export function listActiveSprints(stateDb: Database.Database, limit = 500) {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       };
-    })
-    .filter((s) => !TERMINAL_SPRINT_KINDS.has(s.kind));
+    });
 }
 
 export function listTaskQueue(tasksDb: Database.Database, limit = 50) {

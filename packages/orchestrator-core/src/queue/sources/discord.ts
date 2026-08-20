@@ -214,8 +214,8 @@ export class DiscordSource implements TaskSource {
       );
       return '';
     }
+    this.opts.store?.patchSource(task.id, { ...task.source, threadId });
     task.source.threadId = threadId;
-    this.opts.store?.patchSource(task.id, task.source);
     return threadId;
   }
 
