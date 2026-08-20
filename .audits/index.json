@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-08-15T04:00:00Z",
+  "last_updated": "2026-08-19T04:30:00Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -1364,6 +1364,215 @@
       "status": "fixed",
       "opened_at": "2026-08-17T04:00:00Z",
       "closed_at": "2026-08-17T04:35:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-9f8736ed",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Hardcoded fallback approver @monstersebas1 in runner.ts and factory.ts",
+      "detail": "Both runner.ts and factory.ts use literal @monstersebas1 as a hardcoded fallback when approver is not configured. Silent misconfiguration bypasses env-var validation pattern used elsewhere.",
+      "file_globs": [
+        "src/pipeline/runner.ts",
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Read IFLEET_APPROVER env var before falling back to the hardcoded literal",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-8e9f439e",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "git diff --cached error mask: real git errors treated as staged changes",
+      "detail": "In commitEditorChanges(), catch(() => true) maps all rejections including spawn errors to hasChanges=true, then git commit fails with an opaque error masking the true cause.",
+      "file_globs": [
+        "src/pipeline/editor.ts"
+      ],
+      "fix_sketch": "Only map exit code 1 to hasChanges=true; re-throw on any other error code",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-517afa09",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "getKgPool() silently ignores overrideUrl after the pool is first initialized",
+      "detail": "getKgPool(overrideUrl?) returns the cached pool without warning when a different URL is passed, causing tests to silently use the wrong database.",
+      "file_globs": [
+        "src/agents/indexer/pg-client.ts"
+      ],
+      "fix_sketch": "Cache the URL alongside the pool; warn when overrideUrl differs from the cached URL",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-de727fc8",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "loadWorkerConfig silently swallows all errors including malformed JSON",
+      "detail": "All catch branches in loadWorkerConfig return undefined, making parse errors and malformed config invisible to the operator.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/adapters/claude-cli.ts"
+      ],
+      "fix_sketch": "Distinguish ENOENT (silent) from parse errors (warn); add console.warn on unexpected errors",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-4da30814",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "DiscordSource.ingest() mutates caller task object via task.source.threadId assignment",
+      "detail": "Directly mutating task.source.threadId creates in-memory state that diverges from the store if the process restarts; concurrent readers see an unsaved mutation.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/sources/discord.ts"
+      ],
+      "fix_sketch": "Pass a spread copy to patchSource instead of mutating task.source directly",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b060b9fd",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "daemon.ts uses unsafe type assertion to read sprintId from store task",
+      "detail": "Cast to {sprintId?:string}|null bypasses TypeScript to read a field absent from the Task type; should use orchestratorStore.loadTask() which returns TaskRecord with sprintId.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Replace store.getById()+assertion with orchestratorStore.loadTask(taskId)",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-609f0e61",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "arch-runner-process.ts path hardcoded with .ts extension \u2014 breaks in compiled builds",
+      "detail": "In runArch(), the runner path is resolved as arch-runner-process.ts; in a compiled build import.meta.url resolves to .js so the .ts file does not exist and spawn silently fails.",
+      "file_globs": [
+        "src/agents/verifier/invariants.ts"
+      ],
+      "fix_sketch": "Try .ts path first, fall back to .js path (existsSync check)",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b79117c6",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "IFLEET_MAX_ATTEMPTS read directly from process.env inside TaskStore constructor",
+      "detail": "Tests that construct TaskStore cannot override maxAttempts without mutating process.env, creating test-order coupling.",
+      "file_globs": [
+        "packages/orchestrator-core/src/queue/store.ts"
+      ],
+      "fix_sketch": "Add maxAttempts?: number to TaskStoreOptions; fall back to env var only when absent",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5779d981",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "claude-cli.ts imports use .ts extensions \u2014 non-standard ESM, brittle under compilation",
+      "detail": "Import statements with bare .ts extensions only work under tsx; standard Node.js ESM and tsc compilation fail to resolve them.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/adapters/claude-cli.ts"
+      ],
+      "fix_sketch": "Change local imports to use .js extensions (TypeScript resolves .js -> .ts with bundler mode)",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-14ca5b39",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Cross-package deep relative import in claude-cli.ts breaks package boundary",
+      "detail": "Five-level relative import from orchestrator-core into src/orchestrator/ creates hidden dependency that prevents independent builds and testing of the package.",
+      "file_globs": [
+        "packages/orchestrator-core/src/workers/adapters/claude-cli.ts"
+      ],
+      "fix_sketch": "Move shared types into orchestrator-core or add a package export alias; add TS project reference",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-d1b6b62b",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "listActiveSprints: redundant JS .filter() after identical SQL WHERE clause",
+      "detail": "The JS .filter() at line 123 of dashboard/server.ts can never eliminate rows the SQL WHERE clause did not already exclude; dead code that misleads readers.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Remove the redundant .filter() call; SQL clause is the authoritative filter",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-afc44b0f",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "listActiveSprints SQL IN list built via string interpolation \u2014 fragile pattern",
+      "detail": "Dynamic terminalList string interpolation cannot use parameterized placeholders; a future value with a single quote would break or inject SQL.",
+      "file_globs": [
+        "dashboard/server.ts"
+      ],
+      "fix_sketch": "Replace dynamic IN list with a fixed literal matching the static constant set values",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-c20c6270",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Dead ?? '' fallback on already-validated repo variable in sync-audit-findings.ts",
+      "detail": "repo is validated as non-empty at lines 29-31; the ?? '' on line 40 can never evaluate and misleads readers about the invariant.",
+      "file_globs": [
+        "scripts/sync-audit-findings.ts"
+      ],
+      "fix_sketch": "Remove ?? '' from normaliseAuditRepo(repo ?? '') to read normaliseAuditRepo(repo)",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-19T04:00:00Z",
+      "closed_at": "2026-08-19T04:30:00Z",
       "closing_pr": null
     }
   ],

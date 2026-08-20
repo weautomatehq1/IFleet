@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createClaudeAdapter, type ClaudeAdapterOptions } from '../claude.ts';
-import type { SpawnOpts as WorkerSpawnOpts, WorkerEvent } from '../types.ts';
+import { createClaudeAdapter, type ClaudeAdapterOptions } from '../claude.js';
+import type { SpawnOpts as WorkerSpawnOpts, WorkerEvent } from '../types.js';
 import type {
   SpawnHandle,
   SpawnOpts,
@@ -9,9 +9,9 @@ import type {
   TaskId,
   WorkerAdapter,
   WorkerConfig,
-} from '../../../../../src/orchestrator/types.ts';
-import { startTrace } from '../../observability/langfuse.ts';
-import { registerAdapter } from './registry.ts';
+} from '../../../../../src/orchestrator/types.js';
+import { startTrace } from '../../observability/langfuse.js';
+import { registerAdapter } from './registry.js';
 
 /**
  * The `claude-cli` backend wraps the existing Claude Code CLI spawn primitive
@@ -149,7 +149,10 @@ function loadWorkerConfig(configPath: string, workerId: string): WorkerConfig | 
     const raw = readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw) as { workers?: ReadonlyArray<WorkerConfig> };
     return parsed.workers?.find((w) => w.id === workerId);
-  } catch {
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return undefined;
+    console.warn(`[claude-cli] loadWorkerConfig: failed to load ${configPath}:`, err instanceof Error ? err.message : String(err));
     return undefined;
   }
 }
