@@ -222,7 +222,13 @@ export function wireSprintCompletion(
       }
       verifierCtx?.delete(task.id);
 
-      void adapter.markCompleted(task, lastPrUrl ?? '', lastTotalTokens).catch((err) =>
+      // Use || rather than ?? so that a null pr (already_resolved path, where
+      // sprint.ts sets pr: result.pr ?? null) falls back to the sentinel just
+      // as undefined would. ?? only catches undefined; || catches null, undefined,
+      // and '' — all of which mean "no PR was opened". postCompleted checks
+      // prUrl === 'already-resolved' to show the correct Discord embed.
+      // (AUDIT-IFleet-p7q8r9s0)
+      void adapter.markCompleted(task, lastPrUrl || 'already-resolved', lastTotalTokens).catch((err) =>
         console.warn('[daemon] markCompleted failed:', err),
       );
       return;

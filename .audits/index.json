@@ -624,9 +624,9 @@
       ],
       "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use stdio: ['pipe','pipe','pipe'] and child.stdin.write(prompt) to avoid the process-list exposure. The comment claiming stdin was unreliable refers to a race without explicit flush; writing synchronously and then closing stdin resolves it.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-08-02T04:18:48Z",
-      "closed_at": null,
+      "closed_at": "2026-08-20T04:00:00Z",
       "closing_pr": null
     },
     {
@@ -1125,13 +1125,62 @@
       "opened_at": "2026-08-11T04:00:00Z",
       "closed_at": "2026-08-11T04:00:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-p7q8r9s0",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "sprint-bridge passes empty string to markCompleted for already_resolved tasks, producing wrong Discord thread message",
+      "detail": "wireSprintCompletion captures lastPrUrl from event.payload['pr'] as string | undefined. For already_resolved pipeline results, sprint.ts sets pr: result.pr ?? null — null at runtime despite the type cast. On line 225, lastPrUrl ?? '' evaluates to '' because ?? only falls back for undefined, not null. postCompleted receives '' which fails the === 'already-resolved' check and posts 'Pull request opened.\\n' with a blank URL to the Discord thread instead of the correct 'Already resolved — no changes needed. Finding closed.' message.",
+      "file_globs": [
+        "src/orchestrator/handlers/sprint-bridge.ts"
+      ],
+      "fix_sketch": "Change lastPrUrl ?? '' to lastPrUrl || 'already-resolved'. || treats null, undefined, and '' all as falsy and falls back to the sentinel that postCompleted already recognises.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-20T04:00:00Z",
+      "closed_at": "2026-08-20T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-q8r9s0t1",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "AUTO_ROUTER_DISABLED kill switch only checks === '1', inconsistent with BANDIT_LIVE_ENV which accepts '1' and 'true'",
+      "detail": "In auto-router.ts the kill switch guard is env[KILL_SWITCH_ENV] === '1'. BANDIT_LIVE_ENV checks both '1' and 'true'. An operator setting AUTO_ROUTER_DISABLED=true would find the kill switch silently inactive.",
+      "file_globs": [
+        "src/classifier/auto-router.ts"
+      ],
+      "fix_sketch": "Extend to env[KILL_SWITCH_ENV] === '1' || env[KILL_SWITCH_ENV] === 'true'.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-20T04:00:00Z",
+      "closed_at": "2026-08-20T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-r9s0t1u2",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Trailing whitespace before console.warn in candidate-gen.ts defaultWarn",
+      "detail": "The defaultWarn function in src/agents/proposer/candidate-gen.ts has a line containing only whitespace before the console.warn(line) call. Cosmetic noise that will trigger trailing-whitespace lint rules.",
+      "file_globs": [
+        "src/agents/proposer/candidate-gen.ts"
+      ],
+      "fix_sketch": "Remove the blank/whitespace line between the function opening brace and console.warn(line).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-20T04:00:00Z",
+      "closed_at": "2026-08-20T04:00:00Z",
+      "closing_pr": null
     }
   ],
+  "last_updated": "2026-08-20T04:00:00Z",
   "by_severity": {
-    "CRITICAL": 8,
-    "IMPORTANT": 36,
-    "COSMETIC": 10
+    "CRITICAL": 11,
+    "IMPORTANT": 48,
+    "COSMETIC": 14
   },
-  "open_count": 3,
-  "fixed_count": 53
+  "open_count": 2,
+  "fixed_count": 71
 }

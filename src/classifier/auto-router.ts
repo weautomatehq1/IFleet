@@ -12,7 +12,7 @@
 //    decisions for human review without re-throwing.
 
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
@@ -111,7 +111,9 @@ export async function autoRouteMode(
   opts: AutoRouterOptions = {},
 ): Promise<AutoRouterDecision> {
   const env = opts.env ?? process.env;
-  if (env[KILL_SWITCH_ENV] === '1') {
+  // Accept '1' or 'true' for consistency with BANDIT_LIVE_ENV convention.
+  // (AUDIT-IFleet-q8r9s0t1)
+  if (env[KILL_SWITCH_ENV] === '1' || env[KILL_SWITCH_ENV] === 'true') {
     return { ...STANDARD_FALLBACK, reason: `disabled via ${KILL_SWITCH_ENV}=1` };
   }
 
@@ -304,35 +306,49 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
-const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
+// Prompt is piped to the child's stdin rather than passed as an argv positional.
+// The previous approach (`claude --print <prompt> --model <model>`) exposed the
+// full router prompt — which includes the user-supplied task brief, labels, and
+// repo learnings — in /proc/<pid>/cmdline and `ps aux`, world-readable on a
+// shared VPS. Task briefs routinely carry proprietary business context.
+// (AUDIT-IFleet-824d213b)
+//
+// The earlier stdin attempt failed because the pipe write was not explicitly
+// closed before claude's 3-second stdin-wait window expired, causing the CLI
+// to emit "Warning: no stdin data received in 3s, proceeding without it" and
+// then exit with an error. The fix is to call child.stdin.end(prompt, 'utf8')
+// immediately after spawn, which writes the full prompt AND closes the write
+// end of the pipe in one call — the child's stdin reader sees EOF before its
+// wait timer fires, resolving the race deterministically.
+//
+// Timeout is handled exclusively via the AbortSignal set up in autoRouteMode
+// (setTimeout → controller.abort()); spawn propagates the signal as SIGTERM.
+// Allowlist env passed to the child matches src/observability/task-done-notify.ts.
+const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs: _timeoutMs, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
-      'claude',
-      ['--print', prompt, '--model', model],
-      {
-        signal,
-        timeout: timeoutMs,
-        maxBuffer: HAIKU_MAX_OUTPUT_CHARS * 2,
-        // Allowlist env passed to the child — keeps GITHUB_TOKEN /
-        // DISCORD_BOT_TOKEN / IFLEET_HMAC_SECRET out of a prompt-injected
-        // child's reach. Matches src/observability/task-done-notify.ts.
-        env: claudeChildEnv(),
-      },
-      (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout.toString());
-      },
-    );
+    const child = spawn('claude', ['--print', '--model', model], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      signal,
+      env: claudeChildEnv(),
+    });
+
+    // Swallow write-side errors — they surface as child 'error' or non-zero
+    // exit code below, so we don't need a separate rejection path here.
+    child.stdin.on('error', () => { /* surfaced via child 'error' event */ });
+    child.stdin.end(prompt, 'utf8');
+
+    const chunks: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    let spawnErr: Error | null = null;
+    child.on('error', (err) => { spawnErr = err; });
+    child.on('close', (code) => {
+      if (spawnErr) return reject(spawnErr);
+      if (code !== 0 && code !== null) {
+        return reject(new Error(`claude exited with code ${code}`));
+      }
+      resolve(Buffer.concat(chunks).toString('utf8').slice(0, HAIKU_MAX_OUTPUT_CHARS * 2));
+    });
   });
 
 export const _internal = {

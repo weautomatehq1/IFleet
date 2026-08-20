@@ -1,0 +1,70 @@
+{
+  "repo": "IFleet",
+  "run_at": "2026-08-20T04:00:00Z",
+  "branch": "audit/nightly-2026-08-20",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-p7q8r9s0",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "sprint-bridge passes empty string to markCompleted for already_resolved tasks, producing wrong Discord thread message",
+      "detail": "wireSprintCompletion captures lastPrUrl from event.payload['pr'] as string | undefined. For already_resolved pipeline results, sprint.ts sets pr: result.pr ?? null — null, not undefined. The cast to string|undefined is a type-level lie; at runtime lastPrUrl is null. On line 225, lastPrUrl ?? '' evaluates to '' (empty string) because ?? only falls back for undefined, not null. postCompleted('', '') reaches DiscordOutAdapter.postCompleted which checks prUrl === 'already-resolved' to show the correct 'Already resolved' embed; '' fails that check and instead posts 'Pull request opened.\\n' with a blank URL to the Discord thread.",
+      "file_globs": [
+        "src/orchestrator/handlers/sprint-bridge.ts"
+      ],
+      "fix_sketch": "Change lastPrUrl ?? '' to lastPrUrl || 'already-resolved' on line 225. || treats null, undefined, and '' all as falsy and falls back to the sentinel string that postCompleted already recognises.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-20T04:00:00Z",
+      "closed_at": "2026-08-20T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-q8r9s0t1",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "AUTO_ROUTER_DISABLED kill switch only checks === '1', inconsistent with BANDIT_LIVE_ENV which accepts '1' and 'true'",
+      "detail": "In auto-router.ts the kill switch guard is env[KILL_SWITCH_ENV] === '1'. BANDIT_LIVE_ENV (in bandit/store-extensions.ts) checks both '1' and 'true'. An operator who sets AUTO_ROUTER_DISABLED=true (following the 'true' convention from BANDIT_LIVE) would find the kill switch silently inactive, allowing auto-routing when they intended to disable it.",
+      "file_globs": [
+        "src/classifier/auto-router.ts"
+      ],
+      "fix_sketch": "Extend the guard to env[KILL_SWITCH_ENV] === '1' || env[KILL_SWITCH_ENV] === 'true' for consistency with BANDIT_LIVE_ENV.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-20T04:00:00Z",
+      "closed_at": "2026-08-20T04:00:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-r9s0t1u2",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Trailing whitespace before console.warn in candidate-gen.ts defaultWarn",
+      "detail": "The defaultWarn function in src/agents/proposer/candidate-gen.ts has a line containing only spaces before the console.warn(line) call. Cosmetic noise that will trigger any trailing-whitespace lint rule added in future.",
+      "file_globs": [
+        "src/agents/proposer/candidate-gen.ts"
+      ],
+      "fix_sketch": "Remove the blank/whitespace line between the function opening brace and console.warn(line).",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-20T04:00:00Z",
+      "closed_at": "2026-08-20T04:00:00Z",
+      "closing_pr": null
+    }
+  ],
+  "prior_open_findings_resolved": [
+    {
+      "id": "AUDIT-IFleet-824d213b",
+      "resolution": "defaultHaikuCall refactored to spawn with stdio: ['pipe','pipe','pipe']; prompt delivered via child.stdin.end() instead of argv positional. Process-list exposure eliminated."
+    }
+  ],
+  "summary": {
+    "new_findings": 3,
+    "prior_open_resolved": 1,
+    "still_open": 2,
+    "by_severity": {
+      "IMPORTANT": 1,
+      "COSMETIC": 2
+    }
+  }
+}
