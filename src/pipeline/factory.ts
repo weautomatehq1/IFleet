@@ -43,6 +43,9 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+const GIT_PUSH_TIMEOUT_MS = 60_000;
+const GH_CLI_TIMEOUT_MS = 60_000;
+
 // Claude Max window default — used when a `rate_limit` event reaches the
 // pipeline without a precise reset timestamp. Pausing the worker for the
 // full 5h window is the safest default because the CLI's terminal
@@ -615,7 +618,7 @@ function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
       const ghEnv = githubToken
         ? { ...minimalGitEnv(), GITHUB_TOKEN: githubToken }
         : minimalGitEnv();
-      await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath, env: pushEnv });
+      await execFileAsync('git', ['push', '-u', 'origin', input.headBranch], { cwd: worktreePath, env: pushEnv, timeout: GIT_PUSH_TIMEOUT_MS });
       // Create the PR WITHOUT --reviewer. Reviewer assignment can fail for
       // reasons unrelated to the PR itself (invalid login, reviewer == PR
       // author, reviewer not a collaborator). Bundling it into `gh pr create`
@@ -628,7 +631,7 @@ function buildPrOpener(repoId: string, worktreePath: string): PrOpener {
         '--base', input.baseBranch,
         '--title', input.title,
         '--body', input.body,
-      ], { env: ghEnv });
+      ], { env: ghEnv, timeout: GH_CLI_TIMEOUT_MS });
       const url = stdout.trim();
       const match = url.match(/\/(\d+)$/);
       const number = match?.[1] ? parseInt(match[1], 10) : 0;

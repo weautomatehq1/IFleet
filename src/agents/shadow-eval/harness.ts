@@ -68,10 +68,16 @@ export async function runShadowEval(deps: HarnessDeps): Promise<ShadowEvalSummar
 export async function defaultReadEvalSet(path: string): Promise<EvalRow[]> {
   const raw = await readFile(path, 'utf8');
   const rows: EvalRow[] = [];
+  let lineNum = 0;
   for (const line of raw.split('\n')) {
+    lineNum++;
     const trimmed = line.trim();
     if (trimmed === '') continue;
-    rows.push(JSON.parse(trimmed) as EvalRow);
+    try {
+      rows.push(JSON.parse(trimmed) as EvalRow);
+    } catch {
+      console.warn(`[shadow-eval] skipping unparseable line ${lineNum} in ${path}`);
+    }
   }
   return rows;
 }

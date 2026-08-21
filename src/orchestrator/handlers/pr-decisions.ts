@@ -10,6 +10,7 @@ import { computeStructuralFingerprint } from '../../agents/verifier/fingerprint.
 import { recordOutcome } from '../../agents/bandit/circuit-breaker.js';
 import { banditLiveEnabled } from '../../agents/bandit/live.js';
 import { broadcastIFleet } from '@wahq/orchestrator-core/observability/discord-broadcast';
+import { minimalGitEnv } from '@wahq/orchestrator-core/repos/manager';
 import { DiscordOutAdapter } from '@wahq/orchestrator-core/observability/discord-output';
 import type { PipelineRunBootstrap, PipelineRunnerFactory } from '../pipeline-bridge.js';
 import { decodeBridgeBrief } from '../pipeline-bridge.js';
@@ -138,6 +139,7 @@ export function wrapFactoryWithVerifierContext(
       try {
         const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
           cwd: bootstrap.input.worktreePath,
+          env: minimalGitEnv(),
         });
         headSha = stdout.trim();
         registry.setSha(taskId, headSha);

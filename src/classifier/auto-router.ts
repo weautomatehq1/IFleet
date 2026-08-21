@@ -304,21 +304,17 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
+// Prompt is passed via stdin so the task brief never appears in argv / ps
+// output. The previous argv approach (AUDIT-IFleet-824d213b) exposed the
+// full prompt — including the user-supplied brief — to all local users via
+// /proc/<pid>/cmdline. child.stdin.end(prompt) writes and flushes in one
+// call; the callback fires only after the process exits, so there is no
+// ordering race.
 const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'claude',
-      ['--print', prompt, '--model', model],
+      ['--print', '--model', model],
       {
         signal,
         timeout: timeoutMs,
@@ -333,6 +329,7 @@ const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
         resolve(stdout.toString());
       },
     );
+    child.stdin?.end(prompt, 'utf8');
   });
 
 export const _internal = {

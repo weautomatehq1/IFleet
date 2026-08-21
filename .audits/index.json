@@ -624,9 +624,9 @@
       ],
       "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use stdio: ['pipe','pipe','pipe'] and child.stdin.write(prompt) to avoid the process-list exposure. The comment claiming stdin was unreliable refers to a race without explicit flush; writing synchronously and then closing stdin resolves it.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-08-02T04:18:48Z",
-      "closed_at": null,
+      "closed_at": "2026-08-21T04:30:00Z",
       "closing_pr": null
     },
     {
@@ -1125,13 +1125,77 @@
       "opened_at": "2026-08-11T04:00:00Z",
       "closed_at": "2026-08-11T04:00:00Z",
       "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-5ef9dcfc",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "shadow-eval JSONL reader aborts on first corrupt line",
+      "detail": "defaultReadEvalSet in src/agents/shadow-eval/harness.ts calls JSON.parse on each JSONL line without a try/catch. A single corrupt or truncated line causes the entire eval-set read to throw, aborting the run and hiding all other rows from processing.",
+      "file_globs": [
+        "src/agents/shadow-eval/harness.ts"
+      ],
+      "fix_sketch": "Wrap the JSON.parse in try/catch; log a warning for unparseable lines and continue iterating so the rest of the eval-set is still processed.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-21T04:09:48Z",
+      "closed_at": "2026-08-21T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-4de85929",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "pr-decisions.ts teardown git subprocess inherits full process.env including daemon secrets",
+      "detail": "In src/orchestrator/handlers/pr-decisions.ts, the teardown lambda called execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: worktreePath }) without setting env. The full daemon process.env (including ANTHROPIC_API_KEY, GITHUB_TOKEN, IFLEET_HMAC_SECRET) was forwarded to the git subprocess, making all secrets available to any git hook the worktree defines.",
+      "file_globs": [
+        "src/orchestrator/handlers/pr-decisions.ts"
+      ],
+      "fix_sketch": "Add env: minimalGitEnv() to the execFileAsync options and import minimalGitEnv from @wahq/orchestrator-core/repos/manager.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-21T04:30:00Z",
+      "closed_at": "2026-08-21T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-a9b8c7d6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "editor.ts git subprocesses have no timeout, blocking pipeline workers indefinitely on stuck git",
+      "detail": "In src/pipeline/editor.ts, commitEditorChanges() calls execFileAsync for git add -A, git diff --cached --quiet, and git commit with no timeout option. A stuck git subprocess (hung NFS, bad network, lock contention) blocks the pipeline worker thread indefinitely, consuming the worker slot and preventing any new tasks from being dispatched.",
+      "file_globs": [
+        "src/pipeline/editor.ts"
+      ],
+      "fix_sketch": "Add timeout: GIT_EXEC_TIMEOUT_MS (30000ms) to all three execFileAsync calls.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-21T04:30:00Z",
+      "closed_at": "2026-08-21T04:30:00Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-b7c6d5e4",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "factory.ts git push and gh pr create have no timeout, blocking workers on network hangs",
+      "detail": "In src/pipeline/factory.ts, buildPrOpener() calls execFileAsync for git push and gh pr create with no timeout. A slow GitHub API response or network outage causes the subprocess to hang indefinitely, permanently blocking the pipeline worker thread that opened the PR.",
+      "file_globs": [
+        "src/pipeline/factory.ts"
+      ],
+      "fix_sketch": "Add timeout: GIT_PUSH_TIMEOUT_MS (60000ms) to git push and timeout: GH_CLI_TIMEOUT_MS (60000ms) to gh pr create.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-21T04:30:00Z",
+      "closed_at": "2026-08-21T04:30:00Z",
+      "closing_pr": null
     }
   ],
   "by_severity": {
     "CRITICAL": 8,
-    "IMPORTANT": 36,
+    "IMPORTANT": 40,
     "COSMETIC": 10
   },
-  "open_count": 3,
-  "fixed_count": 53
+  "open_count": 2,
+  "fixed_count": 58
 }

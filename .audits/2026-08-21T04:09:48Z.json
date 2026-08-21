@@ -1,0 +1,22 @@
+{
+  "audit_id": "audit-20260821040948",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-21T04:09:48Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-5ef9dcfc",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "shadow-eval JSONL reader aborts on first corrupt line",
+      "detail": "defaultReadEvalSet in src/agents/shadow-eval/harness.ts calls JSON.parse on each JSONL line without a try/catch. A single corrupt or truncated line causes the entire eval-set read to throw, aborting the run and hiding all other rows from processing.",
+      "file_globs": ["src/agents/shadow-eval/harness.ts"],
+      "fix_sketch": "Wrap the JSON.parse in try/catch; log a warning for unparseable lines and continue iterating so the rest of the eval-set is still processed.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-21T04:09:48Z",
+      "closed_at": "2026-08-21T04:30:00Z",
+      "closing_pr": null
+    }
+  ]
+}
