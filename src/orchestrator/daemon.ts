@@ -272,7 +272,12 @@ async function main(): Promise<void> {
   // process can exit with a non-zero code instead of masking it under exit(0).
   // AUDIT-IFleet-e96f2978.
   let shutdownErrors = 0;
-  const tickIntervalMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  // Guard against non-numeric / out-of-range values in IFLEET_DAEMON_TICK_MS.
+  // Number() returns NaN for strings like "abc" and Node's setInterval(fn, NaN)
+  // clamps to 1ms, creating a spin-loop that burns 100% CPU. Fall back to the
+  // default when the value is absent or invalid. (AUDIT-IFleet-t1u2v3w4)
+  const _rawTickMs = Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS);
+  const tickIntervalMs = Number.isFinite(_rawTickMs) && _rawTickMs > 0 ? _rawTickMs : DEFAULT_TICK_MS;
   runTickLoop(
     unified,
     orchestrator,

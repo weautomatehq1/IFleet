@@ -23,7 +23,6 @@ import { getKgPool, KgPostgresUnavailableError } from '../indexer/pg-client.js';
 
 const execFileAsync = promisify(execFile);
 
-// TODO: Move to #ifleet-ops when channel is created.
 const IFLEET_CHANNEL_ID = '1504120127791042631';
 const SPRINTS_DIR = resolve(process.cwd(), '.omc/sprints');
 
