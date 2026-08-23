@@ -636,11 +636,12 @@ export class TaskStore {
         created_at: number;
         fingerprint: string | null;
       }>;
-    return rows.map((r) => {
+    return rows.flatMap((r) => {
       if (!VALID_VERDICTS.has(r.verdict)) {
-        throw new Error(`getAllPrDecisions: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+        console.error(`getAllPrDecisions: skipping DB row ${r.id} with unknown verdict: "${r.verdict}"`);
+        return [];
       }
-      return {
+      return [{
         id: r.id,
         taskId: r.task_id,
         repo: r.repo,
@@ -650,7 +651,7 @@ export class TaskStore {
         mergedAt: r.merged_at,
         createdAt: r.created_at,
         fingerprint: r.fingerprint,
-      };
+      }];
     });
   }
 
@@ -672,11 +673,12 @@ export class TaskStore {
         created_at: number;
         fingerprint: string | null;
       }>;
-    return rows.map((r) => {
+    return rows.flatMap((r) => {
       if (!VALID_VERDICTS.has(r.verdict)) {
-        throw new Error(`getPrDecisionsByRepo: invalid verdict in DB row ${r.id}: "${r.verdict}"`);
+        console.error(`getPrDecisionsByRepo: skipping DB row ${r.id} with unknown verdict: "${r.verdict}"`);
+        return [];
       }
-      return {
+      return [{
         id: r.id,
         taskId: r.task_id,
         repo: r.repo,
@@ -686,7 +688,7 @@ export class TaskStore {
         mergedAt: r.merged_at,
         createdAt: r.created_at,
         fingerprint: r.fingerprint,
-      };
+      }];
     });
   }
 
@@ -819,7 +821,9 @@ function rowToTask(row: TaskRow): QueuedTask {
     routingHints: safeJsonParse(row.routing_hints, {}, `task ${row.id} routing_hints`) as QueuedTask['routingHints'],
     createdAt: row.created_at,
     idempotencyKey: row.idempotency_key,
-    state: row.state as TaskState,
+    state: (['pending', 'in_flight', 'done', 'failed', 'blocked'] as const).includes(row.state as TaskState)
+      ? (row.state as TaskState)
+      : (console.warn(`rowToTask: task ${row.id} has unrecognised state "${row.state}", treating as "failed"`), 'failed' as TaskState),
     stateMeta: row.state_meta
       ? (safeJsonParse(row.state_meta, undefined, `task ${row.id} state_meta`) as Record<string, unknown> | undefined)
       : undefined,

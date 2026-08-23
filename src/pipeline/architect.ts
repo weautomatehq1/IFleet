@@ -175,6 +175,14 @@ export async function runArchitect(input: RunArchitectInput): Promise<ArchitectO
     return { attempt, plan, approved };
   }
 
+  if (input.task.issueNumber <= 0) {
+    // Discord-source tasks have no GitHub issue to poll. An approvalGate is
+    // required for human-in-the-loop on these tasks; without one the sprint
+    // cannot advance past plan review. Fail cleanly rather than throwing an
+    // IssueCommenter invariant violation (lastCommentId === null).
+    return { attempt, plan, approved: false };
+  }
+
   const approved = await input.issues.waitForApproval(input.task.issueNumber, {
     approver: input.approver,
     pollIntervalMs: input.approvalPollMs ?? DEFAULT_POLL_MS,

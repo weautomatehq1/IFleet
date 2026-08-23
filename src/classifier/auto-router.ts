@@ -162,7 +162,7 @@ export async function autoRouteMode(
   clearTimeout(timer);
 
   const decision = parseRouterDecision(raw, riskFlags);
-  cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS });
+  cacheSet(key, { decision, expiresAt: now + CACHE_TTL_MS });
   return decision;
 }
 

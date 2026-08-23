@@ -430,7 +430,10 @@ export function parseCommand(body: string): ControlCommand {
     }
     case 'run': {
       const cmd: ControlCommand = { type: 'run' };
-      if (typeof parsed.repo === 'string') cmd.repo = parsed.repo;
+      if (typeof parsed.repo === 'string') {
+        if (parsed.repo.length > 256) throw new Error('run: repo exceeds maximum length');
+        cmd.repo = parsed.repo;
+      }
       return cmd;
     }
     case 'cancel': {

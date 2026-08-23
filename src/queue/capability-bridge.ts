@@ -18,6 +18,7 @@ export class CapabilityBridge {
     });
     source.on('task.completed', (event) => { if (event.taskId) this.taskMap.delete(event.taskId); });
     source.on('task.failed', (event) => { if (event.taskId) this.taskMap.delete(event.taskId); });
+    source.on('task.cancelled', (event) => { if (event.taskId) this.taskMap.delete(event.taskId); });
   }
 
   register(taskId: string, task: QueuedTask): void {
