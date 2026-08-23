@@ -1,0 +1,50 @@
+{
+  "audit_id": "audit-20260822T000000Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-22T00:00:00Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-t1u2v3w4",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "IFLEET_DAEMON_TICK_MS parsed with unguarded Number() — NaN coerces to 1ms spin-loop",
+      "detail": "daemon.ts:275 uses `Number(process.env['IFLEET_DAEMON_TICK_MS'] ?? DEFAULT_TICK_MS)` without a NaN/range guard. When the env var is set to a non-numeric string (e.g. 'abc', '', or an accidentally quoted value), `Number()` returns NaN. Node's `setInterval(fn, NaN)` clamps NaN to 1ms, so the tick loop runs at ~1ms intervals instead of the intended 5000ms, burning 100% CPU and making the daemon unable to process tasks.",
+      "file_globs": ["src/orchestrator/daemon.ts"],
+      "fix_sketch": "Replace the raw Number() cast with a validated helper: parse to a number, check Number.isFinite and > 0, fall back to DEFAULT_TICK_MS on invalid. Similar to the existing parsePort() pattern in src/utils/env.ts.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-22T00:00:00Z",
+      "closed_at": "2026-08-22T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-08-22"
+    },
+    {
+      "id": "AUDIT-IFleet-x5y6z7a8",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Stray blank line with trailing spaces inside defaultWarn in candidate-gen.ts",
+      "detail": "Line 387 of src/agents/proposer/candidate-gen.ts contains a blank line with three trailing spaces inside the `defaultWarn` function body, between the opening brace and `console.warn(line)`. This is noise from an editor auto-indent and inconsistent with the surrounding style.",
+      "file_globs": ["src/agents/proposer/candidate-gen.ts"],
+      "fix_sketch": "Remove the blank line with trailing spaces so the function body is a single `console.warn(line);` statement.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-22T00:00:00Z",
+      "closed_at": "2026-08-22T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-08-22"
+    },
+    {
+      "id": "AUDIT-IFleet-b9c0d1e2",
+      "severity": "COSMETIC",
+      "category": "cosmetic",
+      "title": "Duplicate TODO comment in retro.ts — same deferral expressed twice",
+      "detail": "src/agents/rituals/retro.ts has two identical TODO lines ('TODO: Move to #ifleet-ops when channel is created.') at lines 12 and 26. Duplicate action items inflate the surface area that future readers scan for outstanding work and can confuse automated TODO-scrapers into counting one action twice.",
+      "file_globs": ["src/agents/rituals/retro.ts"],
+      "fix_sketch": "Collapse to a single TODO comment at the module level (line 12). Remove the second instance at line 26.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-22T00:00:00Z",
+      "closed_at": "2026-08-22T00:00:00Z",
+      "closing_pr": "audit/nightly-2026-08-22"
+    }
+  ]
+}
