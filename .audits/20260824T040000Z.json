@@ -1,0 +1,25 @@
+{
+  "repo": "IFleet",
+  "run_at": "2026-08-24T04:00:00Z",
+  "auditor": "claude-code-nightly",
+  "scope": "full",
+  "summary": "No new fixable findings. Codebase unchanged since 2026-08-17 audit merge (only the audit fix commit itself landed on main). Deep review of hot-paths (server.ts, control-plane.ts, daemon.ts, sprint.ts, pipeline/runner.ts, workers.ts, github.ts, audit-store.ts, auto-router.ts, shadow.ts, pipeline/pr.ts) reproduced no CRITICAL findings. Automated checks (pnpm typecheck, pnpm lint) pass clean.",
+  "checks_run": [
+    "pnpm install (deps installed)",
+    "pnpm typecheck (pass)",
+    "pnpm lint (pass)",
+    "manual review of 20+ hot-path files"
+  ],
+  "findings": [],
+  "notes": [
+    "src/agents/bandit/shadow.ts:191-193 readShadowDecisions() has three unguarded JSON.parse calls on alpha/beta/sample_snapshot columns. Deferred as low-priority: readShadowDecisions() is only called from test files (src/agents/bandit/__tests__/*.test.ts, src/pipeline/__tests__/{factory,repo-resolver}.test.ts) where DB rows are fully controlled. No production caller.",
+    "6 pre-existing IMPORTANT findings remain open (AUDIT-IFleet-824d213b, l2m3n4o5, m3n4o5p6, 7f2a9c1e, 6f3a1d9b, plus IMPORTANT-only). Each is documented as accepted-limitation or requires broader type-refactor (SprintId | undefined) tracked separately; none re-verified as fixable in a single audit pass."
+  ],
+  "by_severity": {
+    "CRITICAL": 0,
+    "IMPORTANT": 0,
+    "COSMETIC": 0
+  },
+  "open_count": 0,
+  "fixed_count": 0
+}
