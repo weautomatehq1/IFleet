@@ -119,6 +119,9 @@ export class GitRepoManager implements RepoManager {
     if (!/^[a-zA-Z0-9._-]+$/.test(taskId)) {
       throw new Error(`allocateWorktree: invalid taskId ${JSON.stringify(taskId)}`);
     }
+    if (baseBranch !== undefined && !/^[a-zA-Z0-9._\-\/]+$/.test(baseBranch)) {
+      throw new Error(`allocateWorktree: invalid baseBranch ${JSON.stringify(baseBranch)}`);
+    }
     await this.ensureClone(route);
     const canon = this.canonicalPath(route);
     const path = this.worktreePath(route, taskId);
@@ -259,7 +262,7 @@ async function spawnCapture(bin: string, args: string[], env?: NodeJS.ProcessEnv
       }
     });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    child.on('close', (code, signal) => resolve({ code: code !== null ? code : signal ? 128 : 1, stdout, stderr }));
   });
 }
 

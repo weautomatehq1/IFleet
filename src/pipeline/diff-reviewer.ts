@@ -127,7 +127,9 @@ export async function runReviewer(input: RunReviewerInput): Promise<ReviewerOutp
 function buildReviewerBrief(brief: string, plan: string, diff: string): string {
   return [
     '## Original brief',
+    '<user_supplied_content>',
     brief,
+    '</user_supplied_content>',
     '',
     '## Architect plan',
     plan,

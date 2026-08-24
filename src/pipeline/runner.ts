@@ -621,8 +621,9 @@ async function logCosts(input: PipelineInput, attempts: AttemptRecord[]): Promis
  * zero from missing data.
  */
 function sumTokens(attempts: AttemptRecord[]): number | undefined {
-  const total = attempts.reduce((sum, a) => sum + (a.totalTokens ?? 0), 0);
-  return total > 0 ? total : undefined;
+  const hasData = attempts.some((a) => a.totalTokens !== undefined);
+  if (!hasData) return undefined;
+  return attempts.reduce((sum, a) => sum + (a.totalTokens ?? 0), 0);
 }
 
 function alreadyResolved(attempts: AttemptRecord[]): PipelineResult {

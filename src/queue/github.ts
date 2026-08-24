@@ -410,6 +410,7 @@ export class GitHubQueue implements QueueAdapter {
 
   async markCapabilityBlocked(task: QueuedTask, missing: string[]): Promise<void> {
     await this.removeLabel(task, LABEL_IN_FLIGHT);
+    await this.removeLabel(task, LABEL_IFLEET_IN_PROGRESS);
     await this.addLabels(task, [LABEL_CAPABILITY_BLOCKED]);
     const list = missing.map((m) => `\`${m}\``).join(', ');
     await this.comment(
@@ -446,6 +447,7 @@ export class GitHubQueue implements QueueAdapter {
           const issues = await this.listOpenAutoShip(repo);
           for (const task of issues) {
             if (task.labels.includes(LABEL_IN_FLIGHT)) continue;
+            if (task.labels.includes(LABEL_FAILED)) continue;
             if (seen.has(task.id)) continue;
             if (!isAuthorAllowed(repo, task.author)) {
               if (seen.size >= SEEN_MAX) seen.delete(seen.values().next().value as string);
