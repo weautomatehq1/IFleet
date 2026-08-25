@@ -1,0 +1,97 @@
+{
+  "audit_id": "audit-20260825T041345Z",
+  "repo": "IFleet",
+  "scanned_at": "2026-08-25T04:13:45Z",
+  "scanner": "claude-sonnet-4-6-nightly",
+  "findings": [
+    {
+      "id": "AUDIT-IFleet-824d213b",
+      "severity": "IMPORTANT",
+      "category": "risk",
+      "title": "Task brief passed as argv to claude subprocess — visible on process list",
+      "detail": "defaultHaikuCall in auto-router.ts passed the full router prompt (which includes the user-supplied task brief) as a positional CLI argument after --print. On Linux this is visible to all local users via /proc/<pid>/cmdline and ps aux. Fixed by switching to spawn() with stdio: ['pipe','pipe','pipe'] and writing the prompt to stdin.",
+      "file_globs": [
+        "src/classifier/auto-router.ts"
+      ],
+      "fix_sketch": "Switched from execFile with argv to spawn with piped stdin. Child.stdin.write(prompt) followed by child.stdin.end() eliminates the argv exposure.",
+      "parallel_safe": true,
+      "status": "fixed",
+      "opened_at": "2026-08-02T04:18:48Z",
+      "closed_at": "2026-08-25T04:13:45Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-6f3a1d9b",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "markCompleted receives empty string prUrl when no PR was created — conflates no-PR with missing URL",
+      "detail": "sprint-bridge.ts passed lastPrUrl ?? '' to adapter.markCompleted(), making an empty string indistinguishable from a lost PR URL. Fixed by threading string | null through the entire markCompleted interface chain. null now means 'no PR was opened'; downstream GitHub comment and Discord embed both display that clearly.",
+      "file_globs": [
+        "src/orchestrator/handlers/sprint-bridge.ts",
+        "src/queue/github.ts",
+        "src/queue/sources/github.ts",
+        "src/orchestrator/index.ts",
+        "packages/orchestrator-core/src/queue/types.ts",
+        "packages/orchestrator-core/src/queue/sources/base.ts",
+        "packages/orchestrator-core/src/queue/unified-adapter.ts",
+        "packages/orchestrator-core/src/queue/sources/discord.ts",
+        "packages/orchestrator-core/src/contracts/discord-out.ts",
+        "packages/orchestrator-core/src/observability/discord-output.ts"
+      ],
+      "fix_sketch": "Changed prUrl parameter to string | null across all interfaces and implementations. sprint-bridge now passes lastPrUrl ?? null. GitHub comment shows 'no PR was opened', Discord embed shows 'Completed — no PR was opened.'",
+      "parallel_safe": false,
+      "status": "fixed",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": "2026-08-25T04:13:45Z",
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-l2m3n4o5",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "Empty-string cast '' as SprintId silently misidentifies tasks lacking a sprintId",
+      "detail": "Using '' as SprintId causes downstream lookups to silently fail on unmatched sprint IDs. Proper fix requires changing SprintId usage to string | undefined in OrchestratorEvent.",
+      "file_globs": [
+        "src/orchestrator/daemon.ts"
+      ],
+      "fix_sketch": "Requires type change to SprintId | undefined in OrchestratorEvent — skipped due to broad impact; carried forward as open finding.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-m3n4o5p6",
+      "severity": "IMPORTANT",
+      "category": "logic",
+      "title": "legacyToUnified seeds ULID with issue creation timestamp, potentially mis-ordering unified store insertions",
+      "detail": "ulid(legacy.createdAt) encodes GitHub issue creation time in the ULID prefix. During backfill, issues processed in bulk get ULIDs sorted by GitHub creation time rather than insertion order, which can confuse FIFO semantics.",
+      "file_globs": [
+        "src/queue/sources/github.ts"
+      ],
+      "fix_sketch": "Change to ulid() (current time) and store createdAt separately — skipped to preserve existing idempotency semantics; carried forward as open finding.",
+      "parallel_safe": true,
+      "status": "open",
+      "opened_at": "2026-08-05T04:30:15Z",
+      "closed_at": null,
+      "closing_pr": null
+    },
+    {
+      "id": "AUDIT-IFleet-7f2a9c1e",
+      "severity": "IMPORTANT",
+      "category": "assumption",
+      "title": "recordRateLimitHeaders emits ratelimit.observed events with '' as SprintId — second SprintId lie",
+      "detail": "In src/orchestrator/index.ts:225, recordRateLimitHeaders() emits a ratelimit.observed event with sprintId: '' as SprintId. Rate-limit observations are not tied to any sprint and the empty-string cast is the same type lie tracked in AUDIT-IFleet-l2m3n4o5. Events with empty sprintId stored in the orchestrator event log will never match any sprint row, silently orphaning all rate-limit telemetry.",
+      "file_globs": [
+        "src/orchestrator/index.ts"
+      ],
+      "fix_sketch": "Requires changing sprintId in OrchestratorEvent to SprintId | undefined (same root fix as AUDIT-IFleet-l2m3n4o5). Do not fix in isolation from AUDIT-IFleet-l2m3n4o5.",
+      "parallel_safe": false,
+      "status": "open",
+      "opened_at": "2026-08-15T04:00:00Z",
+      "closed_at": null,
+      "closing_pr": null
+    }
+  ]
+}

@@ -51,7 +51,7 @@ export class UnifiedQueueAdapter {
     return task;
   }
 
-  async markCompleted(task: QueuedTask, prUrl: string, totalTokens?: number): Promise<void> {
+  async markCompleted(task: QueuedTask, prUrl: string | null, totalTokens?: number): Promise<void> {
     // Pass fromState so the UPDATE is conditional — if a concurrent process
     // already moved the row to a terminal state, changes===0 and we skip the
     // source notification, preventing duplicate GitHub/Discord messages

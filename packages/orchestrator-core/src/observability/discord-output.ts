@@ -217,7 +217,7 @@ export class DiscordOutAdapter implements DiscordOut {
     }
   }
 
-  async postCompleted(threadId: string, prUrl: string): Promise<void> {
+  async postCompleted(threadId: string, prUrl: string | null): Promise<void> {
     if (!threadId) return;
     try {
       const thread = (await this.client.channels.fetch(threadId)) as ThreadChannel | null;
@@ -225,9 +225,11 @@ export class DiscordOutAdapter implements DiscordOut {
       const embed = new EmbedBuilder()
         .setTitle(`${STATUS_BADGE.done} Completed`)
         .setDescription(
-          prUrl === 'already-resolved'
-            ? 'Already resolved — no changes needed. Finding closed.'
-            : `Pull request opened.\n${prUrl}`,
+          prUrl === null
+            ? 'Completed — no PR was opened.'
+            : prUrl === 'already-resolved'
+              ? 'Already resolved — no changes needed. Finding closed.'
+              : `Pull request opened.\n${prUrl}`,
         );
       await thread.send({ embeds: [embed] });
     } catch (err) {

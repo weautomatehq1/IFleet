@@ -8,7 +8,7 @@ export type { RoutingHints, VerifyKind } from '../contracts/routing.js';
 export interface QueueAdapter {
   pickNext(opts?: PickOpts): Promise<QueuedTask | null>;
   markPicked(task: QueuedTask, workerId: string): Promise<void>;
-  markCompleted(task: QueuedTask, prUrl: string): Promise<void>;
+  markCompleted(task: QueuedTask, prUrl: string | null): Promise<void>;
   markFailed(task: QueuedTask, reason: string): Promise<void>;
   markCapabilityBlocked(task: QueuedTask, missing: string[]): Promise<void>;
   postStatus(task: QueuedTask, status: TaskStatus, message?: string): Promise<void>;

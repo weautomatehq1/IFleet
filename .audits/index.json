@@ -1,6 +1,6 @@
 {
   "repo": "IFleet",
-  "last_updated": "2026-08-15T04:00:00Z",
+  "last_updated": "2026-08-25T04:13:45Z",
   "findings": [
     {
       "id": "AUDIT-IFleet-5fc6ca57",
@@ -624,9 +624,9 @@
       ],
       "fix_sketch": "Pipe the prompt to the child's stdin rather than passing it as an argv token. Use stdio: ['pipe','pipe','pipe'] and child.stdin.write(prompt) to avoid the process-list exposure. The comment claiming stdin was unreliable refers to a race without explicit flush; writing synchronously and then closing stdin resolves it.",
       "parallel_safe": true,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-08-02T04:18:48Z",
-      "closed_at": null,
+      "closed_at": "2026-08-25T04:13:45Z",
       "closing_pr": null
     },
     {
@@ -1233,9 +1233,9 @@
       ],
       "fix_sketch": "Change the interface to accept string | null and thread null through markCompleted. Use null to mean 'no PR was opened', empty string to mean 'URL unknown/lost'. Update TaskSource implementations to handle null cleanly.",
       "parallel_safe": false,
-      "status": "open",
+      "status": "fixed",
       "opened_at": "2026-08-15T04:00:00Z",
-      "closed_at": null,
+      "closed_at": "2026-08-25T04:13:45Z",
       "closing_pr": null
     },
     {

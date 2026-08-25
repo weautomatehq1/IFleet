@@ -12,7 +12,7 @@
 //    decisions for human review without re-throwing.
 
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSprintMode, type SprintMode } from './modes.js';
@@ -315,35 +315,49 @@ function collectRiskFlags(input: AutoRouterInput, repoRoot: string): string[] {
   return [...flags];
 }
 
-// Prompt is passed as an argv positional after --print rather than via stdin.
-// The CLI's stdin path was unreliable in production: claude would emit
-// "Warning: no stdin data received in 3s, proceeding without it" and then
-// fail with "Input must be provided either through stdin or as a prompt
-// argument when using --print", apparently because the pipe write was not
-// flushed before claude's stdin-wait window closed. Argv delivery is
-// deterministic and matches the working pattern in
-// src/observability/task-done-notify.ts. The prompt is internally constructed
-// (auto-router boilerplate + brief), not secret material, so process-list
-// visibility is acceptable for this internal bot.
+// Prompt is piped via stdin to avoid exposing it in argv (visible to all local
+// users via /proc/<pid>/cmdline). The earlier argv approach had a note claiming
+// stdin was unreliable; the actual race was an unflushed pipe — writing then
+// explicitly closing stdin resolves it. (AUDIT-IFleet-824d213b)
 const defaultHaikuCall: HaikuCall = (prompt, { model, timeoutMs, signal }) =>
   new Promise<string>((resolve, reject) => {
-    execFile(
+    const child = spawn(
       'claude',
-      ['--print', prompt, '--model', model],
+      ['--print', '--model', model],
       {
         signal,
         timeout: timeoutMs,
-        maxBuffer: HAIKU_MAX_OUTPUT_CHARS * 2,
+        stdio: ['pipe', 'pipe', 'pipe'],
         // Allowlist env passed to the child — keeps GITHUB_TOKEN /
         // DISCORD_BOT_TOKEN / IFLEET_HMAC_SECRET out of a prompt-injected
-        // child's reach. Matches src/observability/task-done-notify.ts.
+        // child's reach.
         env: claudeChildEnv(),
       },
-      (err, stdout) => {
-        if (err) return reject(err);
-        resolve(stdout.toString());
-      },
     );
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+
+    child.stdin.write(prompt, 'utf8', (writeErr) => {
+      if (writeErr) {
+        child.kill();
+        return reject(writeErr);
+      }
+      child.stdin.end();
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) {
+        const errText = Buffer.concat(stderrChunks).toString('utf8');
+        return reject(new Error(`claude exited with code ${code}: ${errText}`));
+      }
+      const out = Buffer.concat(stdoutChunks).toString('utf8');
+      resolve(out.slice(0, HAIKU_MAX_OUTPUT_CHARS * 2));
+    });
   });
 
 export const _internal = {
